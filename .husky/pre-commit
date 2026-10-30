@@ -1,0 +1,3 @@
+# Runs automatically on `git commit` once hooks are installed
+# (npm run hooks:install). Applies ESLint --fix and Prettier to staged files only.
+npx lint-staged

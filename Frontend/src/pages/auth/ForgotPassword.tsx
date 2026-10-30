@@ -1,0 +1,154 @@
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeftIcon, ArrowRightIcon, MailCheckIcon, MailIcon } from 'lucide-react';
+import { AuthLayout } from '../../components/auth/AuthLayout';
+import { SecurityIllustration } from '../../components/illustrations/SecurityIllustration';
+
+const input =
+  'h-9 w-full rounded-md border border-line-strong bg-white px-3 text-[13px] text-ink outline-none transition-colors duration-150 placeholder:text-subtle focus:border-accent focus:ring-2 focus:ring-accent/20';
+
+/** Step 1 of recovery: request a reset link. Same response whether or not the account exists. */
+export function ForgotPassword() {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+      return setError('Enter a valid work email.');
+    setSentTo(email.trim().toLowerCase());
+    setResendIn(30);
+  };
+
+  const link = sentTo ? `/reset-password?token=demo&email=${encodeURIComponent(sentTo)}` : '';
+
+  return (
+    <AuthLayout
+      illustration={<SecurityIllustration className="h-auto w-full" />}
+      aside={{
+        title: 'Locked out happens. Getting back in is safe.',
+        body: 'Reset links expire after 30 minutes, work once, and every reset is recorded in the audit log. Your MFA device is still required afterwards.',
+      }}
+    >
+      <Link
+        to="/sign-in"
+        className="mb-4 inline-flex w-fit items-center gap-1 text-[12px] font-medium text-muted hover:text-ink"
+      >
+        <ArrowLeftIcon className="h-3.5 w-3.5" /> Back to sign in
+      </Link>
+
+      {!sentTo ? (
+        <>
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink">Reset your password</h1>
+          <p className="mt-1 text-[13px] text-muted">
+            Enter your work email and we’ll send you a single-use reset link.
+          </p>
+          <form onSubmit={submit} className="mt-5 space-y-3" noValidate>
+            <label className="block">
+              <span className="text-[12px] font-medium text-ink">Work email</span>
+              <span className="relative mt-1 block">
+                <MailIcon className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="you@techorg.io"
+                  className={`${input} pl-8`}
+                />
+              </span>
+            </label>
+            {error && (
+              <p
+                role="alert"
+                className="rounded-md bg-bad-soft px-2.5 py-1.5 text-[12px] font-medium text-bad"
+              >
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-ink text-[13px] font-semibold text-white transition-colors duration-150 hover:bg-ink/90"
+            >
+              Send reset link <ArrowRightIcon className="h-4 w-4" />
+            </button>
+          </form>
+          <p className="mt-4 text-[12px] text-muted">
+            Using SSO? Reset your password with your identity provider instead.
+          </p>
+        </>
+      ) : (
+        <>
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-ok-soft text-ok">
+            <MailCheckIcon className="h-5 w-5" />
+          </span>
+          <h1 className="mt-3 text-[22px] font-semibold tracking-tight text-ink">
+            Check your inbox
+          </h1>
+          <p className="mt-1 text-[13px] text-muted">
+            If an account exists for <b className="text-ink">{sentTo}</b>, a reset link is on its
+            way. It expires in 30 minutes.
+          </p>
+
+          <article
+            aria-label="Email preview"
+            className="mt-5 overflow-hidden rounded-lg border border-line"
+          >
+            <header className="border-b border-line bg-sunken/50 px-3.5 py-2 text-[11.5px] text-muted">
+              <p>
+                <b className="text-ink">DevHQ Security</b> &lt;security@devhq.app&gt; → {sentTo}
+              </p>
+              <p className="mt-0.5 font-semibold text-ink">Reset your DevHQ password</p>
+            </header>
+            <div className="space-y-2.5 px-3.5 py-3 text-[12.5px] text-ink">
+              <p>
+                Someone asked to reset the password for this account. If that was you, use the
+                button below.
+              </p>
+              <button
+                onClick={() => navigate(link)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-[12.5px] font-semibold text-white hover:bg-ink/90"
+              >
+                Choose a new password <ArrowRightIcon className="h-3.5 w-3.5" />
+              </button>
+              <p className="text-[11.5px] text-muted">
+                Didn’t ask for this? Ignore the email — your password stays the same.
+              </p>
+            </div>
+          </article>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[12px]">
+            <button
+              onClick={() => {
+                setSentTo(null);
+                setEmail('');
+              }}
+              className="font-medium text-muted hover:text-ink"
+            >
+              Use a different email
+            </button>
+            <button
+              disabled={resendIn > 0}
+              onClick={() => setResendIn(30)}
+              className="font-medium text-accent hover:underline disabled:text-muted disabled:no-underline"
+            >
+              {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend email'}
+            </button>
+          </div>
+        </>
+      )}
+    </AuthLayout>
+  );
+}

@@ -1,0 +1,114 @@
+/**
+ * DevHQ API server — entry point.
+ *
+ * Run (Node 22.6+, no build step, no runtime dependencies):
+ *   cd Backend && npm run dev
+ * or directly:
+ *   node --experimental-strip-types Backend/server.ts
+ *
+ * Then open http://localhost:8080/console for the backend console.
+ * Demo sign-in (non-production): any demo email, password `devhq-demo`,
+ * code `246810` — or the one-click role buttons on the console login.
+ *
+ * TLS 1.3 is terminated at the edge (load balancer / WAAP), which also handles
+ * bot mitigation. This process enforces everything that must hold even if the
+ * edge is bypassed: headers, origin checks, rate limits, authentication,
+ * authorization, validation and auditing.
+ *
+ * Request pipeline (in order):
+ *   securityHeaders → originGuard → apiLimiter → route guards
+ *   (authLimiter / authenticate / requireArea / requireStepUp) → handler
+ */
+
+import { createServer } from 'node:http';
+import { config } from './config/env.ts';
+import { Router } from './lib/http.ts';
+import { logger } from './lib/logger.ts';
+import { originGuard, securityHeaders } from './security/headers.ts';
+import { apiLimiter } from './security/rateLimit.ts';
+import { DEMO, seed } from './store/db.ts';
+import { audit } from './audit/auditLog.ts';
+import { createBackup, pruneBackups } from './resilience/backups.ts';
+import { registerSystemRoutes } from './routes/system.routes.ts';
+import { registerAuthRoutes } from './routes/auth.routes.ts';
+import { registerProjectRoutes } from './routes/projects.routes.ts';
+import { registerTaskRoutes } from './routes/tasks.routes.ts';
+import { registerTeamRoutes } from './routes/team.routes.ts';
+import { registerDocRoutes } from './routes/docs.routes.ts';
+import { registerOperationsRoutes } from './routes/operations.routes.ts';
+import { registerLocationRoutes } from './routes/locations.routes.ts';
+import { registerSecurityRoutes } from './routes/security.routes.ts';
+import { registerCodespaceRoutes } from './routes/codespaces.routes.ts';
+
+export async function buildApp() {
+  await seed();
+  const router = new Router();
+  router.use(securityHeaders);
+  router.use(originGuard);
+  router.use(apiLimiter);
+
+  registerSystemRoutes(router);
+  registerAuthRoutes(router);
+  registerProjectRoutes(router);
+  registerTaskRoutes(router);
+  registerTeamRoutes(router);
+  registerDocRoutes(router);
+  registerOperationsRoutes(router);
+  registerLocationRoutes(router);
+  registerSecurityRoutes(router);
+  registerCodespaceRoutes(router);
+  return router;
+}
+
+async function main() {
+  const router = await buildApp();
+  const server = createServer((req, res) => void router.handle(req, res));
+
+  // Slow-loris and resource-exhaustion protection.
+  server.headersTimeout = 10_000;
+  server.requestTimeout = 30_000;
+  server.keepAliveTimeout = 5_000;
+  server.maxHeadersCount = 64;
+
+  server.listen(config.port, () => {
+    logger.info('listening', {
+      url: config.publicUrl,
+      env: config.env,
+      routes: router.inventory().length,
+      console: `${config.publicUrl}/console`,
+      demo: DEMO.enabled,
+    });
+    audit.append({
+      actor: 'system',
+      action: 'server.started',
+      target: `${config.env} · port ${config.port}`,
+    });
+  });
+
+  // Snapshot on boot (non-prod) and daily, then prune past retention.
+  const backup = () =>
+    void createBackup()
+      .then(pruneBackups)
+      .catch((e) => logger.error('backup failed', { err: String(e) }));
+  if (!config.isProd) setTimeout(backup, 2000).unref();
+  setInterval(backup, 24 * 60 * 60_000).unref();
+
+  const shutdown = (signal: string) => {
+    logger.info('shutdown', { signal });
+    audit.append({ actor: 'system', action: 'server.stopping', target: signal });
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('unhandledRejection', (err) =>
+    logger.error('unhandledRejection', { err: String(err) }),
+  );
+}
+
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('server.ts')) {
+  main().catch((err) => {
+    logger.error('fatal startup error', { err: String((err as Error)?.stack ?? err) });
+    process.exit(1);
+  });
+}

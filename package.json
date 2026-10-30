@@ -1,0 +1,95 @@
+{
+  "name": "devhq",
+  "version": "1.0.0",
+  "description": "DevHQ - A comprehensive developer operations platform with intelligent frontend, high-performance backend, and ML-powered models",
+  "author": {
+    "name": "DevHQ Team",
+    "email": "team@devhq.com",
+    "url": "https://devhq.com"
+  },
+  "contributors": [
+    {
+      "name": "DevHQ Engineering",
+      "email": "engineering@devhq.com"
+    }
+  ],
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "homepage": "https://devhq.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devhq/devhq.git",
+    "directory": ""
+  },
+  "bugs": {
+    "url": "https://github.com/devhq/devhq/issues",
+    "email": "support@devhq.com"
+  },
+  "keywords": [
+    "devops",
+    "developer-tools",
+    "platform",
+    "monorepo",
+    "typescript",
+    "react",
+    "nodejs",
+    "machine-learning"
+  ],
+  "engines": {
+    "node": ">=22.6.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "Backend",
+    "Frontend",
+    "Models"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:backend": "npm run dev --workspace=Backend",
+    "dev:frontend": "npm run dev --workspace=Frontend",
+    "dev:models": "npm run dev --workspace=Models",
+    "build": "npm run build --workspaces --if-present",
+    "build:backend": "npm run build --workspace=Backend",
+    "build:frontend": "npm run build --workspace=Frontend",
+    "start": "npm run start --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "lint:backend": "npm run lint --workspace=Backend",
+    "lint:frontend": "npm run lint --workspace=Frontend",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:backend": "npm run test --workspace=Backend",
+    "test:frontend": "npm run test --workspace=Frontend",
+    "format": "npm run format --workspaces --if-present",
+    "format:check": "npm run format:check --workspaces --if-present",
+    "clean": "rm -rf node_modules Backend/node_modules Frontend/node_modules Models/node_modules",
+    "clean:build": "rm -rf Backend/dist Frontend/dist Frontend/.next Models/dist",
+    "install:all": "npm install && npm install --workspaces",
+    "audit": "npm audit --audit-level=high",
+    "audit:fix": "npm audit fix",
+    "hooks:install": "husky",
+    "pre-commit": "lint-staged"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.1",
+    "globals": "^15.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  },
+  "packageManager": "npm@10.0.0"
+}

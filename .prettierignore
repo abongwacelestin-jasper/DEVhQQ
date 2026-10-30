@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+build/
+out/
+**/dist/
+**/build/
+Frontend/.vite/
+.vite/
+*.tsbuildinfo
+
+# Generated / machine-owned files
+package-lock.json
+**/package-lock.json
+pnpm-lock.yaml
+yarn.lock
+coverage/
+**/coverage/
+.nyc_output/
+
+# ML artifacts and data
+Models/models/
+Models/data/
+*.pkl
+*.h5
+*.pt
+*.onnx
+*.joblib
+*.parquet
+*.csv
+
+# Caches
+.cache/
+.turbo/
+.eslintcache
+.prettiercache
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# Vendored / third-party
+public/vendor/
+vendor/
+
+# Documentation that is generated
+CHANGELOG.md
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/

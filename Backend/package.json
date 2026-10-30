@@ -1,0 +1,88 @@
+{
+  "name": "@devhq/backend",
+  "version": "1.0.0",
+  "description": "DevHQ Backend API - High-performance Node.js server with TypeScript, no build step required. Features authentication, rate limiting, security middleware, and comprehensive audit logging.",
+  "author": {
+    "name": "DevHQ Team",
+    "email": "backend@devhq.com"
+  },
+  "contributors": [
+    {
+      "name": "Backend Team",
+      "email": "backend@devhq.com"
+    }
+  ],
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./server.ts",
+  "types": "./types.ts",
+  "exports": {
+    ".": {
+      "import": "./server.ts",
+      "types": "./types.ts"
+    }
+  },
+  "files": [
+    "server.ts",
+    "types.ts",
+    "audit",
+    "auth",
+    "config",
+    "lib",
+    "middleware",
+    "resilience",
+    "routes",
+    "security",
+    "store",
+    "scripts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devhq/devhq.git",
+    "directory": "Backend"
+  },
+  "bugs": {
+    "url": "https://github.com/devhq/devhq/issues",
+    "email": "backend@devhq.com"
+  },
+  "homepage": "https://github.com/devhq/devhq/tree/main/Backend",
+  "keywords": [
+    "api",
+    "backend",
+    "nodejs",
+    "typescript",
+    "http",
+    "rest",
+    "authentication",
+    "security",
+    "devhq"
+  ],
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "dev": "node --experimental-strip-types server.ts",
+    "start": "node --experimental-strip-types server.ts",
+    "start:prod": "NODE_ENV=production node --experimental-strip-types server.ts",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"**/*.ts\"",
+    "format:check": "prettier --check \"**/*.ts\"",
+    "smoke": "node --experimental-strip-types scripts/smoke.ts",
+    "test": "npm run smoke",
+    "test:smoke": "npm run smoke",
+    "validate": "npm run typecheck && npm run lint",
+    "precommit": "npm run validate"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "prettier": "^3.0.0"
+  }
+}

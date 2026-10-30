@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Runtime artifacts (audit trail, snapshots, logs)
+.audit/
+.backups/
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Editor & OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Test / tooling caches
+coverage/
+.vite/
+.eslintcache

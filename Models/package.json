@@ -1,0 +1,76 @@
+{
+  "name": "@devhq/models",
+  "version": "1.0.0",
+  "description": "DevHQ ML Models - Machine learning models for intelligent development operations. Includes models for code analysis, anomaly detection, task prediction, and productivity insights.",
+  "author": {
+    "name": "DevHQ Team",
+    "email": "ml@devhq.com"
+  },
+  "contributors": [
+    {
+      "name": "ML Engineering Team",
+      "email": "ml@devhq.com"
+    }
+  ],
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": {
+      "import": "./index.ts",
+      "types": "./index.ts"
+    }
+  },
+  "files": [
+    "*.ts",
+    "*.py",
+    "models",
+    "data",
+    "scripts",
+    "index.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devhq/devhq.git",
+    "directory": "Models"
+  },
+  "bugs": {
+    "url": "https://github.com/devhq/devhq/issues",
+    "email": "ml@devhq.com"
+  },
+  "homepage": "https://github.com/devhq/devhq/tree/main/Models",
+  "keywords": [
+    "machine-learning",
+    "ml",
+    "models",
+    "ai",
+    "python",
+    "tensorflow",
+    "pytorch",
+    "devhq"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "python": ">=3.10.0"
+  },
+  "scripts": {
+    "dev": "echo \"Run model development scripts here\"",
+    "train": "echo \"Train models: configure script in package.json\"",
+    "train:all": "echo \"Train all models: configure script in package.json\"",
+    "test": "echo \"Test models: configure script in package.json\"",
+    "test:coverage": "echo \"Test model coverage: configure script in package.json\"",
+    "evaluate": "echo \"Evaluate model performance: configure script in package.json\"",
+    "export": "echo \"Export models for production: configure script in package.json\"",
+    "lint": "echo \"Lint model code: configure script in package.json\"",
+    "lint:fix": "echo \"Fix linting issues: configure script in package.json\"",
+    "format": "echo \"Format model code: configure script in package.json\"",
+    "clean": "rm -rf models/*.pkl models/*.h5 models/*.pt data/cache"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "prettier": "^3.0.0"
+  }
+}

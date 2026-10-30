@@ -1,0 +1,101 @@
+{
+  "name": "@devhq/frontend",
+  "version": "1.0.0",
+  "description": "DevHQ Frontend - Modern React web application built with Vite, TypeScript, and Tailwind CSS. Provides a beautiful, responsive interface for managing development operations, workspaces, and team collaboration.",
+  "author": {
+    "name": "DevHQ Team",
+    "email": "frontend@devhq.com"
+  },
+  "contributors": [
+    {
+      "name": "Frontend Team",
+      "email": "frontend@devhq.com"
+    }
+  ],
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "exports": {
+    ".": {
+      "import": "./src/index.tsx",
+      "types": "./src/index.tsx"
+    }
+  },
+  "files": [
+    "src",
+    "public",
+    "index.html",
+    "vite.config.ts",
+    "tailwind.config.js",
+    "postcss.config.js",
+    "tsconfig.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devhq/devhq.git",
+    "directory": "Frontend"
+  },
+  "bugs": {
+    "url": "https://github.com/devhq/devhq/issues",
+    "email": "frontend@devhq.com"
+  },
+  "homepage": "https://github.com/devhq/devhq/tree/main/Frontend",
+  "keywords": [
+    "react",
+    "vite",
+    "typescript",
+    "tailwindcss",
+    "frontend",
+    "ui",
+    "devhq"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:debug": "vite --debug",
+    "build": "vite build",
+    "build:analyze": "vite build --mode analyze",
+    "preview": "vite preview",
+    "preview:prod": "vite preview --host",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json,md}\"",
+    "test": "npm run typecheck",
+    "validate": "npm run typecheck && npm run lint",
+    "precommit": "npm run validate",
+    "clean": "rm -rf dist node_modules/.vite"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@emotion/react": "^11.13.3",
+    "react-router-dom": "^6.26.2",
+    "lucide-react": "0.522.0",
+    "framer-motion": "^11.5.4",
+    "sonner": "^2.0.1",
+    "@monaco-editor/react": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.18",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^9.0.0",
+    "typescript-eslint": "^8.0.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.2.0",
+    "tailwindcss": "3.4.17",
+    "autoprefixer": "latest",
+    "postcss": "latest",
+    "prettier": "^3.0.0"
+  }
+}
