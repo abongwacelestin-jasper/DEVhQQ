@@ -11,14 +11,21 @@ interface MembersDirectoryProps {
   /** Members who lead the project currently in scope. */
   leadIds: Set<string>;
   initialRole?: RoleName | '';
+  /** Resyncs the directory after a server-side change. */
+  onReload?: () => Promise<void>;
 }
 
 const VIEW_KEY = 'devhq.team.view';
 
 /** Members tab: cards by default, a strict columnar table on demand. Choice is remembered. */
-export function MembersDirectory({ members, leadIds, initialRole = '' }: MembersDirectoryProps) {
+export function MembersDirectory({
+  members,
+  leadIds,
+  initialRole = '',
+  onReload,
+}: MembersDirectoryProps) {
   const t = useMembersTable(members, initialRole);
-  const { actionsFor, bulkMfa, bulkDeactivate } = useMemberActions();
+  const { actionsFor, bulkDeactivate } = useMemberActions(onReload);
   const [view, setView] = useState<MembersView>(() =>
     localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'cards',
   );
@@ -40,7 +47,6 @@ export function MembersDirectory({ members, leadIds, initialRole = '' }: Members
         onView={setView}
         picked={picked}
         onExport={() => exportMembersCsv(picked.length ? picked : t.rows)}
-        onBulkMfa={() => bulkMfa(picked, t.clearSelection)}
         onBulkDeactivate={() => bulkDeactivate(picked, t.clearSelection)}
       />
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { CircleCheckIcon, PlusIcon, ShieldCheckIcon } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -6,17 +6,19 @@ import { Panel } from '../components/ui/Panel';
 import { Segmented } from '../components/ui/Segmented';
 import { ProductMark } from '../components/ui/ProductMark';
 import { Avatar } from '../components/ui/Avatar';
+import { SearchInput } from '../components/ui/SearchInput';
+import { StatCard, StatStrip } from '../components/ui/StatCard';
 import { EnvironmentPipeline } from '../components/delivery/EnvironmentPipeline';
 import { DeploymentsTable } from '../components/delivery/DeploymentsTable';
 import { DeployFrequencyChart } from '../components/delivery/DeployFrequencyChart';
-import { DeployTopology } from '../components/delivery/DeployTopology';
 import { useProductFilter } from '../contexts/ProductFilterContext';
 import { useReauth } from '../contexts/ReauthContext';
 import { useDeployments } from '../hooks/useDeployments';
-import { environments } from '../data/operations';
-import { products } from '../data/portfolio';
-import { memberById } from '../utils/status';
-import type { DeployStatus, Deployment } from '../types/operations';
+import { useProductCatalogue } from '../hooks/useProductCatalogue';
+import { memberById, productById } from '../utils/status';
+import { daysAgo } from '../utils/metrics';
+import type { DeployStatus, Deployment, EnvironmentLane, LaneStatus } from '../types/operations';
+import type { ProductId } from '../types/portfolio';
 
 type Filter = 'all' | DeployStatus;
 
@@ -27,15 +29,79 @@ const policy = [
   'MFA re-confirmation at approval time',
 ];
 
+/** How a provider's deploy status maps onto a pipeline lane. */
+const laneOf = (status: DeployStatus): LaneStatus =>
+  status === 'succeeded'
+    ? 'healthy'
+    : status === 'failed' || status === 'rolled-back'
+      ? 'failed'
+      : 'pending';
+
+const hit = (haystack: (string | number | undefined | null)[], term: string) =>
+  !term || haystack.join(' ').toLowerCase().includes(term.trim().toLowerCase());
+
 export function Deployments() {
   const { matches } = useProductFilter();
   const { requestReauth } = useReauth();
   const { deployments: rows, approve, rollback } = useDeployments();
-  const [filter, setFilter] = useState<Filter>('all');
+  const catalogue = useProductCatalogue();
+  const [status, setStatus] = useState<Filter>('all');
+  const [q, setQ] = useState({ history: '', approvals: '', environments: '' });
+  const set = (key: keyof typeof q) => (value: string) => setQ((s) => ({ ...s, [key]: value }));
+
+  const nameOf = (id: ProductId) =>
+    catalogue.find((p) => p.id === id)?.name ?? productById(id).name;
 
   const scoped = rows.filter((d) => matches(d.product));
   const awaiting = scoped.filter((d) => d.status === 'awaiting-approval');
-  const visible = scoped.filter((d) => filter === 'all' || d.status === filter);
+  const week = scoped.filter((d) => daysAgo(d.ago) < 7);
+  const failedWeek = week.filter((d) => d.status === 'failed' || d.status === 'rolled-back');
+  const succeededWeek = week.filter((d) => d.status === 'succeeded');
+  const successRate = week.length
+    ? Math.round(((week.length - failedWeek.length) / week.length) * 100)
+    : 0;
+
+  const visible = scoped
+    .filter((d) => status === 'all' || d.status === status)
+    .filter((d) => hit([d.product, nameOf(d.product), d.env, d.sha, d.message, d.status], q.history));
+  const approvalHits = awaiting.filter((d) =>
+    hit([d.product, nameOf(d.product), d.env, d.sha, d.message, d.author], q.approvals),
+  );
+
+  /** Latest known deployment per environment, straight from the API rows. */
+  const lanesByProduct = useMemo(() => {
+    const productsInScope = Array.from(new Set(scoped.map((d) => d.product)));
+    return productsInScope.map((productId) => ({
+      productId,
+      lanes: (['staging', 'production'] as const)
+        .map((env): EnvironmentLane | null => {
+          const d = scoped.find((x) => x.product === productId && x.env === env);
+          if (!d) return null;
+          return {
+            product: productId,
+            env,
+            sha: d.sha,
+            version: d.message,
+            status: laneOf(d.status),
+            ago: d.ago === 'now' ? 'just now' : `${d.ago} ago`,
+            url: '',
+            provider: d.provider,
+          };
+        })
+        .filter((l): l is EnvironmentLane => l !== null),
+    }));
+  }, [scoped]);
+
+  const envHits = lanesByProduct.filter((p) =>
+    hit(
+      [
+        p.productId,
+        nameOf(p.productId),
+        ...p.lanes.map((l) => `${l.env} ${l.sha} ${l.version} ${l.provider}`),
+      ],
+      q.environments,
+    ),
+  );
 
   const decide = (d: Deployment, ok: boolean) => {
     if (ok) void approve(d.id);
@@ -43,7 +109,7 @@ export function Deployments() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageHeader
         title="Deployments"
         description="Every deployment attempt across providers in one history. Execution stays with GitHub Actions and Coolify — DevHQ records, approves and correlates."
@@ -54,129 +120,207 @@ export function Deployments() {
                 description: 'Manual records are marked as source: DevHQ.',
               })
             }
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink hover:border-line-strong"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] font-medium text-ink hover:border-line-strong"
           >
-            <PlusIcon className="h-4 w-4" /> Record deployment
+            <PlusIcon className="h-3.5 w-3.5" /> Record deployment
           </button>
         }
       />
 
-      {awaiting.map((d) => (
-        <div
-          key={d.id}
-          className="flex flex-col gap-3 rounded-xl border border-warn/30 bg-warn-soft/60 px-4 py-3.5 md:flex-row md:items-center"
-        >
-          <div className="flex min-w-0 flex-1 items-start gap-3">
-            <ProductMark product={d.product} size="md" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-ink">
-                Approval needed · {products.find((p) => p.id === d.product)?.name}{' '}
-                <span className="capitalize">{d.env}</span>
-              </p>
-              <p className="mt-0.5 truncate font-mono text-xs text-muted">
-                {d.sha} {d.message}
-              </p>
-              <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
-                <span className="flex items-center gap-1">
-                  <Avatar id={d.author} size="xs" /> {memberById(d.author).name}
-                </span>
-                <span className="flex items-center gap-1 text-ok">
-                  <CircleCheckIcon className="h-3 w-3" /> CI passing
-                </span>
-                <span>
-                  {d.provider} · requested {d.ago === 'now' ? 'just now' : `${d.ago} ago`}
-                </span>
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => decide(d, false)}
-              className="h-9 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-sunken"
-            >
-              Reject
-            </button>
-            <button
-              onClick={() =>
-                requestReauth({
-                  title: `Approve ${d.env} deploy`,
-                  description: `${d.sha} will be handed to ${d.provider}.`,
-                  actionLabel: 'Verify & approve',
-                  onConfirm: () => decide(d, true),
-                })
-              }
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ink px-3 text-sm font-medium text-white hover:bg-ink/90"
-            >
-              <ShieldCheckIcon className="h-4 w-4" /> Approve
-            </button>
-          </div>
-        </div>
-      ))}
+      <StatStrip>
+        <StatCard label="Deployments" value={scoped.length} note="In your scope" />
+        <StatCard
+          label="Awaiting"
+          value={awaiting.length}
+          note="Need a human decision"
+          tone={awaiting.length ? 'warn' : 'neutral'}
+        />
+        <StatCard
+          label="Failed · 7d"
+          value={failedWeek.length}
+          note="Failed or rolled back"
+          tone={failedWeek.length ? 'bad' : 'ok'}
+        />
+        <StatCard label="Succeeded · 7d" value={succeededWeek.length} note="Last seven days" />
+        <StatCard
+          label="Success rate"
+          value={`${successRate}%`}
+          note={`${week.length} in 7 days`}
+          tone={successRate >= 90 ? 'ok' : successRate >= 75 ? 'warn' : 'bad'}
+        />
+        <StatCard
+          label="Production"
+          value={scoped.filter((d) => d.env === 'production').length}
+          note="Prod records on file"
+        />
+      </StatStrip>
 
-      <DeployTopology productIds={products.filter((p) => matches(p.id)).map((p) => p.id)} />
-
-      <section aria-label="Environments" className="space-y-3">
-        <h2 className="text-sm font-semibold text-ink">Environments</h2>
-        {products
-          .filter((p) => matches(p.id))
-          .map((p) => (
-            <div
-              key={p.id}
-              className="grid gap-3 rounded-xl border border-line bg-surface p-3 lg:grid-cols-[180px_1fr] lg:items-center"
-            >
-              <div className="flex items-center gap-2.5 px-1">
-                <ProductMark product={p.id} size="md" />
-                <div>
-                  <p className="text-sm font-semibold text-ink">{p.name}</p>
-                  <p className="text-[11px] text-subtle">
-                    {environments.find((e) => e.product === p.id)?.provider}
-                  </p>
+      <Panel
+        title="Awaiting approval"
+        meta={
+          <span className={awaiting.length ? 'font-semibold text-warn' : 'text-muted'}>
+            {awaiting.length} pending
+          </span>
+        }
+        filter={
+          <SearchInput
+            value={q.approvals}
+            onChange={set('approvals')}
+            placeholder="Filter by product, env, commit or author…"
+            label="Filter pending approvals"
+          />
+        }
+      >
+        {approvalHits.length === 0 ? (
+          <p className="px-3.5 py-4 text-center text-[12px] text-muted">
+            {awaiting.length === 0 ? 'Nothing waiting for approval.' : 'No matches.'}
+          </p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {approvalHits.map((d) => (
+              <li
+                key={d.id}
+                className="flex flex-col gap-2 px-3.5 py-2 md:flex-row md:items-center"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                  <ProductMark product={d.product} size="sm" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[12.5px] font-semibold text-ink">
+                      {nameOf(d.product)} <span className="capitalize">{d.env}</span>
+                    </p>
+                    <p className="truncate font-mono text-[11px] text-muted">
+                      {d.sha} {d.message}
+                    </p>
+                    <p className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10.5px] text-muted">
+                      <span className="flex items-center gap-1">
+                        <Avatar id={d.author} size="xs" /> {memberById(d.author).name}
+                      </span>
+                      <span className="flex items-center gap-1 text-ok">
+                        <CircleCheckIcon className="h-3 w-3" /> CI passing
+                      </span>
+                      <span>
+                        {d.provider} · requested {d.ago === 'now' ? 'just now' : `${d.ago} ago`}
+                      </span>
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <EnvironmentPipeline lanes={environments.filter((e) => e.product === p.id)} />
-            </div>
-          ))}
-      </section>
+                <div className="flex shrink-0 gap-1.5">
+                  <button
+                    onClick={() => decide(d, false)}
+                    className="h-7 rounded-md border border-line bg-surface px-2.5 text-[12px] font-medium text-ink hover:bg-sunken"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() =>
+                      requestReauth({
+                        title: `Approve ${d.env} deploy`,
+                        description: `${d.sha} will be handed to ${d.provider}.`,
+                        actionLabel: 'Verify & approve',
+                        onConfirm: () => decide(d, true),
+                      })
+                    }
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md bg-ink px-2.5 text-[12px] font-medium text-white hover:bg-ink/90"
+                  >
+                    <ShieldCheckIcon className="h-3.5 w-3.5" /> Approve
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
 
-      <div className="grid gap-5 xl:grid-cols-3">
+      <Panel
+        title="Environments"
+        meta={<span>Latest deploy per lane</span>}
+        filter={
+          <SearchInput
+            value={q.environments}
+            onChange={set('environments')}
+            placeholder="Filter by product, env or commit…"
+            label="Filter environments"
+          />
+        }
+      >
+        {envHits.length === 0 ? (
+          <p className="px-3.5 py-4 text-center text-[12px] text-muted">
+            {lanesByProduct.length === 0
+              ? 'No deployments recorded yet.'
+              : 'No environments match this filter.'}
+          </p>
+        ) : (
+          <div className="divide-y divide-line">
+            {envHits.map((p) => (
+              <div
+                key={p.productId}
+                className="grid gap-2 px-3.5 py-2.5 lg:grid-cols-[160px_1fr] lg:items-center"
+              >
+                <div className="flex items-center gap-2">
+                  <ProductMark product={p.productId} size="sm" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[12.5px] font-semibold text-ink">
+                      {nameOf(p.productId)}
+                    </p>
+                    <p className="text-[10.5px] text-subtle">{p.lanes[0]?.provider ?? '—'}</p>
+                  </div>
+                </div>
+                <EnvironmentPipeline lanes={p.lanes} />
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <div className="grid gap-3 xl:grid-cols-3">
         <Panel
           title="History"
           className="xl:col-span-2"
           bodyClassName="flex flex-col"
-          meta={<span>{visible.length} records</span>}
+          meta={<span>{visible.length} of {scoped.length}</span>}
+          filter={
+            <div className="flex flex-wrap items-center gap-2">
+              <Segmented<Filter>
+                label="Filter by status"
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { value: 'all', label: 'All' },
+                  {
+                    value: 'failed',
+                    label: 'Failed',
+                    count: scoped.filter((d) => d.status === 'failed').length,
+                  },
+                  { value: 'awaiting-approval', label: 'Awaiting', count: awaiting.length },
+                  { value: 'succeeded', label: 'Succeeded' },
+                ]}
+              />
+              <div className="min-w-[160px] flex-1">
+                <SearchInput
+                  value={q.history}
+                  onChange={set('history')}
+                  placeholder="Search product, env, commit…"
+                  label="Filter deployment history"
+                />
+              </div>
+            </div>
+          }
         >
-          <div className="border-b border-line px-4 py-2.5">
-            <Segmented<Filter>
-              label="Filter by status"
-              value={filter}
-              onChange={setFilter}
-              options={[
-                { value: 'all', label: 'All' },
-                {
-                  value: 'failed',
-                  label: 'Failed',
-                  count: scoped.filter((d) => d.status === 'failed').length,
-                },
-                { value: 'awaiting-approval', label: 'Awaiting', count: awaiting.length },
-                { value: 'succeeded', label: 'Succeeded' },
-              ]}
-            />
-          </div>
           <DeploymentsTable rows={visible} showProvider />
         </Panel>
-        <div className="grid content-start gap-5 md:grid-cols-2 xl:grid-cols-1">
-          <Panel title="Frequency" meta={<span>7 days</span>}>
-            <DeployFrequencyChart height={100} />
+        <div className="grid content-start gap-3 md:grid-cols-2 xl:grid-cols-1">
+          <Panel title="Frequency" meta={<span>7 days · live</span>}>
+            <DeployFrequencyChart rows={scoped} height={90} />
           </Panel>
           <Panel title="Production release policy">
-            <ul className="space-y-2.5 px-4 py-3.5">
+            <ul className="space-y-1.5 px-3.5 py-2.5">
               {policy.map((p) => (
-                <li key={p} className="flex items-start gap-2.5 text-sm text-ink">
-                  <CircleCheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-ok" />
+                <li key={p} className="flex items-start gap-2 text-[12px] text-ink">
+                  <CircleCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok" />
                   {p}
                 </li>
               ))}
-              <li className="pt-1 text-xs text-muted">
+              <li className="pt-1 text-[11px] text-muted">
                 A merged PR does not mean production is updated — these remain separate states.
               </li>
             </ul>

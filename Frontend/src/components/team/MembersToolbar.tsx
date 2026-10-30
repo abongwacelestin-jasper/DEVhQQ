@@ -20,7 +20,6 @@ interface MembersToolbarProps {
   onView: (v: MembersView) => void;
   onExport: () => void;
   picked: Member[];
-  onBulkMfa: () => void;
   onBulkDeactivate: () => void;
 }
 
@@ -43,7 +42,6 @@ export function MembersToolbar({
   onView,
   onExport,
   picked,
-  onBulkMfa,
   onBulkDeactivate,
 }: MembersToolbarProps) {
   if (picked.length) {
@@ -51,12 +49,6 @@ export function MembersToolbar({
       <div className="flex h-11 items-center gap-1.5 border-b border-line bg-accent-soft/40 px-2.5">
         <span className="text-[12px] font-semibold text-ink">{picked.length} selected</span>
         <span className="mx-1 h-4 w-px bg-line-strong" />
-        <button
-          onClick={onBulkMfa}
-          className="h-8 rounded-md px-2.5 text-[12px] font-medium text-ink hover:bg-white"
-        >
-          Require MFA
-        </button>
         <button
           onClick={onExport}
           className="h-8 rounded-md px-2.5 text-[12px] font-medium text-ink hover:bg-white"
@@ -133,7 +125,7 @@ export function MembersToolbar({
           label="Security"
           value={t.flags}
           onChange={t.setFlags}
-          options={(Object.keys(flagLabels) as SecurityFlag[]).map((f) => ({
+          options={(['no-mfa', 'mfa', 'overloaded'] as SecurityFlag[]).map((f) => ({
             value: f,
             label: flagLabels[f],
             dot: f === 'mfa' ? 'bg-ok' : f === 'prod' ? 'bg-warn' : 'bg-bad',

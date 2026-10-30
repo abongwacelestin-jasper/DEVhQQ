@@ -45,7 +45,7 @@ export function EnvironmentPipeline({ lanes }: { lanes: EnvironmentLane[] }) {
               </p>
               <p className="mt-1.5 flex items-center gap-1 truncate text-[11px] text-subtle">
                 <GlobeIcon className="h-3 w-3 shrink-0" />
-                {l.url}
+                {l.url || l.provider}
               </p>
             </li>
             {i < lanes.length - 1 && (

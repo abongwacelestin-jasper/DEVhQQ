@@ -3,6 +3,7 @@ import { SirenIcon } from 'lucide-react';
 import { PageHero } from '../components/ui/PageHero';
 import { Button } from '../components/ui/Button';
 import { FilterBar } from '../components/filters/FilterBar';
+import { StatCard, StatStrip } from '../components/ui/StatCard';
 import { FirefighterIllustration } from '../components/illustrations/FirefighterIllustration';
 import { EmptyIllustration } from '../components/illustrations/EmptyIllustration';
 import { IncidentRow, IncidentRowHeader } from '../components/operations/IncidentRow';
@@ -12,11 +13,9 @@ import { useProductFilter } from '../contexts/ProductFilterContext';
 import { useDateRange } from '../contexts/DateRangeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUrlFilters } from '../hooks/useUrlFilters';
-import { monitors } from '../data/operations';
-import { pastIncidents } from '../data/incidentHistory';
 import { members } from '../data/team';
 import { parseWhen } from '../utils/date';
-import { formatDuration, incidentRecords, mttr, uptimeAvg } from '../utils/metrics';
+import { formatDuration, incidentRecords, mttr } from '../utils/metrics';
 import type { Incident } from '../types/operations';
 
 const keys = ['q', 'severity', 'status', 'product', 'service', 'owner'] as const;
@@ -51,10 +50,10 @@ export function Incidents() {
   );
 
   const open = scoped.filter((i) => i.status !== 'resolved');
-  const records = incidentRecords(incidents, pastIncidents).filter(
+  const resolved = scoped.filter((i) => i.status === 'resolved');
+  const records = incidentRecords(incidents).filter(
     (r) => matches(r.product) && inRange(r.started),
   );
-  const mons = monitors.filter((m) => matches(m.product));
   const services = Array.from(new Set(scoped.map((i) => i.service)));
   const owners = Array.from(new Set(scoped.map((i) => i.owner)));
   const apply = useCallback(
@@ -94,18 +93,44 @@ export function Incidents() {
             </Button>
           ) : undefined
         }
-        stats={[
-          { label: 'Open', value: open.length, tone: open.length ? 'bad' : undefined },
-          { label: 'SEV1 open', value: open.filter((i) => i.severity === 'SEV1').length },
-          { label: 'MTTR', value: formatDuration(mttr(records)) },
-          { label: `In ${label.toLowerCase()}`, value: records.length },
-          {
-            label: 'Uptime',
-            value: `${uptimeAvg(mons).toFixed(2)}%`,
-            tone: uptimeAvg(mons) < 99.5 ? 'warn' : 'ok',
-          },
-        ]}
       />
+
+      <StatStrip>
+        <StatCard
+          label="Open"
+          value={open.length}
+          note="Unresolved right now"
+          tone={open.length ? 'bad' : 'ok'}
+          to="/incidents"
+        />
+        <StatCard
+          label="SEV1 open"
+          value={open.filter((i) => i.severity === 'SEV1').length}
+          note="Highest severity"
+          tone={open.some((i) => i.severity === 'SEV1') ? 'bad' : 'neutral'}
+        />
+        <StatCard
+          label="SEV2 open"
+          value={open.filter((i) => i.severity === 'SEV2').length}
+          note="Degraded service"
+        />
+        <StatCard
+          label="SEV3 open"
+          value={open.filter((i) => i.severity === 'SEV3').length}
+          note="Limited impact"
+        />
+        <StatCard
+          label="MTTR"
+          value={formatDuration(mttr(records))}
+          note={`${records.filter((r) => r.minutes !== null).length} resolved records`}
+        />
+        <StatCard
+          label={`Resolved · ${label.toLowerCase()}`}
+          value={resolved.length}
+          note="Closed incidents on record"
+          tone={resolved.length ? 'ok' : 'neutral'}
+        />
+      </StatStrip>
 
       <FilterBar
         id="incidents"

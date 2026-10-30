@@ -6,6 +6,19 @@ import type { ProductId } from '../types/portfolio';
 
 const DAY = 86_400_000;
 
+/**
+ * Whole days back from the relative label the API sends ("3d ago", "4h ago", "now").
+ * Anything under a day counts as today, so a fresh deploy lands in the current bucket.
+ */
+export function daysAgo(ago: string): number {
+  if (ago === 'now') return 0;
+  const value = parseInt(ago, 10);
+  if (Number.isNaN(value)) return 0;
+  if (ago.endsWith('d')) return value;
+  if (ago.endsWith('w')) return value * 7;
+  return 0;
+}
+
 export interface Bucket {
   start: Date;
   end: Date;
@@ -136,7 +149,7 @@ export interface IncidentRecord {
   minutes: number | null;
 }
 
-export function incidentRecords(current: Incident[], past: PastIncident[]): IncidentRecord[] {
+export function incidentRecords(current: Incident[], past: PastIncident[] = []): IncidentRecord[] {
   return [
     ...current.map((i) => ({
       id: i.id,

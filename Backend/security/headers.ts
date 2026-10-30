@@ -27,8 +27,8 @@ export function buildCsp(nonce: string): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${THIRD_PARTY.script.join(' ')}`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
     `img-src 'self' data: blob: ${THIRD_PARTY.img.join(' ')}`,
     `connect-src 'self' ${THIRD_PARTY.connect.join(' ')}`,
     `frame-src ${THIRD_PARTY.frame.join(' ')}`,
@@ -45,8 +45,8 @@ export function consoleCsp(nonce: string): string {
   return [
     "default-src 'self'",
     `script-src 'nonce-${nonce}'`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    'font-src https://fonts.gstatic.com',
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
     "img-src 'self' data:",
     "connect-src 'self'",
     "frame-ancestors 'none'",

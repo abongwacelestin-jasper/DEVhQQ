@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FolderIcon, UserPlusIcon } from 'lucide-react';
 import { UnderlineTabs } from '../components/ui/UnderlineTabs';
+import { StatCard, StatStrip } from '../components/ui/StatCard';
 import { MembersDirectory } from '../components/team/MembersDirectory';
 import { RolesPanel } from '../components/team/RolesPanel';
 import { AccessReview, accessReviewItems } from '../components/team/AccessReview';
@@ -9,7 +10,7 @@ import { InviteModal } from '../components/team/InviteModal';
 import { useProductFilter } from '../contexts/ProductFilterContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useWork } from '../contexts/WorkContext';
-import { members } from '../data/team';
+import { useTeamData } from '../hooks/useTeamData';
 import type { RoleName } from '../types/team';
 
 type Tab = 'members' | 'roles' | 'review';
@@ -18,6 +19,7 @@ export function Team() {
   const { matches, activeProject, scopeLabel } = useProductFilter();
   const { canDo } = useAuth();
   const { tasks } = useWork();
+  const { members, matrix, pendingGrants, activeGrants, loading, error, reload } = useTeamData();
   const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>('members');
   const [roleFilter, setRoleFilter] = useState<RoleName | ''>('');
@@ -37,43 +39,23 @@ export function Team() {
   );
   const leadIds = new Set(activeProject ? [activeProject.lead] : []);
   const active = scoped.filter((m) => m.status === 'active');
-  const noMfa = active.filter((m) => !m.mfa).length;
-  const prod = scoped.filter((m) => m.productionAccess).length;
   const invited = scoped.filter((m) => m.status === 'invited').length;
-  const reviewCount = accessReviewItems(scoped).length;
-
-  const stats: { label: string; value: number; tone?: 'bad' | 'warn' }[] = [
-    { label: 'Members', value: scoped.length },
-    { label: 'Active', value: active.length },
-    { label: 'Invited', value: invited },
-    { label: 'Without MFA', value: noMfa, tone: noMfa ? 'bad' : undefined },
-    { label: 'Production', value: prod, tone: prod ? 'warn' : undefined },
-  ];
+  const noMfa = active.filter((m) => !m.mfa).length;
+  const scopedGrants = pendingGrants.filter((g) => scoped.some((m) => m.id === g.memberId));
+  const reviewCount = accessReviewItems(scoped, pendingGrants).length;
 
   return (
     <div className="space-y-3">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h1 className="text-[18px] font-semibold tracking-tight text-ink">Team & roles</h1>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-muted">
+          <h1 className="text-[17px] font-semibold tracking-tight text-ink">Team & roles</h1>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
             {activeProject && <FolderIcon className="h-3.5 w-3.5 text-subtle" />}
             {activeProject
               ? `People working on ${scopeLabel}`
               : `Members see only the products they’re assigned to · ${scopeLabel}`}
           </p>
         </div>
-        <dl className="no-scrollbar flex max-w-full items-stretch divide-x divide-line overflow-x-auto rounded-md border border-line bg-white">
-          {stats.map((s) => (
-            <div key={s.label} className="flex shrink-0 items-baseline gap-1.5 px-2.5 py-1">
-              <dd
-                className={`text-[13px] font-semibold tabular-nums ${s.tone === 'bad' ? 'text-bad' : s.tone === 'warn' ? 'text-warn' : 'text-ink'}`}
-              >
-                {s.value}
-              </dd>
-              <dt className="whitespace-nowrap text-[11px] text-muted">{s.label}</dt>
-            </div>
-          ))}
-        </dl>
         {canDo('member:invite') && (
           <button
             onClick={() => setParams({ invite: '1' })}
@@ -83,6 +65,31 @@ export function Team() {
           </button>
         )}
       </header>
+
+      {error && (
+        <p className="rounded-lg border border-warn/40 bg-warn-soft px-3 py-1.5 text-[12px] text-warn">
+          {error} The directory below may be incomplete.
+        </p>
+      )}
+
+      <StatStrip>
+        <StatCard label="Members" value={scoped.length} note={loading ? 'Loading…' : 'In your scope'} />
+        <StatCard label="Active" value={active.length} note="Can sign in today" />
+        <StatCard label="Invited" value={invited} note="Not yet activated" tone={invited ? 'info' : undefined} />
+        <StatCard
+          label="Without MFA"
+          value={noMfa}
+          note="Blocked from production"
+          tone={noMfa ? 'bad' : 'ok'}
+        />
+        <StatCard
+          label="Pending grants"
+          value={scopedGrants.length}
+          note="JIT access awaiting approval"
+          tone={scopedGrants.length ? 'warn' : 'neutral'}
+        />
+        <StatCard label="Active grants" value={activeGrants.length} note="Time-boxed production" />
+      </StatStrip>
 
       <UnderlineTabs<Tab>
         label="Team view"
@@ -105,20 +112,24 @@ export function Team() {
           members={scoped}
           leadIds={leadIds}
           initialRole={roleFilter}
+          onReload={reload}
         />
       )}
       {tab === 'roles' && (
         <RolesPanel
           members={scoped}
+          matrix={matrix}
           onViewMembers={(r) => {
             setRoleFilter(r);
             setTab('members');
           }}
         />
       )}
-      {tab === 'review' && <AccessReview members={scoped} />}
+      {tab === 'review' && (
+        <AccessReview members={scoped} grants={pendingGrants} onReload={reload} />
+      )}
 
-      <InviteModal open={inviteOpen} onClose={() => setParams({})} />
+      <InviteModal open={inviteOpen} onClose={() => setParams({})} onInvited={reload} />
     </div>
   );
 }

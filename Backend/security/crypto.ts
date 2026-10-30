@@ -10,6 +10,7 @@
  */
 
 import {
+  createHash,
   createHmac,
   randomBytes,
   scrypt as scryptCb,
@@ -83,6 +84,14 @@ export function safeEqual(a: Buffer | string, b: Buffer | string): boolean {
 
 export function randomToken(bytes = 32): string {
   return randomBytes(bytes).toString('base64url');
+}
+
+/**
+ * One-way digest for single-use bearer tokens (invites, resets). Only the hash
+ * is stored, so a database leak alone can't be replayed against the API.
+ */
+export function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }
 
 export function hmac(value: string, key = config.sessionSecret): string {

@@ -4,6 +4,8 @@ interface PanelProps {
   title: string;
   meta?: React.ReactNode;
   action?: React.ReactNode;
+  /** One-line search that filters this section's rows. Rendered under the header. */
+  filter?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   bodyClassName?: string;
@@ -13,6 +15,7 @@ export function Panel({
   title,
   meta,
   action,
+  filter,
   children,
   className = '',
   bodyClassName = '',
@@ -30,6 +33,7 @@ export function Panel({
           </div>
         )}
       </header>
+      {filter && <div className="border-b border-line bg-surface px-3 py-1.5">{filter}</div>}
       <div className={`min-w-0 flex-1 ${bodyClassName}`}>{children}</div>
     </section>
   );

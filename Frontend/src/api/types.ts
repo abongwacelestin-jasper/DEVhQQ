@@ -256,6 +256,25 @@ export interface ApiIncident {
   timeline: { at: string; by: string; note: string }[];
 }
 
+/** GET /api/team/roles — role × area permission matrix, owned by the server. */
+export type ApiPermissionMatrix = Record<ApiArea, Record<ApiRole, ApiLevel>>;
+
+export type ApiGrantStatus = 'pending' | 'active' | 'expired' | 'revoked' | 'denied';
+
+/** GET /api/access/grants — just-in-time production access. */
+export interface ApiGrant {
+  id: string;
+  memberId: string;
+  /** e.g. "production:renewberry" */
+  scope: string;
+  reason: string;
+  requestedAt: number;
+  durationMs: number;
+  status: ApiGrantStatus;
+  approvedBy?: string;
+  expiresAt?: number;
+}
+
 /** GET /api/audit */
 export interface ApiAuditEntry {
   seq: number;

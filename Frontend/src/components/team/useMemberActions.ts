@@ -1,14 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import {
-  KeyRoundIcon,
-  ScrollTextIcon,
-  ShieldOffIcon,
-  SlidersHorizontalIcon,
-  type LucideIcon,
-} from 'lucide-react';
+import { ScrollTextIcon, ShieldOffIcon, SlidersHorizontalIcon, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useReauth } from '../../contexts/ReauthContext';
+import { api } from '../../api/client';
+import type { ApiMember } from '../../api/types';
 import type { Member } from '../../types/team';
 
 export interface MemberAction {
@@ -18,30 +14,50 @@ export interface MemberAction {
   danger: boolean;
 }
 
-/** Row/card actions and bulk actions for members; sensitive ones go through MFA re-verification. */
-export function useMemberActions() {
+/**
+ * Card/row actions for members.
+ *
+ * Deactivation is a real `PATCH /api/team/:id` — the server revokes the
+ * member's sessions and the page resyncs. Actions the API doesn't support
+ * (resetting someone else's MFA) are not offered at all.
+ */
+export function useMemberActions(onReload?: () => Promise<void>) {
   const { log } = useAuth();
   const { requestReauth } = useReauth();
   const navigate = useNavigate();
+
+  const deactivate = async (list: Member[], done?: () => void) => {
+    try {
+      for (const m of list) {
+        await api<ApiMember>(`/api/team/${encodeURIComponent(m.id)}`, {
+          method: 'PATCH',
+          body: { status: 'deactivated' },
+        });
+      }
+      log('Deactivated members', list.map((m) => m.name).join(', '), true);
+      await onReload?.();
+      done?.();
+      toast.success(
+        list.length === 1
+          ? `${list[0].name} deactivated`
+          : `${list.length} members deactivated`,
+        { description: 'Their sessions were revoked by the server.' },
+      );
+    } catch (e) {
+      toast.error('Deactivation failed', {
+        description: e instanceof Error ? e.message : 'The team API did not respond.',
+      });
+      await onReload?.();
+    }
+  };
 
   const revoke = (m: Member) =>
     requestReauth({
       title: `Revoke access for ${m.name}`,
       description:
-        'All sessions end, API tokens are revoked and production access is removed. Their history stays in the audit log.',
+        'All sessions end and production access is removed. Their history stays in the audit log.',
       actionLabel: 'Verify & revoke',
-      successMessage: `${m.name}’s access revoked`,
-      onConfirm: () => log('Revoked member access', m.name, true),
-    });
-
-  const resetMfa = (m: Member) =>
-    requestReauth({
-      title: `Reset MFA for ${m.name}`,
-      description:
-        'Their authenticators and passkeys are removed. They must enrol again at next sign-in.',
-      actionLabel: 'Verify & reset',
-      successMessage: `MFA reset — ${m.email} will re-enrol`,
-      onConfirm: () => log('Reset MFA', m.name, true),
+      onConfirm: () => void deactivate([m]),
     });
 
   const actionsFor = (m: Member): MemberAction[] =>
@@ -61,13 +77,6 @@ export function useMemberActions() {
         show: true,
       },
       {
-        label: 'Reset MFA',
-        icon: KeyRoundIcon,
-        onClick: () => resetMfa(m),
-        danger: false,
-        show: m.mfa && m.status === 'active',
-      },
-      {
         label: 'Revoke access',
         icon: ShieldOffIcon,
         onClick: () => revoke(m),
@@ -78,28 +87,13 @@ export function useMemberActions() {
       .filter((a) => a.show)
       .map(({ show: _show, ...a }) => a);
 
-  const bulkMfa = (picked: Member[], done: () => void) => {
-    const targets = picked.filter((m) => !m.mfa);
-    log('Required MFA', `${picked.length} member${picked.length > 1 ? 's' : ''}`, true);
-    toast.success(
-      targets.length
-        ? `MFA enforced for ${targets.length} member${targets.length > 1 ? 's' : ''}`
-        : 'Everyone selected already uses MFA',
-    );
-    done();
-  };
-
   const bulkDeactivate = (picked: Member[], done: () => void) =>
     requestReauth({
       title: `Deactivate ${picked.length} member${picked.length > 1 ? 's' : ''}`,
       description: 'Sessions are revoked and production access removed immediately.',
       actionLabel: 'Verify & deactivate',
-      successMessage: 'Members deactivated',
-      onConfirm: () => {
-        log('Deactivated members', picked.map((m) => m.name).join(', '), true);
-        done();
-      },
+      onConfirm: () => void deactivate(picked, done),
     });
 
-  return { actionsFor, bulkMfa, bulkDeactivate };
+  return { actionsFor, bulkDeactivate };
 }

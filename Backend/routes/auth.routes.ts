@@ -21,7 +21,13 @@
 import type { Ctx, Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authLimiter } from '../security/rateLimit.ts';
-import { dummyPasswordHash, hashPassword, safeEqual, verifyPassword } from '../security/crypto.ts';
+import {
+  dummyPasswordHash,
+  hashPassword,
+  hashToken,
+  safeEqual,
+  verifyPassword,
+} from '../security/crypto.ts';
 import { verifyTotp } from '../auth/totp.ts';
 import { issueChallenge, verifyAssertion, verifyRegistration } from '../auth/webauthn.ts';
 import {
@@ -60,6 +66,12 @@ const totpBody = v.object({ code: v.string({ pattern: /^\d{6}$/ }) });
 const demoBody = v.object({
   role: v.enumOf(demoAccounts.map((a) => a.key) as [string, ...string[]]),
 });
+const inviteTokenPattern = /^[A-Za-z0-9_-]{20,200}$/;
+const acceptInviteBody = v.object({
+  token: v.string({ max: 200, pattern: inviteTokenPattern }),
+  // The full policy is applied after parsing so the user gets a concrete reason.
+  password: v.string({ min: 1, max: 400, trim: false }),
+});
 const b64 = () => v.string({ max: 4096, pattern: /^[A-Za-z0-9_-]+$/ });
 const assertionBody = v.object({
   challengeId: b64(),
@@ -77,6 +89,43 @@ const registrationBody = v.object({
   algorithm: v.int(),
   label: v.string({ min: 1, max: 60 }),
 });
+
+/**
+ * Password rules for accounts being activated. These mirror the checklist the
+ * accept-invite and reset-password screens show; the server is the authority.
+ */
+function passwordProblem(password: string, email: string): string | null {
+  if (password.length < 12) return 'Use at least 12 characters.';
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password))
+    return 'Include both upper and lower case letters.';
+  if (!/\d/.test(password)) return 'Include at least one number.';
+  if (!/[^A-Za-z0-9]/.test(password)) return 'Include at least one symbol.';
+  const local = email.split('@')[0]?.toLowerCase() ?? '';
+  if (local.length >= 3 && password.toLowerCase().includes(local))
+    return 'Do not include the name from your email address.';
+  return null;
+}
+
+/**
+ * Resolves the member an invite token belongs to. Invites are few and short
+ * lived, so a scan over the member map is cheaper than a second index.
+ */
+function findInvite(token: string): Member | undefined {
+  const hash = hashToken(token);
+  for (const m of db.members.values())
+    if (m.inviteTokenHash && safeEqual(m.inviteTokenHash, hash)) return m;
+  return undefined;
+}
+
+/** Shared by the preview and accept routes: unknown, used and expired tokens all fail closed. */
+function requireInvite(token: string): Member {
+  const member = findInvite(token);
+  if (!member || member.status !== 'invited' || !member.inviteExpiresAt)
+    throw new HttpError(400, 'invite_invalid', 'This invite link is no longer valid');
+  if (member.inviteExpiresAt < Date.now())
+    throw new HttpError(410, 'invite_expired', 'This invite link has expired — ask for a new one');
+  return member;
+}
 
 function wantsToken(ctx: Ctx) {
   return String(ctx.req.headers['x-devhq-client'] ?? '').toLowerCase() === 'console';
@@ -149,6 +198,77 @@ function gate(member: Member, ctx: Ctx, method: SignInRecord['method']) {
 }
 
 export function registerAuthRoutes(r: Router) {
+  /**
+   * Invite preview: lets the accept screen greet the invitee by name and say
+   * which account the link belongs to before they choose a password.
+   */
+  r.add(
+    'GET',
+    '/api/auth/invite',
+    {
+      summary: 'Inspect an invite link before accepting it',
+      tag: 'auth',
+      auth: 'public',
+      responses: [400, 410, 429],
+    },
+    authLimiter,
+    (ctx) => {
+      const token = ctx.query.get('token') ?? '';
+      if (!inviteTokenPattern.test(token))
+        throw new HttpError(400, 'invite_invalid', 'This invite link is no longer valid');
+      const member = requireInvite(token);
+      return {
+        email: member.email,
+        name: member.name,
+        role: member.role,
+        products: member.products,
+        expiresAt: new Date(member.inviteExpiresAt!).toISOString(),
+      };
+    },
+  );
+
+  /**
+   * Invite acceptance: the invited person sets their own password and the
+   * account goes live. The token is single-use and consumed here, and the
+   * response deliberately carries no session — they still sign in (and pass
+   * the second factor) through the normal flow.
+   */
+  r.add(
+    'POST',
+    '/api/auth/accept-invite',
+    {
+      summary: 'Set a password and activate an invited account',
+      tag: 'auth',
+      auth: 'public',
+      responses: [400, 410, 422, 429],
+    },
+    authLimiter,
+    async (ctx) => {
+      const body = parse(acceptInviteBody, ctx.body);
+      const member = requireInvite(body.token);
+      const problem = passwordProblem(body.password, member.email);
+      if (problem) throw new HttpError(422, 'weak_password', problem);
+
+      member.passwordHash = await hashPassword(body.password);
+      member.status = 'active';
+      member.failedLogins = 0;
+      member.lockedUntil = undefined;
+      // Burn the link: one invite, one activation.
+      member.inviteTokenHash = undefined;
+      member.inviteExpiresAt = undefined;
+
+      audit.append({
+        actor: member.id,
+        action: 'auth.invite_accepted',
+        target: `${member.email} · ${member.role} · ${member.products.join(', ')}`,
+        sensitive: true,
+        requestId: ctx.requestId,
+      });
+      publish('team', { memberId: member.id, status: member.status });
+      return { ok: true, email: member.email, member: publicMember(member) };
+    },
+  );
+
   r.add(
     'GET',
     '/api/auth/demo-accounts',

@@ -14,9 +14,11 @@ import { canSeeProduct, permissionMatrix, requireArea, requireStepUp } from '../
 import { approveGrant, listGrants, requestGrant, revokeGrant } from '../auth/jit.ts';
 import { revokeAllFor } from '../auth/sessions.ts';
 import { audit } from '../audit/auditLog.ts';
-import { db } from '../store/db.ts';
+import { hashToken, randomToken } from '../security/crypto.ts';
+import { db, findMemberByEmail, publicMember } from '../store/db.ts';
 import {
   HttpError,
+  type Member,
   type PermissionArea,
   type PermissionLevel,
   type ProductId,
@@ -33,6 +35,17 @@ const roles = [
 ] as const;
 const productIds = ['renewberry', 'blog', 'mirror'] as const;
 
+/** How long an invite link stays usable. */
+export const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
+
+const inviteBody = v.object({
+  email: v.email(),
+  name: v.optional(v.string({ min: 1, max: 80 })),
+  // Owner is never handed out by invite: it can only be transferred by an existing Owner.
+  role: v.enumOf(roles.filter((r) => r !== 'Owner') as Exclude<RoleName, 'Owner'>[]),
+  products: v.array(v.enumOf(productIds), { max: 3 }),
+});
+
 const updateBody = v.object({
   role: v.optional(v.enumOf(roles)),
   products: v.optional(v.array(v.enumOf(productIds), { max: 3 })),
@@ -43,6 +56,23 @@ const grantBody = v.object({
   reason: v.string({ min: 10, max: 500 }),
   durationMinutes: v.int({ min: 15, max: 480 }),
 });
+
+/** Next free `mN` id, so seeded and invited members share one numbering scheme. */
+function nextMemberId(): string {
+  let n = db.members.size + 1;
+  while (db.members.has(`m${n}`)) n += 1;
+  return `m${n}`;
+}
+
+/** "ada.lovelace@corp.dev" → "Ada Lovelace" when no display name is supplied. */
+function nameFromEmail(email: string): string {
+  return email
+    .split('@')[0]
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(' ');
+}
 
 export function registerTeamRoutes(r: Router) {
   r.add(
@@ -108,6 +138,71 @@ export function registerTeamRoutes(r: Router) {
         levels,
         verifiedAt: p.verifiedAt,
         elevations: p.elevations,
+      };
+    },
+  );
+
+  /**
+   * Invitations create a real member record in the `invited` state plus a
+   * single-use accept link.
+   *
+   * There are no usable credentials yet — the account cannot sign in until the
+   * invite is accepted — but the product assignments are real, so the new person
+   * appears in the directory and in scope immediately. Only the SHA-256 of the
+   * token is stored; the raw link is returned once, to the inviting admin.
+   */
+  r.add(
+    'POST',
+    '/api/team/invites',
+    {
+      summary: 'Invite a member to the workspace',
+      tag: 'team',
+      responses: [401, 403, 409, 422],
+    },
+    authenticate,
+    requireArea('Organization', 'admin'),
+    requireStepUp(),
+    (ctx) => {
+      const body = parse(inviteBody, ctx.body);
+      if (body.products.length === 0)
+        throw new HttpError(422, 'validation_failed', 'products must have at least one item');
+      const principal = ctx.principal!;
+      for (const product of body.products) {
+        if (!canSeeProduct(principal, product))
+          throw new HttpError(403, 'forbidden', 'You are not assigned to that product');
+      }
+      if (findMemberByEmail(body.email))
+        throw new HttpError(409, 'member_exists', 'A member with that email already exists');
+
+      const id = nextMemberId();
+      const inviteToken = randomToken(32);
+      const member: Member = {
+        id,
+        name: body.name?.trim() || nameFromEmail(body.email),
+        email: body.email,
+        role: body.role,
+        products: [...new Set(body.products)],
+        status: 'invited',
+        // No usable credential: an invited account cannot authenticate.
+        passwordHash: '!invited',
+        passkeys: [],
+        failedLogins: 0,
+        inviteTokenHash: hashToken(inviteToken),
+        inviteExpiresAt: Date.now() + INVITE_TTL_MS,
+      };
+      db.members.set(member.id, member);
+      audit.append({
+        actor: principal.memberId,
+        action: 'team.invited',
+        target: `${member.email} · ${member.role} · ${member.products.join(', ')}`,
+        sensitive: true,
+        requestId: ctx.requestId,
+      });
+      return {
+        ...publicMember(member),
+        // Shown to the inviter once, so the link can be passed on by hand.
+        inviteLink: `/accept-invite?token=${inviteToken}`,
+        inviteExpiresAt: new Date(member.inviteExpiresAt!).toISOString(),
       };
     },
   );

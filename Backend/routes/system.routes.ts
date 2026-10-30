@@ -438,6 +438,34 @@ export function registerSystemRoutes(r: Router) {
     { summary: 'Backend console (HTML, alias)', tag: 'system', auth: 'public' },
     serveConsole,
   );
+  // Self-hosted console typefaces (Inter, JetBrains Mono). The filename is
+  // allow-listed, so no traversal is possible; the cache is immutable because
+  // font files are content-addressed by release.
+  const FONTS_DIR = new URL('../fonts/', import.meta.url);
+  const serveFont = async (ctx: Ctx) => {
+    const name = ctx.params.file ?? '';
+    if (!/^[a-z0-9-]+\.woff2$/.test(name)) throw new HttpError(404, 'not_found', 'Font not found');
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(new URL(name, FONTS_DIR));
+    } catch {
+      throw new HttpError(404, 'not_found', 'Font not found');
+    }
+    const res = ctx.res;
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'font/woff2');
+    res.setHeader('Content-Length', String(bytes.byteLength));
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.end(bytes);
+    return STREAM;
+  };
+  r.add(
+    'GET',
+    '/fonts/:file',
+    { summary: 'Console webfonts (self-hosted)', tag: 'system', auth: 'public' },
+    serveFont,
+  );
   r.add(
     'GET',
     '/',

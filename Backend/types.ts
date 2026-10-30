@@ -31,6 +31,10 @@ export interface Member {
   passkeys: PasskeyCredential[];
   failedLogins: number;
   lockedUntil?: number;
+  /** SHA-256 of the single-use invite token. The raw token is only ever returned to the inviter. */
+  inviteTokenHash?: string;
+  /** Epoch ms after which the invite link stops working. */
+  inviteExpiresAt?: number;
 }
 
 export interface PasskeyCredential {

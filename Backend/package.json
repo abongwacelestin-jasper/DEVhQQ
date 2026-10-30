@@ -24,6 +24,7 @@
     }
   },
   "files": [
+    "fonts",
     "server.ts",
     "types.ts",
     "audit",

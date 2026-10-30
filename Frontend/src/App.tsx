@@ -58,6 +58,7 @@ import { CodeSecurity } from './pages/CodeSecurity';
 import { DevTools } from './pages/DevTools';
 import { ForgotPassword } from './pages/auth/ForgotPassword';
 import { ResetPassword } from './pages/auth/ResetPassword';
+import { AcceptInvite } from './pages/auth/AcceptInvite';
 import { AssignedToMe } from './pages/AssignedToMe';
 import { ConsoleApp } from './pages/console/ConsoleApp';
 
@@ -99,6 +100,14 @@ export function App() {
                                     element={
                                       <StageRoute stage="signed-out">
                                         <ResetPassword />
+                                      </StageRoute>
+                                    }
+                                  />
+                                  <Route
+                                    path="accept-invite"
+                                    element={
+                                      <StageRoute stage="signed-out">
+                                        <AcceptInvite />
                                       </StageRoute>
                                     }
                                   />
