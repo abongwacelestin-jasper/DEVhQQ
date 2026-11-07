@@ -46,7 +46,8 @@ x-backend-build: &backend-build
     VERSION: ${DEVHQ_TAG:-local}
     REVISION: ${DEVHQ_REVISION:-unknown}
 
-x-backend-env: &backend-env
+# Core settings config/env.ts needs to boot; shared by backend and migrate.
+x-core-env: &core-env
   NODE_ENV: production
   PORT: "8080"
   APP_ORIGIN: https://${DEVHQ_DOMAIN:-localhost}
@@ -61,8 +62,13 @@ x-backend-env: &backend-env
   SESSION_SECRET_FILE: /run/secrets/session_secret
   SESSION_SECRET_PREVIOUS_FILE: /run/secrets/session_secret_previous
   DATA_ENCRYPTION_KEY_FILE: /run/secrets/data_encryption_key
-  DATABASE_URL_FILE: /run/secrets/database_url
   DATABASE_SSL: ${DATABASE_SSL:-false}
+
+# Full backend env. Every *_FILE here must have its secret mounted: the
+# entrypoint fails closed on an unreadable secret file.
+x-backend-env: &backend-env
+  <<: *core-env
+  DATABASE_URL_FILE: /run/secrets/database_url
   S3_ENDPOINT: http://minio:9000
   S3_REGION: ${S3_REGION:-us-east-1}
   S3_FORCE_PATH_STYLE: "true"
@@ -207,7 +213,7 @@ services:
     command: ["node", "--run", "migrate"]
     restart: "no"
     environment:
-      <<: *backend-env
+      <<: *core-env
       DATABASE_URL_FILE: /run/secrets/database_url_migrator
     secrets:
       - session_secret
