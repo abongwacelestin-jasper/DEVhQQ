@@ -12,7 +12,10 @@ function read(): string[] {
   }
 }
 
-/** Per-browser starred docs, kept in sync across every component that uses it. */
+/**
+ * Per-browser starred docs, kept in sync across every component that uses it.
+ * A personal convenience (like a bookmark), deliberately not server state.
+ */
 export function useStarredDocs() {
   const [starred, setStarred] = useState<string[]>(read);
 
@@ -25,7 +28,11 @@ export function useStarredDocs() {
   const toggle = useCallback((id: string) => {
     const cur = read();
     const next = cur.includes(id) ? cur.filter((x) => x !== id) : [id, ...cur];
-    localStorage.setItem(KEY, JSON.stringify(next));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(next));
+    } catch {
+      /* storage blocked (private mode) — stars are a per-browser convenience only */
+    }
     window.dispatchEvent(new Event(EVENT));
   }, []);
 

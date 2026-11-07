@@ -1,0 +1,61 @@
+[project]
+name = "devhq-models"
+version = "1.0.0"
+description = "DevHQ ML service: task ETA / overdue risk, deploy risk, sign-in anomaly scoring and the grounded workspace assistant."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.8,<3",
+  "scikit-learn>=1.9,<1.10",
+  "numpy>=2.0,<3",
+  "pandas>=2.2,<4",
+  "joblib>=1.4",
+  "httpx>=0.27",
+  "anthropic>=2.6,<3",
+  "boto3>=1.34",
+  "threadpoolctl>=3.5",
+]
+
+[project.scripts]
+devhq-models = "devhq_models.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "pandas-stubs>=2.2",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["devhq_models"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "N", "SIM", "RUF", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ANN", "S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["devhq_models"]
+
+[[tool.mypy.overrides]]
+module = ["sklearn.*", "joblib.*", "boto3.*", "botocore.*", "threadpoolctl"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"

@@ -8,7 +8,9 @@ import { FirefighterIllustration } from '../illustrations/FirefighterIllustratio
 import { useIncidents } from '../../contexts/IncidentContext';
 import { products } from '../../data/portfolio';
 import { members } from '../../data/team';
-import { monitors } from '../../data/operations';
+import { useApiList, describeError } from '../engineering/data/useApi';
+import type { ApiMonitor } from '../engineering/data/types';
+import { useAuth } from '../../contexts/AuthContext';
 import type { Incident } from '../../types/operations';
 import type { ProductId } from '../../types/portfolio';
 
@@ -19,10 +21,15 @@ const severities: { value: Incident['severity']; label: string }[] = [
 ];
 
 const serviceSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+const SERVICE = /^[a-z0-9][a-z0-9-]{0,59}$/;
 
 export function DeclareIncidentModal() {
-  const { declareOpen, setDeclareOpen, declare } = useIncidents();
+  const { declareOpen, setDeclareOpen, declare, incidents } = useIncidents();
+  const { canSeeProduct } = useAuth();
   const navigate = useNavigate();
+  // Service suggestions come from real monitors; only fetched while the dialog is open.
+  const monitors = useApiList<ApiMonitor>(declareOpen ? '/api/monitors' : null);
+  const visibleProducts = products.filter((p) => canSeeProduct(p.id));
   const [title, setTitle] = useState('');
   const [product, setProduct] = useState<ProductId>('renewberry');
   const [service, setService] = useState('');
@@ -34,15 +41,22 @@ export function DeclareIncidentModal() {
   useEffect(() => {
     if (!declareOpen) return;
     setTitle('');
-    setProduct('renewberry');
-    setService(serviceSlug(monitors[0].name));
+    setProduct((p) =>
+      canSeeProduct(p) ? p : (products.find((x) => canSeeProduct(x.id))?.id ?? p),
+    );
+    setService('');
     setSeverity('SEV2');
     setOwner('m11');
     setImpact('');
     setError('');
-  }, [declareOpen]);
+  }, [declareOpen, canSeeProduct]);
 
-  const services = monitors.filter((m) => m.product === product);
+  const services = Array.from(
+    new Set([
+      ...monitors.items.filter((m) => m.product === product).map((m) => serviceSlug(m.name)),
+      ...incidents.filter((i) => i.product === product).map((i) => i.service),
+    ]),
+  );
   const owners = members.filter(
     (m) =>
       m.status === 'active' &&
@@ -57,23 +71,27 @@ export function DeclareIncidentModal() {
       return setError('Describe what’s broken in a few words — e.g. “Checkout returns 500s”.');
     if (impact.trim().length < 5)
       return setError('Say who or what is affected so responders can judge urgency.');
+    if (service && !SERVICE.test(service))
+      return setError(
+        'Service names use lowercase letters, digits and dashes, e.g. “checkout-api”.',
+      );
     let id: string;
     try {
       id = await declare({
         title: title.trim(),
         product,
-        service,
+        service: service || `${product}-app`,
         severity,
         owner,
         impact: impact.trim(),
       });
-    } catch {
-      setError('The incident could not be declared. Try again.');
+    } catch (err) {
+      setError(`The incident could not be declared: ${describeError(err)}`);
       return;
     }
     close();
     toast.error(`${id} declared · ${severity}`, {
-      description: 'Owner paged · recorded in the audit log.',
+      description: 'Recorded in the audit log.',
     });
     navigate(`/incidents/${id}`);
   };
@@ -83,7 +101,7 @@ export function DeclareIncidentModal() {
       open={declareOpen}
       onClose={close}
       title="Declare an incident"
-      description="Opens an incident, pages the owner and starts the timeline. Every step is recorded."
+      description="Opens an incident, assigns the owner and starts the timeline. Every step is recorded."
       size="lg"
       illustration={<FirefighterIllustration className="h-12 w-auto" />}
       footer={
@@ -120,30 +138,30 @@ export function DeclareIncidentModal() {
               onChange={(e) => {
                 const p = e.target.value as ProductId;
                 setProduct(p);
-                const first = monitors.find((m) => m.product === p);
-                setService(first ? serviceSlug(first.name) : '');
+                setService('');
               }}
               className={inputClass}
             >
-              {products.map((p) => (
+              {visibleProducts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Affected service">
-            <select
+          <Field label="Affected service" hint={`Blank uses ${product}-app`}>
+            <input
               value={service}
-              onChange={(e) => setService(e.target.value)}
+              onChange={(e) => setService(e.target.value.trim().toLowerCase())}
+              list="declare-incident-services"
+              placeholder={`${product}-app`}
               className={inputClass}
-            >
-              {services.map((m) => (
-                <option key={m.id} value={serviceSlug(m.name)}>
-                  {m.name}
-                </option>
+            />
+            <datalist id="declare-incident-services">
+              {services.map((name) => (
+                <option key={name} value={name} />
               ))}
-            </select>
+            </datalist>
           </Field>
           <Field label="Owner">
             <select value={owner} onChange={(e) => setOwner(e.target.value)} className={inputClass}>
@@ -166,7 +184,8 @@ export function DeclareIncidentModal() {
         </Field>
         {severity === 'SEV1' && (
           <p className="rounded-md bg-bad-soft px-3 py-2 text-[12px] font-medium text-bad">
-            SEV1 also pages the secondary on-call and the workspace Owner.
+            SEV1 incidents are flagged as sensitive in the audit log. Page your on-call through your
+            paging tool; DevHQ doesn’t page yet.
           </p>
         )}
         {error && (

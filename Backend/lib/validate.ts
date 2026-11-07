@@ -14,6 +14,9 @@ import { HttpError } from '../types.ts';
 
 type Check<T> = (v: unknown, path: string) => T;
 
+/** Keys that could reach Object.prototype if a parsed body were ever merged into an object. */
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 export const v = {
   string(
     opts: { min?: number; max?: number; pattern?: RegExp; trim?: boolean } = {},
@@ -74,7 +77,13 @@ export const v = {
     return (val, path) => {
       if (!val || typeof val !== 'object' || Array.isArray(val))
         throw invalid(path || 'body', 'must be an object');
-      const extra = Object.keys(val).filter((k) => !(k in shape));
+      // Own-property check (CYBER-004): `k in shape` would accept inherited names
+      // such as `constructor`/`toString`, and prototype-pollution keys must never pass.
+      const keys = Object.keys(val);
+      const forbidden = keys.filter((k) => FORBIDDEN_KEYS.has(k));
+      if (forbidden.length)
+        throw invalid(path || 'body', `has forbidden field(s): ${forbidden.join(', ')}`);
+      const extra = keys.filter((k) => !Object.hasOwn(shape, k));
       if (extra.length) throw invalid(path || 'body', `has unknown field(s): ${extra.join(', ')}`);
       const out: Record<string, unknown> = {};
       for (const [k, check] of Object.entries(shape))

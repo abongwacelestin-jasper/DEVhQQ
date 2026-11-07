@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ArrowLeftIcon, ArrowRightIcon, MailCheckIcon, MailIcon } from 'lucide-react';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import { SecurityIllustration } from '../../components/illustrations/SecurityIllustration';
+import { requestRecovery } from '../../api/auth/endpoints';
+import { ApiError } from '../../api/client';
 
 const input =
   'h-9 w-full rounded-md border border-line-strong bg-white px-3 text-[13px] text-ink outline-none transition-colors duration-150 placeholder:text-subtle focus:border-accent focus:ring-2 focus:ring-accent/20';
 
 /** Step 1 of recovery: request a reset link. Same response whether or not the account exists. */
 export function ForgotPassword() {
-  const navigate = useNavigate();
   const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
@@ -21,15 +23,38 @@ export function ForgotPassword() {
     return () => clearTimeout(t);
   }, [resendIn]);
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
-      return setError('Enter a valid work email.');
-    setSentTo(email.trim().toLowerCase());
-    setResendIn(30);
+  /**
+   * The server answers 202 for any well-formed address (no account enumeration),
+   * so "sent" is shown for every accepted request. Rate limits and outages are real errors.
+   */
+  const send = async (address: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      await requestRecovery(address);
+      setSentTo(address);
+      setResendIn(30);
+    } catch (e) {
+      const err = e instanceof ApiError ? e : null;
+      setError(
+        err?.status === 429
+          ? 'Too many requests. Wait a minute and try again.'
+          : err?.isUnavailable
+            ? 'Password recovery isn’t available on this server yet. Ask an Owner to reset your access.'
+            : (err?.message ?? 'Couldn’t send the reset link. Try again.'),
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const link = sentTo ? `/reset-password?token=demo&email=${encodeURIComponent(sentTo)}` : '';
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    const address = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return setError('Enter a valid work email.');
+    void send(address);
+  };
 
   return (
     <AuthLayout
@@ -73,6 +98,7 @@ export function ForgotPassword() {
             {error && (
               <p
                 role="alert"
+                aria-live="assertive"
                 className="rounded-md bg-bad-soft px-2.5 py-1.5 text-[12px] font-medium text-bad"
               >
                 {error}
@@ -80,9 +106,10 @@ export function ForgotPassword() {
             )}
             <button
               type="submit"
-              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-ink text-[13px] font-semibold text-white transition-colors duration-150 hover:bg-ink/90"
+              disabled={busy}
+              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-ink text-[13px] font-semibold text-white transition-colors duration-150 hover:bg-ink/90 disabled:opacity-60"
             >
-              Send reset link <ArrowRightIcon className="h-4 w-4" />
+              {busy ? 'Sending…' : 'Send reset link'} <ArrowRightIcon className="h-4 w-4" />
             </button>
           </form>
           <p className="mt-4 text-[12px] text-muted">
@@ -102,32 +129,15 @@ export function ForgotPassword() {
             way. It expires in 30 minutes.
           </p>
 
-          <article
-            aria-label="Email preview"
-            className="mt-5 overflow-hidden rounded-lg border border-line"
-          >
-            <header className="border-b border-line bg-sunken/50 px-3.5 py-2 text-[11.5px] text-muted">
-              <p>
-                <b className="text-ink">DevHQ Security</b> &lt;security@devhq.app&gt; → {sentTo}
-              </p>
-              <p className="mt-0.5 font-semibold text-ink">Reset your DevHQ password</p>
-            </header>
-            <div className="space-y-2.5 px-3.5 py-3 text-[12.5px] text-ink">
-              <p>
-                Someone asked to reset the password for this account. If that was you, use the
-                button below.
-              </p>
-              <button
-                onClick={() => navigate(link)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-[12.5px] font-semibold text-white hover:bg-ink/90"
-              >
-                Choose a new password <ArrowRightIcon className="h-3.5 w-3.5" />
-              </button>
-              <p className="text-[11.5px] text-muted">
-                Didn’t ask for this? Ignore the email — your password stays the same.
-              </p>
-            </div>
-          </article>
+          <p className="mt-3 text-[12px] text-muted">
+            Open the link from the same browser. Didn’t ask for this? Ignore the email — your
+            password stays the same.
+          </p>
+          {error && (
+            <p role="alert" aria-live="assertive" className="mt-3 text-[12px] font-medium text-bad">
+              {error}
+            </p>
+          )}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[12px]">
             <button
@@ -140,8 +150,8 @@ export function ForgotPassword() {
               Use a different email
             </button>
             <button
-              disabled={resendIn > 0}
-              onClick={() => setResendIn(30)}
+              disabled={resendIn > 0 || busy}
+              onClick={() => sentTo && void send(sentTo)}
               className="font-medium text-accent hover:underline disabled:text-muted disabled:no-underline"
             >
               {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend email'}

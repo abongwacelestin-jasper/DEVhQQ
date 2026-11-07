@@ -1,14 +1,21 @@
 /**
  * Authentication middleware — builds the request Principal.
  *
- * Accepts the session token from an HttpOnly, Secure, SameSite=Strict cookie
- * (browsers) or an `Authorization: Bearer` header (CLI / service tokens).
+ * Accepts:
+ *  - the session token from an HttpOnly, Secure, SameSite=Strict `__Host-`
+ *    cookie (browsers — the token is never readable by page script),
+ *  - `Authorization: Bearer <session token>` (CLIs that signed in with
+ *    `X-DevHQ-Client: cli`, see routes/auth.routes.ts → wantsBodyToken),
+ *  - `Authorization: Bearer dhq_pat_…` personal access tokens (scoped,
+ *    never step-up capable — see security/pats.ts).
  * Sessions that haven't completed MFA can only reach the MFA endpoints.
  */
 
 import type { Middleware } from '../lib/http.ts';
 import { validateSession } from '../auth/sessions.ts';
 import { activeElevations } from '../auth/jit.ts';
+import { setPrincipalAuth } from '../auth/rbac.ts';
+import { looksLikePat, parseScopes, verifyPat } from '../security/pats.ts';
 import { db } from '../store/db.ts';
 import { HttpError } from '../types.ts';
 
@@ -39,6 +46,27 @@ function authenticateWith(allowPartial: boolean): Middleware {
   return (ctx, next) => {
     const token = readToken(ctx.req.headers.cookie, ctx.req.headers.authorization);
     if (!token) throw new HttpError(401, 'unauthenticated', 'Sign in required');
+    if (looksLikePat(token)) {
+      // A PAT is a complete credential but never a partial (MFA-pending) session.
+      if (allowPartial)
+        throw new HttpError(403, 'session_required', 'This action needs an interactive session');
+      const pat = verifyPat(token, ctx.ip);
+      const member = db.members.get(pat.memberId)!;
+      ctx.principal = {
+        memberId: member.id,
+        role: member.role,
+        products: member.products,
+        sessionId: `pat:${pat.id}`,
+        verifiedAt: 0,
+        elevations: activeElevations(member.id),
+      };
+      setPrincipalAuth(ctx.principal, {
+        kind: 'pat',
+        tokenId: pat.id,
+        scopes: parseScopes(pat.scopes),
+      });
+      return next();
+    }
     const { session, stepUpRequired } = validateSession(token, ctx.req, ctx.ip);
     if (session.stage !== 'verified' && !allowPartial)
       throw new HttpError(401, 'mfa_required', 'Complete MFA to continue');
@@ -54,6 +82,7 @@ function authenticateWith(allowPartial: boolean): Middleware {
       verifiedAt: stepUpRequired ? 0 : session.verifiedAt,
       elevations: activeElevations(member.id),
     };
+    setPrincipalAuth(ctx.principal, { kind: 'session' });
     if (stepUpRequired) ctx.res.setHeader('X-Step-Up-Required', '1');
     return next();
   };

@@ -1,0 +1,124 @@
+/**
+ * Persistence boot sequence, called once from `buildApp()`.
+ *
+ * Without DATABASE_URL: today's in-memory behaviour (seed and go).
+ * With DATABASE_URL:
+ *   1. run migrations (DATABASE_MIGRATION_URL if set — the DDL-capable role),
+ *   2. install the PostgreSQL CollectionDriver,
+ *   3. hydrateAll() — every registered collection is loaded into memory,
+ *   4. seed demo data only when NODE_ENV !== 'production' AND the documents
+ *      table is empty. The check and the seed run under an advisory lock and
+ *      the seed is flushed before the lock is released, so two replicas booting
+ *      against an empty database cannot both seed.
+ * The audit chain is mirrored into the append-only `audit_entries` table
+ * (db/auditSink.ts).
+ */
+
+import type { Pool } from 'pg';
+import { logger } from '../lib/logger.ts';
+import { flushPending, hydrateAll, setDriver } from '../store/collection.ts';
+import { startAuditSink } from './auditSink.ts';
+import { PgCollectionDriver } from './driver.ts';
+import { migrate } from './migrate.ts';
+import { createPool, redactUrl } from './pool.ts';
+
+const SEED_LOCK_KEY = 7_220_418_332;
+
+export interface PersistenceReport {
+  mode: 'memory' | 'postgres';
+  migrationsApplied?: string[];
+  hydrated?: Record<string, number>;
+  seeded: boolean;
+}
+
+let pool: Pool | null = null;
+let driver: PgCollectionDriver | null = null;
+let auditSink: ReturnType<typeof startAuditSink> | null = null;
+
+export async function initPersistence(seed: () => Promise<void>): Promise<PersistenceReport> {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    await seed();
+    return { mode: 'memory', seeded: true };
+  }
+  if (pool) throw new Error('Persistence already initialised');
+
+  const migrationUrl = process.env.DATABASE_MIGRATION_URL || url;
+  const migrationPool = migrationUrl === url ? null : createPool(migrationUrl, 'migrate');
+  pool = createPool(url, 'runtime');
+  let migrationsApplied: string[];
+  try {
+    migrationsApplied = (await migrate(migrationPool ?? pool)).applied;
+  } finally {
+    await migrationPool?.end();
+  }
+
+  driver = new PgCollectionDriver(pool);
+  setDriver(driver);
+  auditSink = startAuditSink(pool);
+
+  const allowSeed = process.env.NODE_ENV !== 'production';
+  let seeded = false;
+  let hydrated: Record<string, number> = {};
+  const client = await pool.connect();
+  try {
+    // Hydrate under the seed lock so a replica never loads a half-seeded database.
+    await client.query('SELECT pg_advisory_lock($1)', [SEED_LOCK_KEY]);
+    try {
+      hydrated = await hydrateAll();
+      const res = await client.query<{ empty: boolean }>(
+        'SELECT NOT EXISTS (SELECT 1 FROM documents) AS empty',
+      );
+      if (res.rows[0].empty && allowSeed) {
+        await seed();
+        await flushPending(30_000);
+        seeded = true;
+      } else if (res.rows[0].empty) {
+        logger.warn('db.empty_production', {
+          hint: 'No data and seeding is disabled in production — provision the first Owner',
+        });
+      }
+    } finally {
+      await client.query('SELECT pg_advisory_unlock($1)', [SEED_LOCK_KEY]);
+    }
+  } finally {
+    client.release();
+  }
+
+  logger.info('db.ready', {
+    url: redactUrl(url),
+    migrationsApplied,
+    rows: Object.values(hydrated).reduce((a, b) => a + b, 0),
+    seeded,
+  });
+  return { mode: 'postgres', migrationsApplied, hydrated, seeded };
+}
+
+/** Lightweight connectivity probe for readiness checks. */
+export async function pingDatabase(timeoutMs = 2_000): Promise<boolean> {
+  if (!pool) return true; // memory mode: nothing to reach
+  const active = pool;
+  const probe = active.query('SELECT 1').then(
+    () => true,
+    () => false,
+  );
+  const timeout = new Promise<boolean>((r) => setTimeout(() => r(false), timeoutMs).unref());
+  return Promise.race([probe, timeout]);
+}
+
+/** Flushes queued writes and closes the pool. Safe to call more than once. */
+export async function closePersistence(timeoutMs = 8_000): Promise<void> {
+  if (!pool || !driver) return;
+  const p = pool;
+  const d = driver;
+  const a = auditSink;
+  pool = null;
+  driver = null;
+  auditSink = null;
+  try {
+    await d.close(timeoutMs);
+  } finally {
+    await a?.close();
+    await p.end();
+  }
+}

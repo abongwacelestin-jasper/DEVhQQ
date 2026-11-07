@@ -7,7 +7,7 @@ import { Avatar } from '../ui/Avatar';
 import { ProductMark } from '../ui/ProductMark';
 import { EmptyIllustration } from '../illustrations/EmptyIllustration';
 import { useWork } from '../../contexts/WorkContext';
-import { members } from '../../data/team';
+import { useDirectory } from '../team/useDirectory';
 import { firstName } from '../../utils/status';
 import type { Task } from '../../types/work';
 
@@ -20,6 +20,7 @@ interface Suggestion {
 /** Suggests moving not-yet-started work off people who are over capacity, previews the effect, then records each move. */
 export function RebalanceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { tasks, updateTask } = useWork();
+  const { members, memberById } = useDirectory();
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const { suggestions, before } = useMemo(() => {
@@ -60,7 +61,7 @@ export function RebalanceModal({ open, onClose }: { open: boolean; onClose: () =
         }
       });
     return { suggestions: out, before: snapshot };
-  }, [tasks]);
+  }, [members, tasks]);
 
   useEffect(() => {
     if (open) setPicked(new Set(suggestions.map((s) => s.task.key)));
@@ -169,7 +170,7 @@ export function RebalanceModal({ open, onClose }: { open: boolean; onClose: () =
             </p>
             <ul className="grid gap-1.5 sm:grid-cols-2">
               {affected.map((id) => {
-                const m = members.find((x) => x.id === id)!;
+                const m = memberById(id);
                 const b = before.get(id) ?? 0;
                 const a = projected.get(id) ?? 0;
                 return (

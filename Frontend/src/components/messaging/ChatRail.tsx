@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CheckIcon,
@@ -14,9 +14,13 @@ import { Segmented } from '../ui/Segmented';
 import { MessageItem, formatSize } from './MessageItem';
 import { Composer } from './Composer';
 import { useMessaging } from '../../contexts/MessagingContext';
-import { memberById } from '../../utils/status';
+import { useDirectory } from '../team/useDirectory';
 import { formatDateTime } from '../../utils/date';
 import type { Channel } from '../../types/messaging';
+
+/** Explains the presence dot honestly: it is same-browser only until the server exposes presence. */
+export const PRESENCE_NOTE =
+  'Online status reflects DevHQ tabs open in this browser only — server-side presence is not available yet.';
 
 export type RailTab = 'about' | 'pinned' | 'files' | 'thread';
 
@@ -28,6 +32,8 @@ interface ChatRailProps {
   onThread: (id: string | null) => void;
   onSettings: () => void;
   onClose: () => void;
+  /** Member ids seen online (same-browser presence). */
+  online?: ReadonlySet<string>;
 }
 
 /** Right rail: channel details, permissions, pinned items, shared files and the open thread. */
@@ -39,14 +45,22 @@ export function ChatRail({
   onThread,
   onSettings,
   onClose,
+  online,
 }: ChatRailProps) {
-  const { messages, canModerate } = useMessaging();
-  const inChannel = messages.filter((m) => m.channelId === channel.id && !m.deleted);
+  const { timeline, canModerate, loadThread } = useMessaging();
+  const { memberById } = useDirectory();
+  const messages = timeline(channel.id)?.items ?? [];
+  const inChannel = messages.filter((m) => !m.deleted);
   const pinned = inChannel.filter((m) => m.pinned);
   const files = inChannel.filter((m) => m.kind === 'file' || m.kind === 'code');
   const root = threadId ? messages.find((m) => m.id === threadId) : undefined;
   const replies = threadId ? inChannel.filter((m) => m.threadOf === threadId) : [];
   const p = channel.permissions;
+
+  // Replies may be older than the loaded page; fetch the whole thread when it opens.
+  useEffect(() => {
+    if (threadId) void loadThread(channel.id, threadId);
+  }, [threadId, channel.id, loadThread]);
 
   const rules: [string, boolean | string][] = [
     [
@@ -136,7 +150,7 @@ export function ChatRail({
               </dl>
             </section>
             <section>
-              <h3 className="mb-1 text-[11.5px] font-semibold text-ink">
+              <h3 className="mb-1 text-[11.5px] font-semibold text-ink" title={PRESENCE_NOTE}>
                 Members · {channel.members.length}
               </h3>
               <ul className="space-y-0.5">
@@ -151,7 +165,11 @@ export function ChatRail({
                         <span className="relative">
                           <Avatar id={id} size="sm" />
                           <span
-                            className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-white ${m.lastActive === 'Now' || /^\d+m$/.test(m.lastActive) ? 'bg-ok' : 'bg-line-strong'}`}
+                            title={`${online?.has(id) ? 'Online' : 'Not seen'} — ${PRESENCE_NOTE}`}
+                            aria-label={
+                              online?.has(id) ? 'Online in this browser' : 'Presence unknown'
+                            }
+                            className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-white ${online?.has(id) ? 'bg-ok' : 'bg-line-strong'}`}
                           />
                         </span>
                         <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">

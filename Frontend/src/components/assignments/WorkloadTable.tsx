@@ -7,6 +7,8 @@ import { ProductMark } from '../ui/ProductMark';
 import { StatusBadge } from '../ui/StatusBadge';
 import { priorityMeta, taskStatusMeta } from '../../utils/status';
 import { formatMinutes } from '../../utils/taskEvents';
+import { useTaskInsights } from '../work/useTaskInsights';
+import { TaskInsightBadge } from '../work/TaskInsightBadge';
 import type { Member } from '../../types/team';
 import type { Task } from '../../types/work';
 
@@ -120,40 +122,11 @@ export function WorkloadTable({
                       {r.open.length === 0 ? (
                         <p className="py-1 text-[12px] text-muted">No open tasks.</p>
                       ) : (
-                        <ul className="divide-y divide-line overflow-hidden rounded-md border border-line bg-white">
-                          {r.open.map((t) => (
-                            <li
-                              key={t.key}
-                              className="grid grid-cols-[minmax(0,1fr)_96px_70px_40px_56px_auto] items-center gap-3 px-3 py-1.5"
-                            >
-                              <Link
-                                to={`/tasks/${t.key}`}
-                                className="flex min-w-0 items-center gap-2 hover:underline"
-                              >
-                                <ProductMark product={t.product} size="sm" />
-                                <span className="font-mono text-[11.5px] text-muted">{t.key}</span>
-                                <span className="truncate font-medium text-ink">{t.title}</span>
-                              </Link>
-                              <StatusBadge {...taskStatusMeta[t.status]} dot />
-                              <StatusBadge {...priorityMeta[t.priority]} />
-                              <span className="text-right text-[11.5px] tabular-nums text-muted">
-                                {t.estimate}p
-                              </span>
-                              <span
-                                className={`text-right text-[12px] tabular-nums ${t.overdue ? 'font-semibold text-bad' : 'text-ink'}`}
-                              >
-                                {t.due}
-                              </span>
-                              {canAssign ? (
-                                <Button size="sm" onClick={() => onReassign(t)}>
-                                  Reassign
-                                </Button>
-                              ) : (
-                                <span />
-                              )}
-                            </li>
-                          ))}
-                        </ul>
+                        <OpenTaskList
+                          tasks={r.open}
+                          canAssign={canAssign}
+                          onReassign={onReassign}
+                        />
                       )}
                     </td>
                   </tr>
@@ -164,5 +137,54 @@ export function WorkloadTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function OpenTaskList({
+  tasks,
+  canAssign,
+  onReassign,
+}: {
+  tasks: Task[];
+  canAssign: boolean;
+  onReassign: (t: Task) => void;
+}) {
+  const insights = useTaskInsights(tasks.map((t) => t.key));
+  return (
+    <ul className="divide-y divide-line overflow-hidden rounded-md border border-line bg-white">
+      {tasks.map((t) => (
+        <li
+          key={t.key}
+          className="grid grid-cols-[minmax(0,1fr)_96px_70px_40px_56px_auto] items-center gap-3 px-3 py-1.5"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <Link
+              to={`/tasks/${t.key}`}
+              className="flex min-w-0 items-center gap-2 hover:underline"
+            >
+              <ProductMark product={t.product} size="sm" />
+              <span className="font-mono text-[11.5px] text-muted">{t.key}</span>
+              <span className="truncate font-medium text-ink">{t.title}</span>
+            </Link>
+            {insights.available && <TaskInsightBadge insight={insights.get(t.key)} />}
+          </span>
+          <StatusBadge {...taskStatusMeta[t.status]} dot />
+          <StatusBadge {...priorityMeta[t.priority]} />
+          <span className="text-right text-[11.5px] tabular-nums text-muted">{t.estimate}p</span>
+          <span
+            className={`text-right text-[12px] tabular-nums ${t.overdue ? 'font-semibold text-bad' : 'text-ink'}`}
+          >
+            {t.due}
+          </span>
+          {canAssign ? (
+            <Button size="sm" onClick={() => onReassign(t)}>
+              Reassign
+            </Button>
+          ) : (
+            <span />
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

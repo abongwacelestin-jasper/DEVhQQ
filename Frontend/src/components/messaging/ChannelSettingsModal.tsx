@@ -4,6 +4,7 @@ import { Modal, Field, inputClass } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Segmented } from '../ui/Segmented';
 import { useMessaging } from '../../contexts/MessagingContext';
+import { errorMessage } from '../work/apiState';
 import { useAuth } from '../../contexts/AuthContext';
 import { useReauth } from '../../contexts/ReauthContext';
 import { retentionOptions } from '../../data/messaging';
@@ -50,10 +51,21 @@ export function ChannelSettingsModal({
       JSON.stringify(draft.permissions) !== JSON.stringify(channel.permissions) ||
       draft.private !== channel.private;
     const apply = () => {
-      updateChannel(channel.id, { ...draft, name: channel.kind === 'dm' ? channel.name : name });
-      if (permsChanged) log('Changed channel permissions', `#${name}`, true);
-      toast.success('Channel updated');
-      onClose();
+      updateChannel(channel.id, {
+        name: channel.kind === 'dm' ? channel.name : name,
+        topic: draft.topic,
+        background: draft.background,
+        permissions: draft.permissions,
+        private: draft.private,
+      })
+        .then(() => {
+          if (permsChanged) log('Changed channel permissions', `#${name}`, true);
+          toast.success('Channel updated');
+          onClose();
+        })
+        .catch((e: unknown) =>
+          toast.error("Couldn't update the channel", { description: errorMessage(e) }),
+        );
     };
     if (permsChanged)
       requestReauth({
@@ -284,10 +296,17 @@ export function ChannelSettingsModal({
                       description: 'Members keep read access; nobody can post.',
                       actionLabel: 'Verify & archive',
                       onConfirm: () => {
-                        updateChannel(channel.id, { archived: true });
-                        log('Archived channel', `#${channel.name}`, true);
-                        toast.success(`#${channel.name} archived`);
-                        onClose();
+                        updateChannel(channel.id, { archived: true })
+                          .then(() => {
+                            log('Archived channel', `#${channel.name}`, true);
+                            toast.success(`#${channel.name} archived`);
+                            onClose();
+                          })
+                          .catch((e: unknown) =>
+                            toast.error("Couldn't archive the channel", {
+                              description: errorMessage(e),
+                            }),
+                          );
                       },
                     })
                   }

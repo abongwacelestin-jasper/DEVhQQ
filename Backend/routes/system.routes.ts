@@ -8,6 +8,8 @@
  * signed off. Data returned here is still product-scoped per caller.
  */
 
+import { persistenceStatus } from '../store/collection.ts';
+import { pingDatabase } from '../db/boot.ts';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import type { Ctx, Router } from '../lib/http.ts';
@@ -20,6 +22,7 @@ import { metrics } from '../lib/metrics.ts';
 import { subscribe } from '../lib/events.ts';
 import { runQuery, type Query } from '../lib/query.ts';
 import { consoleCsp } from '../security/headers.ts';
+import { canReceiveEvent } from '../security/eventPolicy.ts';
 import { audit } from '../audit/auditLog.ts';
 import { config, publicConfig } from '../config/env.ts';
 import { db, publicMember } from '../store/db.ts';
@@ -255,16 +258,31 @@ export function registerSystemRoutes(r: Router) {
     'GET',
     '/api/ready',
     {
-      summary: 'Readiness probe — data store seeded and audit chain intact',
+      summary: 'Readiness probe — database reachable, write queue healthy, audit chain intact',
       tag: 'system',
       auth: 'public',
       responses: [503],
     },
-    (ctx) => {
+    async (ctx) => {
       const chain = audit.verify();
-      const ready = db.members.size > 0 && chain.ok;
+      const persistence = persistenceStatus();
+      const dbOk = await pingDatabase();
+      // An empty production database is still "ready" (the deploy gate must pass before the
+      // first Owner exists); `bootstrapRequired` tells operators no one can sign in yet.
+      const ready = dbOk && chain.ok && !persistence.saturated;
       if (!ready) ctx.status = 503;
-      return { ready, members: db.members.size, auditChain: chain.ok ? 'intact' : 'broken' };
+      return {
+        ready,
+        database: dbOk ? 'up' : 'down',
+        persistence: {
+          mode: persistence.mode,
+          pending: persistence.pending,
+          saturated: persistence.saturated,
+        },
+        members: db.members.size,
+        bootstrapRequired: db.members.size === 0,
+        auditChain: chain.ok ? 'intact' : 'broken',
+      };
     },
   );
 
@@ -363,7 +381,19 @@ export function registerSystemRoutes(r: Router) {
       res.write(
         `event: hello\ndata: ${JSON.stringify({ at: new Date().toISOString(), member: ctx.principal!.memberId })}\n\n`,
       );
-      const off = subscribe((e) => res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`));
+      // CYBER-001: filter per subscriber at delivery time (security/eventPolicy.ts),
+      // and end the stream once the member is no longer active.
+      const principal = ctx.principal!;
+      const off = subscribe((e) => {
+        if (db.members.get(principal.memberId)?.status !== 'active') {
+          off();
+          clearInterval(beat);
+          res.end();
+          return;
+        }
+        if (canReceiveEvent(principal, e))
+          res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
+      });
       const beat = setInterval(() => res.write(`: ping ${Date.now()}\n\n`), 15_000);
       ctx.req.on('close', () => {
         clearInterval(beat);

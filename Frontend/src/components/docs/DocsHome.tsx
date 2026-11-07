@@ -1,11 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquareIcon, StarIcon } from 'lucide-react';
+import { StarIcon } from 'lucide-react';
 import { Avatar } from '../ui/Avatar';
 import { DocKindIcon } from './docKindIcons';
 import { statusTone } from './DocView';
 import { docKindMeta } from '../../data/docs';
-import { projects } from '../../data/work';
+import { useProductFilter } from '../../contexts/ProductFilterContext';
 import { firstName } from '../../utils/status';
 import { relative } from '../../utils/date';
 import type { DocKind, DocStatus, ProjectDoc } from '../../types/docs';
@@ -47,6 +47,7 @@ export function DocsHome({
   showTemplates,
   emptyHint,
 }: DocsHomeProps) {
+  const { allowedProjects: projects } = useProductFilter();
   const sorted = [...docs].sort((a, b) =>
     sort === 'title' ? a.title.localeCompare(b.title) : b.updatedAt.localeCompare(a.updatedAt),
   );
@@ -123,7 +124,6 @@ export function DocsHome({
       ) : (
         <ul className="divide-y divide-line">
           {sorted.map((d) => {
-            const open = d.comments.filter((c) => !c.resolved).length;
             const project = projects.find((p) => p.id === d.projectId);
             return (
               <li
@@ -146,13 +146,7 @@ export function DocsHome({
                       {d.title}
                     </span>
                     <span className="flex items-center gap-1.5 truncate text-[11.5px] text-muted">
-                      {project?.name} · {docKindMeta[d.kind].label} · v{d.versions.length}
-                      {open > 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-warn">
-                          <MessageSquareIcon className="h-3 w-3" />
-                          {open}
-                        </span>
-                      )}
+                      {project?.name} · {docKindMeta[d.kind].label}
                     </span>
                   </span>
                 </Link>

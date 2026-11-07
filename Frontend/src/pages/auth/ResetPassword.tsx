@@ -11,6 +11,8 @@ import {
 import { toast } from 'sonner';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import { SecurityIllustration } from '../../components/illustrations/SecurityIllustration';
+import { resetPassword } from '../../api/auth/endpoints';
+import { ApiError } from '../../api/client';
 
 const input =
   'h-9 w-full rounded-md border border-line-strong bg-white px-3 pr-9 text-[13px] text-ink outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/20';
@@ -24,8 +26,9 @@ export function ResetPassword() {
   const [pw, setPw] = useState('');
   const [confirm, setConfirm] = useState('');
   const [show, setShow] = useState(false);
-  const [signOutAll, setSignOutAll] = useState(true);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [expired, setExpired] = useState(!token || !/^[A-Za-z0-9_-]{20,200}$/.test(token));
 
   const local = email.split('@')[0]?.toLowerCase() ?? '';
   const rules = [
@@ -47,15 +50,29 @@ export function ResetPassword() {
         ? { label: 'Fair', cls: 'bg-warn', text: 'text-warn' }
         : { label: 'Strong', cls: 'bg-ok', text: 'text-ok' };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy || !token) return;
     if (score < rules.length)
       return setError('Your new password doesn’t meet every requirement yet.');
     if (pw !== confirm) return setError('The two passwords don’t match.');
+    setBusy(true);
+    setError('');
+    try {
+      await resetPassword(token, pw);
+    } catch (err) {
+      setBusy(false);
+      const apiErr = err instanceof ApiError ? err : null;
+      if (apiErr && (apiErr.status === 400 || apiErr.status === 410)) return setExpired(true);
+      return setError(
+        apiErr?.isUnavailable
+          ? 'Password recovery isn’t available on this server yet.'
+          : (apiErr?.message ?? 'Couldn’t update your password. Try again.'),
+      );
+    }
+    setBusy(false);
     toast.success('Password updated', {
-      description: signOutAll
-        ? 'All other sessions were signed out. In this demo, sign in still uses devhq-demo.'
-        : 'In this demo, sign in still uses devhq-demo.',
+      description: 'Every session on this account was signed out. Sign in with your new password.',
     });
     navigate('/sign-in', { replace: true });
   };
@@ -68,7 +85,7 @@ export function ResetPassword() {
         body: 'After resetting you’ll still confirm with your authenticator code — a reset link alone can never get anyone into your account.',
       }}
     >
-      {token !== 'demo' ? (
+      {expired ? (
         <div>
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-warn-soft text-warn">
             <TriangleAlertIcon className="h-5 w-5" />
@@ -161,18 +178,13 @@ export function ResetPassword() {
                 className={`${input} mt-1`}
               />
             </label>
-            <label className="flex items-start gap-2 text-[12.5px] text-ink">
-              <input
-                type="checkbox"
-                checked={signOutAll}
-                onChange={(e) => setSignOutAll(e.target.checked)}
-                className="mt-0.5 h-3.5 w-3.5 accent-[#0F1115]"
-              />
-              Sign out of every other device and browser
-            </label>
+            <p className="text-[12px] text-muted">
+              Resetting signs out every device and browser on this account.
+            </p>
             {error && (
               <p
                 role="alert"
+                aria-live="assertive"
                 className="rounded-md bg-bad-soft px-2.5 py-1.5 text-[12px] font-medium text-bad"
               >
                 {error}
@@ -180,9 +192,10 @@ export function ResetPassword() {
             )}
             <button
               type="submit"
-              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-ink text-[13px] font-semibold text-white hover:bg-ink/90"
+              disabled={busy}
+              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-ink text-[13px] font-semibold text-white hover:bg-ink/90 disabled:opacity-60"
             >
-              <KeyRoundIcon className="h-4 w-4" /> Update password
+              <KeyRoundIcon className="h-4 w-4" /> {busy ? 'Updating…' : 'Update password'}
             </button>
           </form>
         </>

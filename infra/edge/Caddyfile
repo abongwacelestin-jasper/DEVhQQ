@@ -1,0 +1,97 @@
+# DevHQ edge (Caddy 2): TLS termination, HSTS, HTTP/3, request limits and
+# same-origin routing:  /api/*, /console -> backend   everything else -> frontend
+#
+# Environment (set by docker-compose.yml):
+#   DEVHQ_DOMAIN       public host name; "localhost" uses Caddy's internal CA
+#   ACME_EMAIL         contact for Let's Encrypt / ZeroSSL account
+#   FRONTEND_UPSTREAM  frontend:8081 (prod nginx) or frontend:5173 (dev Vite)
+#   BACKEND_UPSTREAM   backend:8080
+#   HSTS_VALUE         dev sets max-age=0 so localhost is not pinned to HTTPS
+#   MAX_BODY_SIZE      request body cap at the edge (backend caps JSON at 256 KiB)
+#
+# The admin API is disabled; change config by restarting the container.
+{
+	admin off
+	# The container cannot (and must not) write the host trust store.
+	skip_install_trust
+	email {$ACME_EMAIL:admin@example.com}
+	# Optional: staging CA while testing DNS, see docs/deploy/RUNBOOK.md.
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+
+	servers {
+		protocols h1 h2 h3
+		# This edge is the first hop: no upstream proxy is trusted, so a
+		# client-supplied X-Forwarded-For is never used as the client IP.
+		timeouts {
+			read_header 10s
+			read_body 30s
+			write 0
+			idle 2m
+		}
+		max_header_size 32KB
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "{$HSTS_VALUE:max-age=63072000; includeSubDomains; preload}"
+		-Server
+		-X-Powered-By
+	}
+}
+
+(backend_proxy) {
+	reverse_proxy {$BACKEND_UPSTREAM:backend:8080} {
+		# Overwrite, never append: the backend (TRUST_PROXY=1) takes the first
+		# X-Forwarded-For entry as the client IP, so it must be ours.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up -Forwarded
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 60s
+		}
+		# Server-sent events (/api/_events) must not be buffered.
+		flush_interval -1
+	}
+}
+
+{$DEVHQ_DOMAIN:localhost} {
+	import security_headers
+	encode zstd gzip
+
+	request_body {
+		max_size {$MAX_BODY_SIZE:2MB}
+	}
+
+	@backend path /api /api/* /console /console/* /backend.html
+	handle @backend {
+		import backend_proxy
+	}
+
+	handle {
+		reverse_proxy {$FRONTEND_UPSTREAM:frontend:8081} {
+			header_up X-Forwarded-For {remote_host}
+			header_up -Forwarded
+			transport http {
+				dial_timeout 5s
+			}
+		}
+	}
+}
+
+# Optional extra sites (e.g. the public object-storage host for presigned
+# uploads, see sites/objects.caddy.example). Files are mounted read-only.
+import /etc/caddy/sites/*.caddy
+
+# Container health probe. Plain HTTP on a port that is never published.
+http://:8088 {
+	respond /healthz "ok" 200
+	respond 404
+}

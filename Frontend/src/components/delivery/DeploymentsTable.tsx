@@ -24,18 +24,32 @@ export function DeploymentsTable({
   return (
     <>
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full text-[12.5px]">
+        <table className="w-full text-[12.5px]" aria-label="Deployments">
           <thead>
             <tr className="border-b border-line text-left text-[11.5px] text-muted">
-              <th className="px-3.5 py-2 font-medium">Product</th>
-              <th className="px-3 py-2 font-medium">Env</th>
-              <th className="px-3 py-2 font-medium">Commit</th>
-              <th className="px-3 py-2 font-medium">By</th>
+              <th scope="col" className="px-3.5 py-2 font-medium">
+                Product
+              </th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Env
+              </th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Commit
+              </th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                By
+              </th>
               {showProvider && (
-                <th className="hidden px-3 py-2 font-medium xl:table-cell">Provider</th>
+                <th scope="col" className="hidden px-3 py-2 font-medium xl:table-cell">
+                  Provider
+                </th>
               )}
-              <th className="px-3 py-2 font-medium">Status</th>
-              <th className="px-3.5 py-2 text-right font-medium">When</th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Status
+              </th>
+              <th scope="col" className="px-3.5 py-2 text-right font-medium">
+                When
+              </th>
             </tr>
           </thead>
           <tbody>

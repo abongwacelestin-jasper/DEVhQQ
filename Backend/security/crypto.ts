@@ -7,9 +7,14 @@
  * - Comparisons: always constant-time to avoid timing side channels.
  * - Tokens: 256-bit random values, signed with HMAC so tampering is detected
  *   before any database lookup.
+ * - Secrets at rest (TOTP seeds, third-party OAuth/API tokens): AES-256-GCM
+ *   envelope with a key id, a per-value random IV and a caller-supplied
+ *   context bound as additional authenticated data (see `seal` / `open`).
  */
 
 import {
+  createCipheriv,
+  createDecipheriv,
   createHash,
   createHmac,
   randomBytes,
@@ -113,4 +118,121 @@ export function verifySignedToken(token: string): string | null {
   if (config.sessionSecretPrevious && safeEqual(mac, hmac(id, config.sessionSecretPrevious)))
     return id;
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Encryption at rest (AES-256-GCM)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sealed value layout (all parts base64url, colon separated):
+ *
+ *   enc:v1:<keyId>:<iv 12 bytes>:<ciphertext>:<tag 16 bytes>
+ *
+ * - keyId is derived from the key itself (first 64 bits of a labelled
+ *   SHA-256), so operators rotate by setting a new DATA_ENCRYPTION_KEY and
+ *   moving the old one to DATA_ENCRYPTION_KEYS_PREVIOUS — no id bookkeeping.
+ * - The AAD is `devhq:enc:v1:<keyId>:<context>`. Callers pass a context such as
+ *   `member:m4:totp`, so a ciphertext copied onto another row or field fails
+ *   authentication instead of decrypting.
+ *
+ * Usage from any lane:
+ *
+ *   import { seal, open } from '../security/crypto.ts';
+ *   row.accessToken = seal(token, `github-installation:${row.id}:access-token`);
+ *   const token = open(row.accessToken, `github-installation:${row.id}:access-token`);
+ */
+const SEAL_PREFIX = 'enc:v1:';
+
+function keyIdOf(key: Buffer): string {
+  return createHash('sha256')
+    .update('devhq-data-key-id:')
+    .update(key)
+    .digest()
+    .subarray(0, 8)
+    .toString('base64url');
+}
+
+const dataKeys: { current: { id: string; key: Buffer }; byId: Map<string, Buffer> } = (() => {
+  const current = {
+    id: keyIdOf(config.dataEncryption.current),
+    key: config.dataEncryption.current,
+  };
+  const byId = new Map<string, Buffer>([[current.id, current.key]]);
+  for (const k of config.dataEncryption.previous) byId.set(keyIdOf(k), k);
+  return { current, byId };
+})();
+
+/** Id of the key that seals new values (safe to display; reveals nothing about the key). */
+export function dataKeyId(): string {
+  return dataKeys.current.id;
+}
+
+function aad(keyId: string, context: string): Buffer {
+  return Buffer.from(`devhq:enc:v1:${keyId}:${context}`, 'utf8');
+}
+
+export class DecryptionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DecryptionError';
+  }
+}
+
+/** Encrypts `plaintext` with the current data key. `context` must be identical when opening. */
+export function seal(plaintext: string, context: string): string {
+  if (!context) throw new Error('seal() requires a context');
+  const { id, key } = dataKeys.current;
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  cipher.setAAD(aad(id, context));
+  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${SEAL_PREFIX}${id}:${iv.toString('base64url')}:${ct.toString('base64url')}:${tag.toString('base64url')}`;
+}
+
+export function isSealed(value: string | undefined | null): value is string {
+  return typeof value === 'string' && value.startsWith(SEAL_PREFIX);
+}
+
+/**
+ * Decrypts a sealed value with whichever configured key sealed it. Throws a
+ * DecryptionError for unknown keys, malformed input or a failed tag check —
+ * never returns partial plaintext.
+ */
+export function open(sealed: string, context: string): string {
+  if (!isSealed(sealed)) throw new DecryptionError('Value is not sealed');
+  const parts = sealed.slice(SEAL_PREFIX.length).split(':');
+  if (parts.length !== 4) throw new DecryptionError('Malformed sealed value');
+  const [keyId, ivB64, ctB64, tagB64] = parts;
+  const key = dataKeys.byId.get(keyId);
+  if (!key) throw new DecryptionError(`No data key with id ${keyId} is configured`);
+  const iv = Buffer.from(ivB64, 'base64url');
+  const tag = Buffer.from(tagB64, 'base64url');
+  if (iv.length !== 12 || tag.length !== 16) throw new DecryptionError('Malformed sealed value');
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+    decipher.setAAD(aad(keyId, context));
+    decipher.setAuthTag(tag);
+    return Buffer.concat([
+      decipher.update(Buffer.from(ctB64, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+  } catch {
+    throw new DecryptionError('Sealed value failed authentication');
+  }
+}
+
+/** True when a value is plaintext or sealed under a non-current key — i.e. it should be re-sealed. */
+export function needsReseal(value: string): boolean {
+  return !isSealed(value) || !value.startsWith(`${SEAL_PREFIX}${dataKeys.current.id}:`);
+}
+
+/**
+ * Returns the value sealed under the current key. Accepts legacy plaintext
+ * (migration) and values sealed with a previous key (rotation).
+ */
+export function reseal(value: string, context: string): string {
+  if (!needsReseal(value)) return value;
+  return seal(isSealed(value) ? open(value, context) : value, context);
 }
