@@ -32,6 +32,22 @@ def _int(name: str, default: int) -> int:
     return value
 
 
+def _secret(name: str) -> str | None:
+    """Reads ``NAME`` or, in containers, the file named by ``NAME_FILE`` (compose secrets).
+
+    Fails closed: setting both is ambiguous, and an unreadable file is an error.
+    An empty file means "not configured".
+    """
+    direct = os.environ.get(name) or None
+    path = os.environ.get(f"{name}_FILE") or None
+    if direct and path:
+        raise ValueError(f"Set only one of {name} and {name}_FILE")
+    if path:
+        value = Path(path).read_text(encoding="utf-8").strip()
+        return value or None
+    return direct
+
+
 @dataclass(frozen=True)
 class S3Settings:
     endpoint: str | None
@@ -79,7 +95,7 @@ class Settings:
 
 def load_settings() -> Settings:
     env = os.environ.get("NODE_ENV") or os.environ.get("APP_ENV") or "development"
-    token = os.environ.get("ML_SERVICE_TOKEN") or None
+    token = _secret("ML_SERVICE_TOKEN")
     if env == "production" and (not token or len(token) < MIN_TOKEN_LENGTH):
         raise RuntimeError(
             f"ML_SERVICE_TOKEN must be set to at least {MIN_TOKEN_LENGTH} characters in production"
@@ -87,15 +103,15 @@ def load_settings() -> Settings:
     return Settings(
         env=env,
         service_token=token,
-        signing_key=os.environ.get("MODEL_SIGNING_KEY") or None,
+        signing_key=_secret("MODEL_SIGNING_KEY"),
         max_skew_seconds=_int("ML_MAX_SKEW_SECONDS", 300),
         max_body_bytes=_int("ML_MAX_BODY_BYTES", 8 * 1024 * 1024),
         model_dir=Path(os.environ.get("MODEL_DIR", "./.model-registry")),
         s3=S3Settings(
             endpoint=os.environ.get("S3_ENDPOINT") or None,
             region=os.environ.get("S3_REGION", "us-east-1"),
-            access_key_id=os.environ.get("S3_ACCESS_KEY_ID") or None,
-            secret_access_key=os.environ.get("S3_SECRET_ACCESS_KEY") or None,
+            access_key_id=_secret("S3_ACCESS_KEY_ID"),
+            secret_access_key=_secret("S3_SECRET_ACCESS_KEY"),
             force_path_style=_bool("S3_FORCE_PATH_STYLE", True),
             bucket=os.environ.get("S3_BUCKET_MODELS") or None,
         ),
@@ -103,7 +119,7 @@ def load_settings() -> Settings:
         # data when no promoted model exists so the endpoints are usable.
         bootstrap_synthetic=_bool("ML_BOOTSTRAP_SYNTHETIC", env != "production"),
         backend_url=(os.environ.get("BACKEND_URL") or None),
-        anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
+        anthropic_api_key=_secret("ANTHROPIC_API_KEY"),
         assistant_model=os.environ.get("ASSISTANT_MODEL") or DEFAULT_ASSISTANT_MODEL,
         assistant_max_tokens=_int("ASSISTANT_MAX_TOKENS", 4096),
         assistant_timeout_seconds=float(os.environ.get("ASSISTANT_TIMEOUT_SECONDS", "25")),
