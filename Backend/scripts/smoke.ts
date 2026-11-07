@@ -25,7 +25,8 @@ async function call(method: string, path: string, body?: unknown, token?: string
     method,
     headers: {
       'Content-Type': 'application/json',
-      'X-DevHQ-Client': 'console',
+      // CLI-style request (no Origin / Sec-Fetch-Site): the only kind that gets a body token.
+      'X-DevHQ-Client': 'cli',
       'User-Agent': 'devhq-smoke',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -224,6 +225,640 @@ expect(
     (bad.json.error as { code: string }).code === (unknown.json.error as { code: string }).code,
 );
 
+// ===========================================================================
+// SEC lane (wave 4) — token delivery, PATs, TOTP at rest, demo hardening,
+// WebAuthn ceremonies, headers/CSP and the origin guard.
+// ===========================================================================
+{
+  const { createHash, generateKeyPairSync, sign: signWith } = await import('node:crypto');
+  const { totpAt } = await import('../auth/totp.ts');
+  const { snapshot } = await import('../store/db.ts');
+  const { personalAccessTokens } = await import('../security/pats.ts');
+  const { seal, open: openSealed } = await import('../security/crypto.ts');
+  const { config: appConfig } = await import('../config/env.ts');
+
+  type Json = Record<string, unknown>;
+  const errCode = (j: Json) => (j.error as { code?: string } | undefined)?.code;
+
+  /** A browser-shaped request: same-origin fetch metadata + Origin, no bearer token. */
+  async function browser(
+    method: string,
+    path: string,
+    body?: unknown,
+    opts: { cookie?: string; origin?: string; site?: string; client?: string } = {},
+  ) {
+    const res = await fetch(base + path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'devhq-smoke',
+        // The web app's origin (in the allow-list); the smoke server's own random port is not.
+        Origin: opts.origin ?? appConfig.appOrigin,
+        'Sec-Fetch-Site': opts.site ?? 'same-origin',
+        'Sec-Fetch-Mode': 'cors',
+        ...(opts.client ? { 'X-DevHQ-Client': opts.client } : {}),
+        ...(opts.cookie ? { Cookie: opts.cookie } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await res.text();
+    return {
+      status: res.status,
+      json: (text ? JSON.parse(text) : {}) as Json,
+      cookies: res.headers.getSetCookie(),
+      headers: res.headers,
+    };
+  }
+  const cookieFrom = (setCookies: string[]) =>
+    setCookies.find((c) => c.startsWith('__Host-devhq_session='))?.split(';')[0] ?? '';
+
+  // --- 1. Token delivery ----------------------------------------------------
+  const consoleStyle = await browser(
+    'POST',
+    '/api/auth/demo',
+    { role: 'admin' },
+    { client: 'console' },
+  );
+  const cliSpoof = await browser('POST', '/api/auth/demo', { role: 'admin' }, { client: 'cli' });
+  const sessionCookie = cookieFrom(consoleStyle.cookies);
+  expect(
+    'SEC: browser-style sign-in gets an HttpOnly __Host- cookie and no token in the body',
+    consoleStyle.status === 200 &&
+      !('token' in consoleStyle.json) &&
+      cliSpoof.status === 200 &&
+      !('token' in cliSpoof.json) &&
+      /HttpOnly/.test(consoleStyle.cookies.join(';')) &&
+      /SameSite=Strict/.test(consoleStyle.cookies.join(';')) &&
+      sessionCookie.length > 30,
+    { consoleStyle: consoleStyle.json, cliSpoof: cliSpoof.json },
+  );
+  const cookieSession = await browser('GET', '/api/auth/session', undefined, {
+    cookie: sessionCookie,
+  });
+  expect(
+    'SEC: cookie-only session authenticates the browser',
+    cookieSession.status === 200 &&
+      (cookieSession.json.member as { id?: string } | undefined)?.id === 'm1',
+    cookieSession.json,
+  );
+
+  // --- 2. Headers, CSP, cache ------------------------------------------------
+  const h = (await fetch(`${base}/api/health`, { headers: { 'User-Agent': 'devhq-smoke' } }))
+    .headers;
+  const consoleHeaders = (
+    await fetch(`${base}/console`, { headers: { 'User-Agent': 'devhq-smoke' } })
+  ).headers;
+  const consoleCspValue = consoleHeaders.get('content-security-policy') ?? '';
+  expect(
+    'SEC: API responses carry a deny-all CSP, no-store and isolation headers',
+    (h.get('content-security-policy') ?? '').startsWith("default-src 'none'") &&
+      /frame-ancestors 'none'/.test(h.get('content-security-policy') ?? '') &&
+      h.get('cache-control') === 'no-store' &&
+      h.get('cross-origin-opener-policy') === 'same-origin' &&
+      h.get('cross-origin-resource-policy') === 'same-origin' &&
+      h.get('cross-origin-embedder-policy') === 'require-corp' &&
+      /camera=\(\)/.test(h.get('permissions-policy') ?? '') &&
+      /publickey-credentials-get=\(self\)/.test(h.get('permissions-policy') ?? '') &&
+      h.get('x-content-type-options') === 'nosniff',
+    Object.fromEntries(h.entries()),
+  );
+  expect(
+    'SEC: console HTML has a nonce CSP with no inline handlers, framing, plugins or base hijack',
+    /script-src 'nonce-[A-Za-z0-9+/=]+'/.test(consoleCspValue) &&
+      !/unsafe-eval/.test(consoleCspValue) &&
+      /script-src-attr 'none'/.test(consoleCspValue) &&
+      /frame-ancestors 'none'/.test(consoleCspValue) &&
+      /object-src 'none'/.test(consoleCspValue) &&
+      /base-uri 'none'/.test(consoleCspValue) &&
+      consoleHeaders.get('cache-control') === 'no-store',
+    consoleCspValue,
+  );
+
+  // --- 3. Origin guard -------------------------------------------------------
+  const evilPost = await browser(
+    'POST',
+    '/api/auth/sign-in',
+    { email: 'amara@techorg.io', password: 'devhq-demo' },
+    { origin: 'https://evil.example', site: 'cross-site' },
+  );
+  const evilDelete = await browser('DELETE', '/api/auth/passkeys/abc', undefined, {
+    origin: 'https://evil.example',
+    site: 'cross-site',
+    cookie: sessionCookie,
+  });
+  const nullOrigin = await browser(
+    'PATCH',
+    '/api/tasks/RB-212',
+    { title: 'x' },
+    {
+      origin: 'null',
+      site: 'cross-site',
+      cookie: sessionCookie,
+    },
+  );
+  const strippedOrigin = await fetch(`${base}/api/auth/sign-out`, {
+    method: 'POST',
+    headers: { 'User-Agent': 'devhq-smoke', 'Sec-Fetch-Site': 'cross-site', Cookie: sessionCookie },
+  });
+  expect(
+    'SEC: origin guard rejects cross-site POST/DELETE/PATCH (incl. Origin: null and Origin stripped)',
+    evilPost.status === 403 &&
+      errCode(evilPost.json) === 'bad_origin' &&
+      evilDelete.status === 403 &&
+      nullOrigin.status === 403 &&
+      strippedOrigin.status === 403,
+    [evilPost.status, evilDelete.status, nullOrigin.status, strippedOrigin.status],
+  );
+  const preflight = await fetch(`${base}/api/tasks`, {
+    method: 'OPTIONS',
+    headers: { Origin: 'https://evil.example', 'Access-Control-Request-Method': 'POST' },
+  });
+  expect('SEC: CORS preflight from an unknown origin is refused', preflight.status === 403);
+
+  // --- 4. Personal access tokens --------------------------------------------
+  const ownerCli = await call('POST', '/api/auth/demo', { role: 'admin' });
+  const owner = ownerCli.json.token as string;
+  expect(
+    'SEC: explicit CLI client (no Origin / Sec-Fetch-Site) receives a bearer token',
+    ownerCli.status === 200 && typeof owner === 'string' && owner.length > 40,
+    ownerCli.json,
+  );
+  const tooLong = await call(
+    'POST',
+    '/api/tokens',
+    { name: 'ci', scopes: ['project:view'], expiresInDays: 91 },
+    owner,
+  );
+  const noExpiry = await call(
+    'POST',
+    '/api/tokens',
+    { name: 'ci', scopes: ['project:view'] },
+    owner,
+  );
+  const devOverScope = await call(
+    'POST',
+    '/api/tokens',
+    { name: 'x', scopes: ['administration:view'], expiresInDays: 7 },
+    dev,
+  );
+  expect(
+    'SEC: PAT expiry is required (≤ 90 days) and scopes cannot exceed the role',
+    tooLong.status === 422 &&
+      noExpiry.status === 422 &&
+      devOverScope.status === 422 &&
+      errCode(devOverScope.json) === 'scope_exceeds_role',
+    [tooLong.json, noExpiry.json, devOverScope.json],
+  );
+  const pat = await call(
+    'POST',
+    '/api/tokens',
+    {
+      name: 'smoke-ci',
+      scopes: ['project:view', 'organization:view', 'infrastructure:admin'],
+      expiresInDays: 30,
+    },
+    owner,
+  );
+  const patToken = pat.json.token as string;
+  expect(
+    'SEC: PAT is created once in dhq_pat_<id>_<secret> form and only its SHA-256 is stored',
+    pat.status === 201 &&
+      /^dhq_pat_[0-9a-f]{16}_[A-Za-z0-9_-]{43}$/.test(patToken) &&
+      personalAccessTokens.get(pat.json.id as string)?.hash ===
+        createHash('sha256').update(patToken).digest('hex') &&
+      !JSON.stringify([...personalAccessTokens.values()]).includes(patToken.slice(25)),
+    pat.json,
+  );
+  const patRead = await call('GET', '/api/tasks', undefined, patToken);
+  const patWrite = await call(
+    'POST',
+    '/api/tasks',
+    {
+      projectId: 'p1',
+      title: 'PAT write',
+      type: 'task',
+      priority: 'low',
+      assignee: 'm4',
+      due: '2026-11-30',
+      estimate: 1,
+    },
+    patToken,
+  );
+  const patDeploys = await call('GET', '/api/deployments', undefined, patToken);
+  expect(
+    'SEC: PAT works and respects scope (project:view reads; writes and unscoped areas are 403)',
+    patRead.status === 200 && patWrite.status === 403 && patDeploys.status === 403,
+    [patRead.status, patWrite.status, patDeploys.status],
+  );
+  const patStepUp = await call('POST', '/api/backups', {}, patToken);
+  const patMint = await call(
+    'POST',
+    '/api/tokens',
+    { name: 'child', scopes: ['project:view'], expiresInDays: 1 },
+    patToken,
+  );
+  const patTotp = await call('POST', '/api/auth/step-up', { code: '246810' }, patToken);
+  expect(
+    'SEC: PAT can never step up, mint tokens or use the step-up route',
+    patStepUp.status === 403 &&
+      errCode(patStepUp.json) === 'step_up_unavailable' &&
+      patMint.status === 403 &&
+      patTotp.status === 403,
+    [patStepUp.json, patMint.json, patTotp.json],
+  );
+  const listed = await call('GET', '/api/tokens', undefined, owner);
+  const listedItem = (listed.json.items as Json[]).find((t) => t.id === pat.json.id);
+  expect(
+    'SEC: token list records lastUsedAt and never returns the secret',
+    listed.status === 200 &&
+      typeof listedItem?.lastUsedAt === 'string' &&
+      !JSON.stringify(listed.json).includes(patToken),
+    listed.json,
+  );
+  const revoked = await call('DELETE', `/api/tokens/${pat.json.id as string}`, undefined, owner);
+  const afterRevoke = await call('GET', '/api/tasks', undefined, patToken);
+  expect(
+    'SEC: revoked PAT is refused',
+    revoked.status === 204 &&
+      afterRevoke.status === 401 &&
+      errCode(afterRevoke.json) === 'token_revoked',
+    afterRevoke.json,
+  );
+
+  const testerCli = await call('POST', '/api/auth/demo', { role: 'tester' });
+  const testerPat = await call(
+    'POST',
+    '/api/tokens',
+    { name: 'tester-ci', scopes: ['project:view'], expiresInDays: 1 },
+    testerCli.json.token as string,
+  );
+  const testerToken = testerPat.json.token as string;
+  const beforeDeactivate = await call('GET', '/api/tasks', undefined, testerToken);
+  const deactivate = await call('PATCH', '/api/team/m10', { status: 'deactivated' }, owner);
+  const whileInactive = await call('GET', '/api/tasks', undefined, testerToken);
+  const reactivate = await call('PATCH', '/api/team/m10', { status: 'active' }, owner);
+  const afterReactivate = await call('GET', '/api/tasks', undefined, testerToken);
+  expect(
+    'SEC: deactivating a member revokes their PATs for good',
+    beforeDeactivate.status === 200 &&
+      deactivate.status === 200 &&
+      whileInactive.status === 401 &&
+      personalAccessTokens.get(testerPat.json.id as string)?.revokedReason === 'member_inactive' &&
+      reactivate.status === 200 &&
+      afterReactivate.status === 401 &&
+      errCode(afterReactivate.json) === 'token_revoked',
+    [beforeDeactivate.status, deactivate.json, whileInactive.json, afterReactivate.json],
+  );
+
+  // member.deactivated (published by B-COLLAB offboarding) revokes PATs and JIT grants.
+  const { publish: publishEvent } = await import('../lib/events.ts');
+  const { listGrants } = await import('../auth/jit.ts');
+  const tester2 = (await call('POST', '/api/auth/demo', { role: 'tester' })).json.token as string;
+  const designerPat = await call(
+    'POST',
+    '/api/tokens',
+    { name: 'tester-ci-2', scopes: ['project:view'], expiresInDays: 1 },
+    tester2,
+  );
+  const designerGrant = await call(
+    'POST',
+    '/api/access/grants',
+    { scope: 'production:renewberry', reason: 'smoke: offboarding event test', durationMinutes: 15 },
+    tester2,
+  );
+  publishEvent('member.deactivated', { memberId: 'm10', reason: 'smoke' });
+  const designerAfter = await call('GET', '/api/tasks', undefined, designerPat.json.token as string);
+  const eventAudit = await call('GET', '/api/audit?action=security.member_access_revoked', undefined, owner);
+  expect(
+    'SEC: member.deactivated event revokes the member’s PATs and JIT grants, audited',
+    designerPat.status === 201 &&
+      designerGrant.status === 200 &&
+      personalAccessTokens.get(designerPat.json.id as string)?.revokedReason ===
+        'member_deactivated:smoke' &&
+      designerAfter.status === 401 &&
+      listGrants().find((g) => g.id === designerGrant.json.id)?.status === 'denied' &&
+      Array.isArray(eventAudit.json) &&
+      (eventAudit.json as unknown as Json[]).some((e) => String(e.target).startsWith('m10 ·')),
+    [designerPat.json, designerGrant.json, designerAfter.json, eventAudit.json],
+  );
+
+  // --- 5. TOTP enrollment, encryption at rest, demo hardening ----------------
+  const yukiPw = await call('POST', '/api/auth/sign-in', {
+    email: 'yuki@techorg.io',
+    password: 'devhq-demo',
+  });
+  const yukiMfa = await call(
+    'POST',
+    '/api/auth/mfa/totp',
+    { code: '246810' },
+    yukiPw.json.token as string,
+  );
+  let yuki = yukiMfa.json.token as string;
+  const enroll = await call('POST', '/api/auth/totp/enroll', {}, yuki);
+  const secret = enroll.json.secret as string;
+  expect(
+    'SEC: TOTP enrollment returns an otpauth URI and the secret once',
+    enroll.status === 201 &&
+      /^[A-Z2-7]{32}$/.test(secret) &&
+      String(enroll.json.otpauthUri).startsWith('otpauth://totp/') &&
+      String(enroll.json.otpauthUri).includes(`secret=${secret}`),
+    enroll.json,
+  );
+  const step = Math.floor(Date.now() / 30_000);
+  const wrongConfirm = await call(
+    'POST',
+    '/api/auth/totp/confirm',
+    { code: totpAt(secret, step - 5) },
+    yuki,
+  );
+  const confirm = await call(
+    'POST',
+    '/api/auth/totp/confirm',
+    { code: totpAt(secret, step) },
+    yuki,
+  );
+  expect(
+    'SEC: TOTP confirm needs a valid code, then stores the secret',
+    wrongConfirm.status === 401 && confirm.status === 200,
+    [wrongConfirm.json, confirm.json],
+  );
+  const stored = snapshot().members.find((m) => m.id === 'm7')?.totpSecret ?? '';
+  const snapJson = JSON.stringify(snapshot());
+  expect(
+    'SEC: TOTP secret is AES-GCM sealed at rest — the plaintext never appears in a snapshot',
+    stored.startsWith('enc:v1:') &&
+      !snapJson.includes(secret) &&
+      openSealed(stored, 'member:m7:totp') === secret,
+    stored.slice(0, 20),
+  );
+  let openFailures = 0;
+  for (const attempt of [
+    () => openSealed(stored, 'member:m4:totp'), // wrong row
+    () => openSealed(stored.slice(0, -4) + 'AAAA', 'member:m7:totp'), // tampered tag
+  ]) {
+    try {
+      attempt();
+    } catch {
+      openFailures++;
+    }
+  }
+  expect(
+    'SEC: sealed values are bound to their context and tamper-evident',
+    openFailures === 2 && openSealed(seal('x', 'c'), 'c') === 'x',
+  );
+  const demoStepUp = await call('POST', '/api/auth/step-up', { code: '246810' }, yuki);
+  const replay = await call('POST', '/api/auth/step-up', { code: totpAt(secret, step) }, yuki);
+  const yukiPw2 = await call('POST', '/api/auth/sign-in', {
+    email: 'yuki@techorg.io',
+    password: 'devhq-demo',
+  });
+  const demoMfa = await call(
+    'POST',
+    '/api/auth/mfa/totp',
+    { code: '246810' },
+    yukiPw2.json.token as string,
+  );
+  expect(
+    'SEC: demo code is rejected for a TOTP-enrolled member (step-up and sign-in), and codes cannot replay',
+    demoStepUp.status === 401 &&
+      replay.status === 401 &&
+      demoMfa.status === 401 &&
+      (yukiPw2.json.methods as string[]).join() === 'totp',
+    [demoStepUp.json, replay.json, demoMfa.json],
+  );
+  const realStepUp = await call(
+    'POST',
+    '/api/auth/step-up',
+    { code: totpAt(secret, step + 1) },
+    yuki,
+  );
+  yuki = (realStepUp.json.token as string) ?? yuki;
+  expect('SEC: real TOTP code passes step-up', realStepUp.status === 200, realStepUp.json);
+
+  // --- Production boot guards (fresh processes) -----------------------------
+  const { spawnSync } = await import('node:child_process');
+  const bootProd = (extra: Record<string, string>) =>
+    spawnSync(
+      process.execPath,
+      [
+        '--experimental-strip-types',
+        '--input-type=module',
+        '-e',
+        "await import('./config/env.ts')",
+      ],
+      {
+        cwd: new URL('..', import.meta.url).pathname,
+        env: {
+          PATH: process.env.PATH ?? '',
+          NODE_ENV: 'production',
+          SESSION_SECRET: 'a'.repeat(64),
+          APP_ORIGIN: 'https://app.devhq.test',
+          WEBAUTHN_RP_ID: 'app.devhq.test',
+          ...extra,
+        },
+        encoding: 'utf8',
+      },
+    );
+  const prodOk = bootProd({ DATA_ENCRYPTION_KEY: 'b'.repeat(64) });
+  const prodNoKey = bootProd({});
+  const prodDemo = bootProd({ DATA_ENCRYPTION_KEY: 'b'.repeat(64), DEMO_MFA_CODE: '246810' });
+  expect(
+    'SEC: production boots with a data key, refuses without one, and refuses DEMO_* settings',
+    prodOk.status === 0 &&
+      prodNoKey.status !== 0 &&
+      /DATA_ENCRYPTION_KEY/.test(prodNoKey.stderr) &&
+      prodDemo.status !== 0 &&
+      /DEMO_MFA_CODE/.test(prodDemo.stderr),
+    [prodOk.stderr, prodNoKey.stderr.slice(0, 300), prodDemo.stderr.slice(0, 300)],
+  );
+
+  // --- 6. WebAuthn: register, step-up, passwordless sign-in, clone detection --
+  const origin = appConfig.webauthnOrigins[0];
+  const rpIdHash = createHash('sha256').update(appConfig.rpId).digest();
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const jwk = publicKey.export({ format: 'jwk' });
+  const credId = Buffer.from(createHash('sha256').update('smoke-credential').digest());
+  const cose = Buffer.concat([
+    Buffer.from([0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01, 0x21, 0x58, 0x20]),
+    Buffer.from(jwk.x!, 'base64url'),
+    Buffer.from([0x22, 0x58, 0x20]),
+    Buffer.from(jwk.y!, 'base64url'),
+  ]);
+  const u32 = (n: number) => {
+    const b = Buffer.alloc(4);
+    b.writeUInt32BE(n);
+    return b;
+  };
+  const clientData = (type: string, challenge: string, o = origin) =>
+    Buffer.from(JSON.stringify({ type, challenge, origin: o, crossOrigin: false })).toString(
+      'base64url',
+    );
+  const regOpts = await call('POST', '/api/auth/passkeys/options', {}, yuki);
+  const regPk = regOpts.json.publicKey as { challenge: string; rp: { id: string } };
+  const attData = Buffer.concat([
+    rpIdHash,
+    Buffer.from([0x45]), // UP | UV | AT
+    u32(0),
+    Buffer.alloc(16),
+    Buffer.from([0, credId.length]),
+    credId,
+    cose,
+  ]);
+  const regBody = {
+    challengeId: regOpts.json.challengeId,
+    credentialId: credId.toString('base64url'),
+    clientDataJSON: clientData('webauthn.create', regPk.challenge),
+    authenticatorData: attData.toString('base64url'),
+    publicKey: publicKey.export({ format: 'der', type: 'spki' }).toString('base64url'),
+    algorithm: -7,
+    label: 'Smoke key',
+  };
+  const registered = await call('POST', '/api/auth/passkeys', regBody, yuki);
+  const reused = await call('POST', '/api/auth/passkeys', regBody, yuki);
+  expect(
+    'SEC: passkey registration verifies challenge, RP, flags and key binding; challenge is single use',
+    regOpts.status === 200 &&
+      regPk.rp.id === appConfig.rpId &&
+      registered.status === 201 &&
+      reused.status === 400 &&
+      errCode(reused.json) === 'challenge_invalid',
+    [regOpts.json, registered.json, reused.json],
+  );
+
+  const passkeyAssert = async (
+    purpose: 'sign-in' | 'step-up',
+    counter: number,
+    token?: string,
+    tweak: { origin?: string; flags?: number; badSig?: boolean } = {},
+  ) => {
+    const opts = await call('POST', '/api/auth/webauthn/options', { purpose }, token);
+    const challenge = (opts.json.publicKey as { challenge: string }).challenge;
+    const authData = Buffer.concat([rpIdHash, Buffer.from([tweak.flags ?? 0x05]), u32(counter)]);
+    const cdj = clientData('webauthn.get', challenge, tweak.origin);
+    const signed = Buffer.concat([
+      authData,
+      createHash('sha256').update(Buffer.from(cdj, 'base64url')).digest(),
+    ]);
+    const signature = signWith('sha256', tweak.badSig ? Buffer.from('nope') : signed, privateKey);
+    return call(
+      'POST',
+      '/api/auth/webauthn/verify',
+      {
+        challengeId: opts.json.challengeId,
+        credentialId: credId.toString('base64url'),
+        clientDataJSON: cdj,
+        authenticatorData: authData.toString('base64url'),
+        signature: signature.toString('base64url'),
+        userHandle: Buffer.from('m7').toString('base64url'),
+      },
+      token,
+    );
+  };
+  const pkStepUp = await passkeyAssert('step-up', 1, yuki);
+  yuki = (pkStepUp.json.token as string) ?? yuki;
+  const wrongOrigin = await passkeyAssert('sign-in', 2, undefined, {
+    origin: 'https://evil.example',
+  });
+  const noUv = await passkeyAssert('sign-in', 2, undefined, { flags: 0x01 });
+  const badSig = await passkeyAssert('sign-in', 2, undefined, { badSig: true });
+  const pkSignIn = await passkeyAssert('sign-in', 2);
+  expect(
+    'SEC: passkey step-up and passwordless sign-in verify origin, UV and the ES256 signature',
+    pkStepUp.status === 200 &&
+      pkStepUp.json.purpose === 'step-up' &&
+      errCode(wrongOrigin.json) === 'origin_mismatch' &&
+      errCode(noUv.json) === 'user_not_verified' &&
+      errCode(badSig.json) === 'signature_invalid' &&
+      pkSignIn.status === 200 &&
+      typeof pkSignIn.json.token === 'string',
+    [pkStepUp.json, wrongOrigin.json, noUv.json, badSig.json, pkSignIn.json],
+  );
+  const cloned = await passkeyAssert('sign-in', 2);
+  const afterClone = await passkeyAssert('sign-in', 9);
+  expect(
+    'SEC: sign-count regression suspends the passkey',
+    errCode(cloned.json) === 'counter_regressed' &&
+      errCode(afterClone.json) === 'credential_suspended',
+    [cloned.json, afterClone.json],
+  );
+
+  // --- 7. CYBER-001: /api/_events is filtered per subscriber -----------------
+  const testerSse = (await call('POST', '/api/auth/demo', { role: 'tester' })).json.token as string;
+  const sseAbort = new AbortController();
+  const sseRes = await fetch(`${base}/api/_events`, {
+    headers: { Authorization: `Bearer ${testerSse}`, 'User-Agent': 'devhq-smoke' },
+    signal: sseAbort.signal,
+  });
+  const sseTypes: { type: string; data: string }[] = [];
+  const sseDone = (async () => {
+    const reader = sseRes.body!.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i: number;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const chunk = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const type = /^event: (.+)$/m.exec(chunk)?.[1];
+          if (type) sseTypes.push({ type, data: /^data: (.+)$/m.exec(chunk)?.[1] ?? '' });
+        }
+      }
+    } catch {
+      /* aborted */
+    }
+  })();
+  await new Promise((r) => setTimeout(r, 100));
+  // Generates audit + signin events, a blog task event and a renewberry task event.
+  await call('POST', '/api/auth/demo', { role: 'pm' });
+  const blogPatch = await call('PATCH', '/api/tasks/BL-17', { priority: 'low' }, owner);
+  const rbPatch = await call('PATCH', '/api/tasks/RB-212', { priority: 'high' }, owner);
+  await new Promise((r) => setTimeout(r, 300));
+  sseAbort.abort();
+  await sseDone;
+  const leaked = sseTypes.filter(
+    (e) => e.type === 'audit' || e.type === 'signin' || e.data.includes('BL-17'),
+  );
+  expect(
+    'SEC: _events gives a Tester no audit/signin events and nothing from the blog product',
+    sseRes.status === 200 &&
+      blogPatch.status === 200 &&
+      rbPatch.status === 200 &&
+      leaked.length === 0 &&
+      sseTypes.some((e) => e.type === 'task' && e.data.includes('RB-212')),
+    { leaked, types: sseTypes.map((e) => e.type) },
+  );
+
+  // --- 8. CYBER-004: prototype keys are rejected, not silently dropped ---------
+  const rawPost = async (path: string, method: string, body: string) => {
+    const res = await fetch(base + path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'devhq-smoke',
+        Authorization: `Bearer ${dev}`,
+      },
+      body,
+    });
+    return { status: res.status, json: (await res.json()) as Json };
+  };
+  const protoBody = await rawPost(
+    '/api/tasks/RB-212',
+    'PATCH',
+    '{"__proto__":{"role":"Owner"},"priority":"low"}',
+  );
+  const ctorBody = await rawPost('/api/tasks/RB-212', 'PATCH', '{"constructor":1}');
+  const toStringBody = await rawPost('/api/tasks/RB-212', 'PATCH', '{"toString":1}');
+  expect(
+    'SEC: validator rejects __proto__ / constructor / inherited keys with 422',
+    protoBody.status === 422 && ctorBody.status === 422 && toStringBody.status === 422,
+    [protoBody.json, ctorBody.json, toStringBody.json],
+  );
+}
+
 const audit = await call('GET', '/api/audit/verify', undefined, dev);
 expect('audit chain intact', audit.json.ok === true, audit.json);
 
@@ -252,7 +887,7 @@ expect('audit chain intact', audit.json.ok === true, audit.json);
       method,
       headers: {
         'Content-Type': 'application/json',
-        'X-DevHQ-Client': 'console',
+        'X-DevHQ-Client': 'cli', // SEC: body tokens only for CLI-style requests
         'User-Agent': 'devhq-smoke',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,

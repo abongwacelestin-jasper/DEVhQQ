@@ -12,6 +12,8 @@
  * keys, not by rewriting code.
  */
 
+import { hkdfSync } from 'node:crypto';
+
 export type NodeEnv = 'development' | 'test' | 'production';
 
 export interface AppConfig {
@@ -42,6 +44,8 @@ export interface AppConfig {
     api: { capacity: number; refillPerSec: number };
     auth: { capacity: number; refillPerSec: number };
   };
+  /** Per-account bucket for credential checks (password, TOTP, passkey) regardless of source IP. */
+  accountRateLimit: { capacity: number; refillPerSec: number };
   crypto: {
     /** HMAC algorithm for tokens. */
     mac: 'sha256' | 'sha384' | 'sha512';
@@ -54,6 +58,71 @@ export interface AppConfig {
     dir: string;
     retentionDays: number;
   };
+  /**
+   * Data-encryption keys for secrets at rest (TOTP seeds, third-party tokens).
+   * `current` seals new values; `previous` keys only open old ones so keys can
+   * rotate without a flag day. Each key is 32 bytes (64 hex chars).
+   */
+  dataEncryption: {
+    current: Buffer;
+    previous: Buffer[];
+    /** 'env' when DATA_ENCRYPTION_KEY is set; 'dev-derived' only outside production. */
+    source: 'env' | 'dev-derived';
+  };
+  /** Origins accepted in WebAuthn clientDataJSON. Same registrable domain as `rpId`. */
+  webauthnOrigins: string[];
+}
+
+function hexKey(name: string, raw: string): Buffer {
+  if (!/^[0-9a-fA-F]{64}$/.test(raw))
+    throw new Error(`${name} must be exactly 32 bytes encoded as 64 hex characters`);
+  return Buffer.from(raw, 'hex');
+}
+
+/**
+ * Production fails closed without a real data-encryption key. Development
+ * derives a stable key from the session secret so local data survives a
+ * restart; that key is labelled `dev-derived` and never used in production.
+ */
+function loadDataEncryption(isProd: boolean, sessionSecret: string): AppConfig['dataEncryption'] {
+  const raw = process.env.DATA_ENCRYPTION_KEY;
+  const previous = (process.env.DATA_ENCRYPTION_KEYS_PREVIOUS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((k, i) => hexKey(`DATA_ENCRYPTION_KEYS_PREVIOUS[${i}]`, k));
+  if (raw) return { current: hexKey('DATA_ENCRYPTION_KEY', raw), previous, source: 'env' };
+  if (isProd) throw new Error('Missing required environment variable DATA_ENCRYPTION_KEY');
+  const derived = Buffer.from(
+    hkdfSync('sha256', sessionSecret, 'devhq-dev-data-key', 'devhq/data-encryption/v1', 32),
+  );
+  return { current: derived, previous, source: 'dev-derived' };
+}
+
+/** COSE algorithms we can verify with node:crypto: ES256, EdDSA (Ed25519), RS256. */
+const SUPPORTED_WEBAUTHN_ALGS = [-7, -8, -257];
+
+function webauthnAlgorithms(): number[] {
+  const raw = process.env.WEBAUTHN_ALGORITHMS;
+  if (!raw) return [-7 /* ES256 */, -257 /* RS256 */];
+  const algs = raw.split(',').map((s) => Number.parseInt(s.trim(), 10));
+  if (!algs.length || algs.some((a) => !SUPPORTED_WEBAUTHN_ALGS.includes(a)))
+    throw new Error(`WEBAUTHN_ALGORITHMS must be a subset of ${SUPPORTED_WEBAUTHN_ALGS.join(',')}`);
+  return [...new Set(algs)];
+}
+
+/**
+ * Demo accounts and the shared demo code exist for local evaluation only.
+ * A production process with any DEMO_* credential variable set refuses to
+ * boot (DEMO_DISABLED is the one allowed, since it only turns demo off).
+ */
+function assertNoDemoInProduction(isProd: boolean) {
+  if (!isProd) return;
+  const offending = Object.keys(process.env).filter(
+    (k) => k.startsWith('DEMO_') && k !== 'DEMO_DISABLED' && (process.env[k] ?? '') !== '',
+  );
+  if (offending.length)
+    throw new Error(`Demo settings are not allowed in production: ${offending.sort().join(', ')}`);
 }
 
 function required(name: string, fallbackForDev?: string): string {
@@ -74,6 +143,7 @@ function int(name: string, def: number): number {
 export function loadConfig(): AppConfig {
   const env = (process.env.NODE_ENV as NodeEnv) ?? 'development';
   const isProd = env === 'production';
+  assertNoDemoInProduction(isProd);
   const sessionSecret = required(
     'SESSION_SECRET',
     'dev-only-secret-change-me-0123456789abcdef0123456789',
@@ -93,6 +163,12 @@ export function loadConfig(): AppConfig {
     .map((s) => s.trim())
     .filter(Boolean);
   const devOrigins = isProd ? [] : [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
+  const rpId = required('WEBAUTHN_RP_ID', new URL(appOrigin).hostname);
+  // A WebAuthn origin must be the RP ID itself or one of its subdomains.
+  const webauthnOrigins = [appOrigin, publicUrl].filter((o, i, all) => {
+    const host = new URL(o).hostname;
+    return all.indexOf(o) === i && (host === rpId || host.endsWith(`.${rpId}`));
+  });
 
   return {
     env,
@@ -102,7 +178,7 @@ export function loadConfig(): AppConfig {
     appOrigin,
     publicUrl,
     allowedOrigins: [...new Set([appOrigin, publicUrl, ...devOrigins, ...extra])],
-    rpId: required('WEBAUTHN_RP_ID', new URL(appOrigin).hostname),
+    rpId,
     rpName: process.env.WEBAUTHN_RP_NAME ?? 'DevHQ',
     sessionSecret,
     sessionSecretPrevious: process.env.SESSION_SECRET_PREVIOUS,
@@ -113,15 +189,20 @@ export function loadConfig(): AppConfig {
     rateLimits: isProd
       ? { api: { capacity: 120, refillPerSec: 2 }, auth: { capacity: 10, refillPerSec: 0.1 } }
       : { api: { capacity: 600, refillPerSec: 20 }, auth: { capacity: 60, refillPerSec: 1 } },
+    accountRateLimit: isProd
+      ? { capacity: 5, refillPerSec: 1 / 30 }
+      : { capacity: 30, refillPerSec: 1 },
     crypto: {
       mac: 'sha256',
       passwordKdf: 'scrypt-v1',
-      webauthnAlgorithms: [-7 /* ES256 */, -257 /* RS256 */],
+      webauthnAlgorithms: webauthnAlgorithms(),
     },
     backups: {
       dir: process.env.BACKUP_DIR ?? './.backups',
       retentionDays: int('BACKUP_RETENTION_DAYS', 35),
     },
+    dataEncryption: loadDataEncryption(isProd, sessionSecret),
+    webauthnOrigins,
   };
 }
 
@@ -141,12 +222,16 @@ export function publicConfig() {
     sessionAbsoluteHours: config.sessionAbsoluteMs / 3_600_000,
     maxBodyKb: config.maxBodyBytes / 1024,
     rateLimits: config.rateLimits,
+    accountRateLimit: config.accountRateLimit,
+    webauthnOrigins: config.webauthnOrigins,
     crypto: config.crypto,
     backups: config.backups,
     secrets: {
       SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'dev fallback',
       SESSION_SECRET_PREVIOUS: config.sessionSecretPrevious ? 'set' : 'not set',
       DEMO_TOTP_SECRET: process.env.DEMO_TOTP_SECRET ? 'set' : 'not set',
+      DATA_ENCRYPTION_KEY: config.dataEncryption.source === 'env' ? 'set' : 'dev fallback',
+      DATA_ENCRYPTION_KEYS_PREVIOUS: `${config.dataEncryption.previous.length} key(s)`,
     },
     node: process.version,
   };

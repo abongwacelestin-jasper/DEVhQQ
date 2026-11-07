@@ -46,6 +46,7 @@ import { registerOnboardingRoutes } from './routes/onboarding.routes.ts';
 import { registerRecoveryRoutes } from './routes/recovery.routes.ts';
 import { registerOffboardingRoutes } from './routes/offboarding.routes.ts';
 import { registerDocCollabRoutes } from './routes/doc-collab.routes.ts';
+import { registerTokenRoutes } from './routes/tokens.routes.ts';
 
 export async function buildApp() {
   await seed();
@@ -71,6 +72,7 @@ export async function buildApp() {
   registerRecoveryRoutes(router);
   registerOffboardingRoutes(router);
   registerDocCollabRoutes(router);
+  registerTokenRoutes(router);
   return router;
 }
 
