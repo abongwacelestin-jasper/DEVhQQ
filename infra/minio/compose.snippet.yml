@@ -1,0 +1,88 @@
+# DevHQ object storage — compose services for INFRA to merge into
+# docker-compose.yml (STORAGE owns this snippet; INFRA owns the compose file).
+#
+# Images: MinIO stopped publishing community images to Docker Hub
+# (`minio/minio`, `minio/mc` now fail to pull anonymously). Pin a maintained
+# build by digest — e.g. cgr.dev/chainguard/minio and
+# cgr.dev/chainguard/minio-client:latest-dev (the -dev variant has /bin/sh,
+# which bootstrap.sh needs). These were used for the STORAGE e2e test.
+#
+# Secrets come from .env (never committed): MINIO_ROOT_USER, MINIO_ROOT_PASSWORD,
+# MINIO_KMS_SECRET_KEY (`<key-name>:<base64 32 bytes>`, enables SSE-S3),
+# S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY (backend service user),
+# MODELS_S3_ACCESS_KEY_ID / MODELS_S3_SECRET_ACCESS_KEY (ML service user).
+
+services:
+  minio:
+    image: cgr.dev/chainguard/minio:latest # pin by digest in INFRA
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY:?set MINIO_KMS_SECRET_KEY}
+      MINIO_BROWSER: 'off' # console only in the dev profile (override below)
+    volumes:
+      - minio-data:/data
+    networks: [internal]
+    # No published ports: the backend reaches it as http://minio:9000 on the
+    # internal network. Browsers reach presigned URLs through the edge — see
+    # S3_PUBLIC_ENDPOINT in infra/minio/README.md.
+    # No container healthcheck: the Chainguard image ships no curl/wget.
+    # minio-init retries the connection for 60 s (bootstrap.sh), and the
+    # backend depends on minio-init completing successfully.
+    restart: unless-stopped
+    read_only: true
+    security_opt: ['no-new-privileges:true']
+    cap_drop: [ALL]
+
+  minio-init:
+    image: cgr.dev/chainguard/minio-client:latest-dev # pin by digest in INFRA
+    entrypoint: ['/bin/sh', '/bootstrap/bootstrap.sh']
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
+      MODELS_S3_ACCESS_KEY_ID: ${MODELS_S3_ACCESS_KEY_ID:-}
+      MODELS_S3_SECRET_ACCESS_KEY: ${MODELS_S3_SECRET_ACCESS_KEY:-}
+      S3_BUCKET_UPLOADS: ${S3_BUCKET_UPLOADS:-devhq-uploads}
+      S3_BUCKET_BACKUPS: ${S3_BUCKET_BACKUPS:-devhq-backups}
+      S3_BUCKET_AUDIT: ${S3_BUCKET_AUDIT:-devhq-audit}
+      S3_BUCKET_MODELS: ${S3_BUCKET_MODELS:-devhq-models}
+      # GOVERNANCE in dev; COMPLIANCE in prod (irreversible for the retention period).
+      STORAGE_LOCK_MODE: ${STORAGE_LOCK_MODE:-GOVERNANCE}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-35}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-365}
+    volumes:
+      - ./infra/minio:/bootstrap:ro
+    networks: [internal]
+    restart: 'no'
+
+  # backend additions (merge into the existing backend service):
+  # backend:
+  #   depends_on:
+  #     minio-init: { condition: service_completed_successfully }
+  #   environment:
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+  #     S3_REGION: us-east-1
+  #     S3_FORCE_PATH_STYLE: 'true'
+  #     S3_ALLOW_HTTP: '1'            # internal network only; use https to real S3/R2
+  #     S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+  #     S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+  #     S3_BUCKET_UPLOADS / _BACKUPS / _AUDIT / _MODELS: as above
+  #     DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY}   # 64 hex — backups are encrypted with it
+
+volumes:
+  minio-data:
+
+# Dev profile override (console + host port for presigned URLs from the browser):
+# services:
+#   minio:
+#     profiles: ['dev']
+#     environment: { MINIO_BROWSER: 'on' }
+#     ports: ['127.0.0.1:9000:9000', '127.0.0.1:9001:9001']
