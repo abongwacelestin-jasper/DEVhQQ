@@ -24,6 +24,7 @@ import { useWork } from '../contexts/WorkContext';
 import { describeEvent } from '../utils/taskEvents';
 import { formatDateTime } from '../utils/date';
 import type { ProductId } from '../types/portfolio';
+import { OffboardingPanel } from '../components/team/OffboardingPanel';
 
 const expiresIn = (g: ApiGrant) => {
   if (!g.expiresAt) return 'no expiry recorded';
@@ -375,6 +376,8 @@ export function MemberDetail() {
               )}
             </div>
           </Panel>
+
+          {canAdminister && !isOwner && !isMe && <OffboardingPanel memberId={member.id} />}
 
           {canAdminister && !isOwner && !isMe && (
             <Panel title="Danger zone">

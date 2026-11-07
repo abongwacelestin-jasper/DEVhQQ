@@ -685,18 +685,21 @@ export function MessagingProvider({ children }: { children: React.ReactNode }) {
   const join = useCallback((id: string) => membership(id, 'join'), [membership]);
   const leave = useCallback((id: string) => membership(id, 'leave'), [membership]);
 
-  const markRead = useCallback(
-    (id: string) => {
-      const had = counts[id];
+  const countsRef = useRef(counts);
+  countsRef.current = counts;
+  /**
+   * Stable identity on purpose: the page calls this whenever the open timeline
+   * grows. State only changes when there was something unread, so it can't loop.
+   */
+  const markRead = useCallback((id: string) => {
+    const had = countsRef.current[id];
+    if (had && (had.unread > 0 || had.mentions > 0))
       setCounts((all) => ({ ...all, [id]: { unread: 0, mentions: 0 } }));
-      if (!had || (had.unread === 0 && had.mentions === 0)) return;
-      // Read state is per-member on the server; a failure only means the badge may come back.
-      api(`/api/channels/${enc(id)}/read`, { method: 'POST', body: { at: nowISO() } }).catch(
-        () => undefined,
-      );
-    },
-    [counts],
-  );
+    // Read state is per-member on the server; a failure only means the badge may come back.
+    api(`/api/channels/${enc(id)}/read`, { method: 'POST', body: { at: nowISO() } }).catch(
+      () => undefined,
+    );
+  }, []);
 
   const unread = useCallback((id: string) => counts[id]?.unread ?? 0, [counts]);
   const mentions = useCallback((id: string) => counts[id]?.mentions ?? 0, [counts]);
