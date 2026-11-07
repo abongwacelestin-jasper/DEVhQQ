@@ -256,6 +256,7 @@ export function registerAuthRoutes(r: Router) {
       // Burn the link: one invite, one activation.
       member.inviteTokenHash = undefined;
       member.inviteExpiresAt = undefined;
+      db.members.save(member.id);
 
       audit.append({
         actor: member.id,
@@ -362,11 +363,13 @@ export function registerAuthRoutes(r: Router) {
             requestId: ctx.requestId,
           });
         }
+        db.members.save(member.id);
         throw generic;
       }
 
       member.failedLogins = 0;
       if (needsRehash) member.passwordHash = await hashPassword(password);
+      db.members.save(member.id);
       const { decision, reasons } = gate(member, ctx, 'password');
       const { token } = createSession(member.id, ctx.req, ctx.ip, 'password', 'password');
       recordSignIn(member, ctx, 'password', 'challenged');
@@ -515,6 +518,7 @@ export function registerAuthRoutes(r: Router) {
         throw new HttpError(401, 'invalid_credentials', 'Passkey not recognised');
       const cred = member.passkeys.find((k) => k.id === body.credentialId)!;
       cred.signCount = verifyAssertion(cred, body);
+      db.members.save(member.id);
       gate(member, ctx, 'passkey');
 
       const existing = readToken(ctx.req.headers.cookie, ctx.req.headers.authorization);
@@ -567,6 +571,7 @@ export function registerAuthRoutes(r: Router) {
       if (m.passkeys.some((k) => k.id === cred.id))
         throw new HttpError(409, 'exists', 'Passkey already registered');
       m.passkeys.push(cred);
+      db.members.save(m.id);
       audit.append({
         actor: m.id,
         action: 'auth.passkey_registered',
@@ -589,6 +594,7 @@ export function registerAuthRoutes(r: Router) {
       const before = m.passkeys.length;
       m.passkeys = m.passkeys.filter((k) => k.id !== ctx.params.credentialId);
       if (m.passkeys.length === before) throw new HttpError(404, 'not_found', 'Passkey not found');
+      db.members.save(m.id);
       audit.append({
         actor: m.id,
         action: 'auth.passkey_removed',

@@ -1,15 +1,20 @@
 /**
- * In-memory data store seeded to match the frontend demo data exactly
- * (same IDs, emails, roles and products), so the web app and the API agree.
+ * Data store seeded to match the frontend demo data exactly (same IDs, emails,
+ * roles and products), so the web app and the API agree.
  *
- * Swap this for a real database behind the same functions. Whatever the
- * engine, keep two rules: use parameterized queries only (never build SQL
- * from strings), and connect with a least-privilege database user that can't
- * alter schema or read other services' tables (micro-segmentation).
+ * Every table is a persisted Collection (store/collection.ts): reads stay
+ * synchronous and in memory; writes go through the installed driver —
+ * in-memory by default, PostgreSQL when DATABASE_URL is set (see db/README.md).
+ * In-place mutations must be followed by `db.<table>.save(key)`.
+ *
+ * Seeding: the demo data loads in memory mode, or with PostgreSQL only when
+ * NODE_ENV !== 'production' and the database is empty (see db/boot.ts).
  */
 
 import { hashPassword } from '../security/crypto.ts';
 import { lookupIp } from '../lib/geo.ts';
+import { createCollection } from './collection.ts';
+import { signInLog } from './signInLog.ts';
 import {
   seedComments,
   seedEvents,
@@ -35,17 +40,18 @@ import type {
 } from '../types.ts';
 
 export const db = {
-  members: new Map<string, Member>(),
-  projects: new Map<string, Project>(),
-  docs: new Map<string, ProjectDoc>(),
-  tasks: new Map<string, Task>(),
-  taskEvents: new Map<string, TaskEvent>(),
-  taskComments: new Map<string, TaskComment>(),
-  subtasks: new Map<string, Subtask>(),
-  timeLogs: new Map<string, TimeLog>(),
-  deployments: new Map<string, Deployment>(),
-  incidents: new Map<string, Incident>(),
-  signIns: [] as SignInRecord[],
+  members: createCollection<Member>('members'),
+  projects: createCollection<Project>('projects'),
+  docs: createCollection<ProjectDoc>('docs'),
+  tasks: createCollection<Task>('tasks'),
+  taskEvents: createCollection<TaskEvent>('taskEvents'),
+  taskComments: createCollection<TaskComment>('taskComments'),
+  subtasks: createCollection<Subtask>('subtasks'),
+  timeLogs: createCollection<TimeLog>('timeLogs'),
+  deployments: createCollection<Deployment>('deployments'),
+  incidents: createCollection<Incident>('incidents'),
+  /** Newest-first, bounded in-memory window; every record is persisted (store/signInLog.ts). */
+  signIns: signInLog,
 };
 
 /** Demo credentials — identical to the frontend (data/roles.ts). Never active in production. */
@@ -584,16 +590,20 @@ export async function seed() {
     ],
   ];
 
-  db.signIns = history.map(([memberId, ip, h, result, score, reasons], i) => ({
-    id: `seed${i}`,
-    memberId,
-    ip,
-    at: hoursAgo(h),
-    method: 'password' as const,
-    result,
-    location: lookupIp(ip),
-    risk: { score, reasons },
-  }));
+  db.signIns.push(
+    ...history
+      .map(([memberId, ip, h, result, score, reasons], i): SignInRecord => ({
+        id: `seed${i}`,
+        memberId,
+        ip,
+        at: hoursAgo(h),
+        method: 'password',
+        result,
+        location: lookupIp(ip),
+        risk: { score, reasons },
+      }))
+      .sort((a, b) => b.at.localeCompare(a.at)),
+  );
 
   // Production has no demo accounts: members are provisioned through invites only.
   const hash = DEMO.enabled ? await hashPassword(DEMO.password) : '!disabled';

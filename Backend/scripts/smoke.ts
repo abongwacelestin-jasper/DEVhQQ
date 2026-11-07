@@ -838,6 +838,45 @@ expect('audit chain intact', audit.json.ok === true, audit.json);
   );
 }
 
+// ── B-DATA: persistence seam (memory mode; Postgres is covered by `npm run smoke:pg`) ──
+if (!process.env.DATABASE_URL) {
+  const { persistenceStatus, registeredCollections, setDriver } =
+    await import('../store/collection.ts');
+  expect(
+    'persistence runs in memory mode without DATABASE_URL',
+    persistenceStatus().mode === 'memory',
+  );
+  expect(
+    'core tables, sessions, sign-ins and JIT grants are persisted collections',
+    ['members', 'tasks', 'taskComments', 'sessions', 'signIns', 'jitGrants'].every((n) =>
+      registeredCollections().includes(n),
+    ),
+    registeredCollections(),
+  );
+  const writes: string[] = [];
+  setDriver({
+    write: (c, k, v) => void writes.push(`${c}/${k}/${(v as { status?: string }).status ?? ''}`),
+    remove: (c, k) => void writes.push(`-${c}/${k}`),
+    load: async () => [],
+  });
+  const patched = await call('PATCH', `/api/tasks/${newKey}`, { status: 'review' }, dev);
+  expect(
+    'in-place task update reaches the persistence driver (save after mutation)',
+    patched.status === 200 && writes.includes(`tasks/${newKey}/review`),
+    writes,
+  );
+  const fresh = await call('POST', '/api/auth/demo', { role: 'pm' });
+  const freshToken = String(fresh.json.token);
+  const rawId = freshToken.slice(0, freshToken.lastIndexOf('.'));
+  const sessionRows = writes.filter((w) => w.startsWith('sessions/'));
+  expect(
+    'session rows are keyed by an opaque handle, never the bearer token',
+    fresh.status === 200 && sessionRows.length > 0 && sessionRows.every((w) => !w.includes(rawId)),
+    sessionRows,
+  );
+  setDriver({ write() {}, remove() {}, load: async () => [] });
+}
+
 console.log(`\n${passed} checks passed`);
 server.close();
 process.exit(0);
