@@ -15,8 +15,8 @@ French and Spanish cover navigation and page headings only, not body copy
 
 | Run | Onboarding project | Chromium project | Unexpected | Flaky |
 |---|---|---|---|---|
-| 1 | RUN1_ONB | RUN1_MAIN | RUN1_UNEXP | 0 |
-| 2 | RUN2_ONB | RUN2_MAIN | RUN2_UNEXP | 0 |
+| 1 | 1/1 | 104/104 | 0 | 0 |
+| 2 | 1/1 | 104/104 | 0 | 0 |
 
 `cd e2e && npm test` (onboarding, then the Chromium journeys). Each run starts its own backend
 with an in-memory store and a production build served by `vite preview`. `retries: 0`.
