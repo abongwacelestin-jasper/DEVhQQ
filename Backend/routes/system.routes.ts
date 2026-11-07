@@ -20,6 +20,7 @@ import { metrics } from '../lib/metrics.ts';
 import { subscribe } from '../lib/events.ts';
 import { runQuery, type Query } from '../lib/query.ts';
 import { consoleCsp } from '../security/headers.ts';
+import { canReceiveEvent } from '../security/eventPolicy.ts';
 import { audit } from '../audit/auditLog.ts';
 import { config, publicConfig } from '../config/env.ts';
 import { db, publicMember } from '../store/db.ts';
@@ -363,7 +364,19 @@ export function registerSystemRoutes(r: Router) {
       res.write(
         `event: hello\ndata: ${JSON.stringify({ at: new Date().toISOString(), member: ctx.principal!.memberId })}\n\n`,
       );
-      const off = subscribe((e) => res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`));
+      // CYBER-001: filter per subscriber at delivery time (security/eventPolicy.ts),
+      // and end the stream once the member is no longer active.
+      const principal = ctx.principal!;
+      const off = subscribe((e) => {
+        if (db.members.get(principal.memberId)?.status !== 'active') {
+          off();
+          clearInterval(beat);
+          res.end();
+          return;
+        }
+        if (canReceiveEvent(principal, e))
+          res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
+      });
       const beat = setInterval(() => res.write(`: ping ${Date.now()}\n\n`), 15_000);
       ctx.req.on('close', () => {
         clearInterval(beat);
