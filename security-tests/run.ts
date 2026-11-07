@@ -50,6 +50,7 @@ import { check as streamXchannel } from './checks/stream-cross-channel.ts';
 import { check as restoreAuthz } from './checks/backup-restore-authz.ts';
 import { check as assistant } from './checks/assistant-prompt-injection.ts';
 import { check as envFailOpen } from './checks/env-failopen.ts';
+import { check as jitAccess } from './checks/jit-production-access.ts';
 
 const CHECKS: Check[] = [
   enumeration,
@@ -66,6 +67,7 @@ const CHECKS: Check[] = [
   csrf,
   massAssign,
   twoPerson,
+  jitAccess,
   bodySize,
   csp,
   ssrfCodespaces,

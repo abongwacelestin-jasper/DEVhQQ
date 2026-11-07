@@ -9,6 +9,7 @@ import {
   requireArea,
   requireElevation,
   requireStepUp,
+  setPrincipalAuth,
 } from '../../auth/rbac.ts';
 import type { Ctx, Middleware } from '../../lib/http.ts';
 import {
@@ -237,5 +238,27 @@ describe('auth/rbac — JIT elevation', () => {
   it('401 without a principal', async () => {
     const r = await runGuard(guard, undefined, { product: 'blog' });
     assert.ok(r instanceof HttpError && r.status === 401);
+  });
+
+  it('the refusal carries the scope for the client to request', async () => {
+    const r = await runGuard(guard, principal('Operations'), { product: 'mirror' });
+    assert.ok(r instanceof HttpError);
+    assert.deepEqual(r.details, { scope: 'production:mirror' });
+  });
+
+  it('a personal access token never passes, not even an Owner’s with organization:admin', async () => {
+    for (const role of ROLES) {
+      const p = principal(role, { elevations: ['production:renewberry'] });
+      setPrincipalAuth(p, {
+        kind: 'pat',
+        tokenId: 't',
+        scopes: { Organization: 'admin', Deployment: 'admin' },
+      });
+      const r = await runGuard(guard, p, { product: 'renewberry' });
+      assert.ok(
+        r instanceof HttpError && r.status === 403 && r.code === 'elevation_unavailable',
+        role,
+      );
+    }
   });
 });

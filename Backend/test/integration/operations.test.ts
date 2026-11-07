@@ -3,6 +3,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { errorCode, startApp, type Client, type TestServer } from '../helpers/server.ts';
 import { forceStepUp, signInAll, stepUp, type DemoKey } from '../helpers/auth.ts';
+import { grantAccess, revokeAccess } from '../helpers/jit.ts';
 
 interface Deployment {
   id: string;
@@ -67,12 +68,16 @@ describe('operations — deployments (two-person rule)', () => {
   it('approval demands a fresh step-up', async () => {
     const { json: d } = await as.admin.post<Deployment>('/api/deployments', deploy());
     const ops = as.operations;
+    // Production approval also needs a JIT grant (jit-enforcement.test.ts); hold one so
+    // this test isolates the step-up requirement.
+    const grant = await grantAccess(ops, as.admin, 'production:renewberry');
     await forceStepUp(ops, '127.200.0.1');
     const res = await ops.post(`/api/deployments/${d.id}/approve`);
     assert.equal(res.status, 401);
     assert.equal(errorCode(res), 'step_up_required');
     await stepUp(ops);
     assert.equal((await ops.post(`/api/deployments/${d.id}/approve`)).status, 200);
+    await revokeAccess(as.admin, grant.id);
   });
 
   it('rollback is allowed without step-up (MTTR first) but only once', async () => {
@@ -121,6 +126,10 @@ describe('operations — incidents', () => {
     const id = res.json.id;
     assert.match(id, /^INC-\d+$/);
     assert.equal(res.json.owner, 'm4');
+    // Raising severity and closing a SEV1 are production decisions: both need a JIT grant
+    // (refusals are covered in jit-enforcement.test.ts).
+    const devGrant = await grantAccess(as.developer, as.operations, 'production:renewberry');
+    const opsGrant = await grantAccess(as.operations, as.admin, 'production:renewberry');
     const sev = await as.developer.patch<Incident>(`/api/incidents/${id}`, {
       severity: 'SEV1',
       note: 'Paging on-call',
@@ -134,6 +143,8 @@ describe('operations — incidents', () => {
     const noop = await as.operations.patch(`/api/incidents/${id}`, { status: 'resolved' });
     assert.equal(noop.status, 422);
     assert.equal(errorCode(noop), 'no_change');
+    await revokeAccess(as.admin, devGrant.id);
+    await revokeAccess(as.admin, opsGrant.id);
   });
 
   it('cannot declare an incident for a product outside scope', async () => {

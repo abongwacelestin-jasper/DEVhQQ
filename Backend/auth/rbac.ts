@@ -10,6 +10,8 @@
  */
 
 import type { Middleware } from '../lib/http.ts';
+import { audit } from '../audit/auditLog.ts';
+import { activeGrantFor } from './jit.ts';
 import {
   HttpError,
   type PermissionArea,
@@ -196,14 +198,61 @@ export function requireStepUp(maxAgeMs = 5 * 60_000): Middleware {
   };
 }
 
-/** Requires an active JIT elevation for a scope derived from the request, e.g. "production:renewberry". */
+/**
+ * The JIT gate for production-impacting actions (see docs/concepts/jit-access.md).
+ *
+ *  - Personal access tokens never carry an elevation and never pass, not even an
+ *    Owner's: `403 elevation_unavailable` (a grant cannot help a token).
+ *  - The Owner passes through `hasOwnerPowers` (standing production rights).
+ *  - Everyone else needs `scope` in `p.elevations`, which `authenticate` rebuilds
+ *    from the grant store on every request, filtered on `expiresAt > now`, so an
+ *    expired or revoked grant stops working on the very next request. Otherwise
+ *    `403 elevation_required` with `details.scope`, so the client can offer
+ *    "Request access" for exactly that scope.
+ *
+ * Every pass on a grant is audited as `jit.used` (sensitive), with the grant id.
+ * Call it after the 404 scope check, so an out-of-scope resource stays a 404.
+ */
+export function assertElevation(
+  p: Principal,
+  scope: string,
+  use: { action: string; requestId?: string },
+): void {
+  if (isPat(p))
+    throw new HttpError(
+      403,
+      'elevation_unavailable',
+      'Personal access tokens cannot use production access — use an interactive session',
+      { scope },
+    );
+  if (hasOwnerPowers(p)) return;
+  if (!p.elevations.includes(scope))
+    throw new HttpError(403, 'elevation_required', `Request just-in-time access for ${scope}`, {
+      scope,
+    });
+  const grant = activeGrantFor(p.memberId, scope);
+  audit.append({
+    actor: p.memberId,
+    action: 'jit.used',
+    target: `${scope} · ${use.action}${grant ? ` · grant ${grant.id}` : ''}`,
+    sensitive: true,
+    requestId: use.requestId,
+  });
+}
+
+/**
+ * Route-guard form of `assertElevation`, for a scope that follows from the path
+ * alone. Routes whose scope depends on the stored resource (a deployment's
+ * product and environment) call `assertElevation` in the handler instead.
+ */
 export function requireElevation(scopeOf: (params: Record<string, string>) => string): Middleware {
   return (ctx, next) => {
     const p = ctx.principal;
     if (!p) throw new HttpError(401, 'unauthenticated', 'Sign in required');
-    const scope = scopeOf(ctx.params);
-    if (!hasOwnerPowers(p) && !p.elevations.includes(scope))
-      throw new HttpError(403, 'elevation_required', `Request just-in-time access for ${scope}`);
+    assertElevation(p, scopeOf(ctx.params), {
+      action: `${ctx.req?.method ?? ''} ${ctx.req?.url ?? ''}`.trim(),
+      requestId: ctx.requestId,
+    });
     return next();
   };
 }
