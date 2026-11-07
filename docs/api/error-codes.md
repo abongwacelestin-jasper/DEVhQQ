@@ -11,7 +11,7 @@ Every error the API raises has a stable machine-readable `code`. Branch on
 `code`, never on `message` (messages are for people and may change). The
 envelope and client guidance are in [Errors](errors.md).
 
-**127 codes** from **339 call sites**. The status column lists every
+**128 codes** from **343 call sites**. The status column lists every
 status a code is raised with; most codes have exactly one.
 
 | Code | Status | Example message | Raised in |
@@ -29,6 +29,7 @@ status a code is raised with; most codes have exactly one.
 | `invite_invalid` | 400 | This invite link is no longer valid | `routes/auth.routes.ts` |
 | `key_invalid` | 400 | Public key is not a valid SPKI structure | `auth/webauthn.ts` |
 | `key_mismatch` | 400 | Public key does not match authenticator data | `auth/webauthn.ts` |
+| `malformed_url` | 400 | Malformed percent-encoding in the URL | `lib/http.ts` |
 | `origin_mismatch` | 400 | Origin mismatch _(+1 more)_ | `auth/webauthn.ts` |
 | `reset_invalid` | 400 | This reset link is no longer valid | `routes/recovery.routes.ts` |
 | `rp_mismatch` | 400 | RP ID mismatch | `auth/webauthn.ts` |
@@ -42,7 +43,7 @@ status a code is raised with; most codes have exactly one.
 | `invalid_credentials` | 401 | Passkey not recognised _(+3 more)_ | `auth/webauthn.ts`, `routes/auth.routes.ts` |
 | `invalid_signature` | 401 | Webhook signature does not match | `integrations/github/webhook.ts` |
 | `invalid_token` | 401 | Invalid session _(+1 more)_ | `auth/sessions.ts`, `security/pats.ts` |
-| `mfa_invalid` | 401 | Code is incorrect or expired | `routes/auth.routes.ts` |
+| `mfa_invalid` | 401 | Code is incorrect or expired _(+1 more)_ | `routes/auth.routes.ts` |
 | `mfa_required` | 401 | Complete MFA to continue | `middleware/authenticate.ts`, `routes/auth.routes.ts` |
 | `replayed` | 401 | Invalid service signature | `routes/insights.routes.ts` |
 | `session_context_changed` | 401 | Session used from a different device — signed out for safety | `auth/sessions.ts` |
@@ -63,7 +64,7 @@ status a code is raised with; most codes have exactly one.
 | `risk_blocked` | 403 | Sign-in blocked by location risk policy — contact an Owner | `routes/auth.routes.ts` |
 | `self_approval` | 403 | You can’t approve your own access _(+2 more)_ | `auth/jit.ts`, `routes/operations.routes.ts`, `routes/pulls.routes.ts` |
 | `self_close` | 403 | A reviewer or manager must move your own task to done | `routes/tasks.routes.ts` |
-| `self_demotion` | 403 | Ask another Owner to change your role | `routes/team.routes.ts` |
+| `self_demotion` | 403 | Ask another Owner to change your role _(+1 more)_ | `routes/team.routes.ts` |
 | `self_offboard` | 403 | Another admin must complete your offboarding | `routes/offboarding.routes.ts` |
 | `session_required` | 403 | This action needs an interactive session | `auth/rbac.ts`, `middleware/authenticate.ts`, `routes/auth.routes.ts` |
 | `step_up_unavailable` | 403 | Personal access tokens cannot perform step-up actions — use an interactive session | `auth/rbac.ts` |
@@ -126,7 +127,7 @@ status a code is raised with; most codes have exactly one.
 | `size_mismatch` | 422 | Uploaded size does not match the request | `routes/files.routes.ts` |
 | `type_mismatch` | 422 | File content does not match its declared type | `routes/files.routes.ts` |
 | `unresolvable_target` | 422 | Destination host could not be resolved | `routes/integrations.routes.ts` |
-| `validation_failed` | 422 | text is required _(+41 more)_ | `lib/validate.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/integrations.routes.ts`, `routes/locations.routes.ts`, `routes/messaging.routes.ts`, `routes/monitors.routes.ts`, `routes/notifications.routes.ts`, `routes/offboarding.routes.ts`, `routes/onboarding.routes.ts`, `routes/pulls.routes.ts`, `routes/system.routes.ts`, `routes/team.routes.ts`, `routes/tokens.routes.ts`, `routes/webhooks.routes.ts`, `routes/workspaces.routes.ts`, `security/pats.ts` |
+| `validation_failed` | 422 | text is required _(+42 more)_ | `lib/validate.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/integrations.routes.ts`, `routes/locations.routes.ts`, `routes/messaging.routes.ts`, `routes/monitors.routes.ts`, `routes/notifications.routes.ts`, `routes/offboarding.routes.ts`, `routes/onboarding.routes.ts`, `routes/pulls.routes.ts`, `routes/system.routes.ts`, `routes/team.routes.ts`, `routes/tokens.routes.ts`, `routes/webhooks.routes.ts`, `routes/workspaces.routes.ts`, `security/pats.ts` |
 | `weak_password` | 422 | _(computed at runtime)_ | `routes/auth.routes.ts`, `routes/recovery.routes.ts` |
 | `locked` | 423 | Too many attempts — try again later | `routes/auth.routes.ts` |
 | `rate_limited` | 429 | GitHub rate limit reached _(+4 more)_ | `domain/collab/limits.ts`, `integrations/github/client.ts`, `routes/assistant.routes.ts`, `routes/codespaces.routes.ts`, `security/rateLimit.ts` |

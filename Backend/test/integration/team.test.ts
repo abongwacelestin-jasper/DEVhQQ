@@ -206,7 +206,6 @@ describe('team — just-in-time production access', () => {
   });
 });
 
-// Runs last: on today's code it deactivates the only Owner.
 describe('team — the workspace always keeps an active Owner', () => {
   // FINDING B-7 (routes/team.routes.ts:221-232): the last-owner and
   // self-demotion guards only look at `role`. The only active Owner can set
@@ -215,7 +214,6 @@ describe('team — the workspace always keeps an active Owner', () => {
   // any more. The same request should be refused like a self-demotion.
   it(
     'the last active Owner cannot deactivate themselves',
-    { todo: 'FINDING B-7: last Owner can self-deactivate' },
     async () => {
       const res = await as.admin.patch('/api/team/m1', { status: 'deactivated' });
       assert.ok(res.status === 403 || res.status === 409, `got ${res.status}`);

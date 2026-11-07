@@ -12,8 +12,8 @@ same route table produces `GET /api/openapi.json` (OpenAPI 3.1) and
 `GET /api/_inventory`, so this page, the OpenAPI document and the backend
 console cannot disagree about which endpoints exist.
 
-**181 routes** — 19 public, 157 session,
-5 partial-session.
+**185 routes** — 19 public, 160 session,
+6 partial-session.
 
 How to read the columns:
 
@@ -29,55 +29,58 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/health` | Liveness probe | public | — | 429 | [system.routes.ts:256](../../Backend/routes/system.routes.ts#L256) |
-| `GET` | `/api/ready` | Readiness probe — database reachable, write queue healthy, audit chain intact | public | — | 503 | [system.routes.ts:261](../../Backend/routes/system.routes.ts#L261) |
-| `GET` | `/api/version` | Build and runtime version | public | — | 429 | [system.routes.ts:293](../../Backend/routes/system.routes.ts#L293) |
-| `GET` | `/api/openapi.json` | OpenAPI 3.1 document generated from the route table | public | — | 429 | [system.routes.ts:305](../../Backend/routes/system.routes.ts#L305) |
-| `GET` | `/api/_inventory` | Every registered route — API discovery | session | — | 401 403 429 | [system.routes.ts:316](../../Backend/routes/system.routes.ts#L316) |
-| `GET` | `/api/_status-codes` | Status codes this API can return | public | — | 429 | [system.routes.ts:324](../../Backend/routes/system.routes.ts#L324) |
-| `GET` | `/api/_config` | Effective configuration, secrets redacted | session | Administration ≥ view | 401 403 429 | [system.routes.ts:331](../../Backend/routes/system.routes.ts#L331) |
-| `GET` | `/api/_metrics` | Request metrics (format=prometheus for text exposition) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:340](../../Backend/routes/system.routes.ts#L340) |
-| `GET` | `/api/_logs` | Recent structured logs (level, q, limit) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:357](../../Backend/routes/system.routes.ts#L357) |
-| `GET` | `/api/_events` | Live event stream (Server-Sent Events) | session | — | 401 403 429 | [system.routes.ts:375](../../Backend/routes/system.routes.ts#L375) |
-| `GET` | `/console` | Backend console (HTML) | public | — | 429 | [system.routes.ts:466](../../Backend/routes/system.routes.ts#L466) |
-| `GET` | `/backend.html` | Backend console (HTML, alias) | public | — | 429 | [system.routes.ts:472](../../Backend/routes/system.routes.ts#L472) |
-| `GET` | `/fonts/:file` | Console webfonts (self-hosted) | public | — | 429 | [system.routes.ts:500](../../Backend/routes/system.routes.ts#L500) |
-| `GET` | `/` | Redirect to the console | public | — | 429 | [system.routes.ts:506](../../Backend/routes/system.routes.ts#L506) |
+| `GET` | `/api/health` | Liveness probe | public | — | 429 | [system.routes.ts:254](../../Backend/routes/system.routes.ts#L254) |
+| `GET` | `/api/ready` | Readiness probe — database reachable, write queue healthy, audit chain intact | public | — | 503 | [system.routes.ts:259](../../Backend/routes/system.routes.ts#L259) |
+| `GET` | `/api/version` | Build and runtime version | public | — | 429 | [system.routes.ts:291](../../Backend/routes/system.routes.ts#L291) |
+| `GET` | `/api/openapi.json` | OpenAPI 3.1 document generated from the route table | public | — | 429 | [system.routes.ts:303](../../Backend/routes/system.routes.ts#L303) |
+| `GET` | `/api/_inventory` | Every registered route — API discovery | session | — | 401 403 429 | [system.routes.ts:314](../../Backend/routes/system.routes.ts#L314) |
+| `GET` | `/api/_status-codes` | Status codes this API can return | public | — | 429 | [system.routes.ts:322](../../Backend/routes/system.routes.ts#L322) |
+| `GET` | `/api/_config` | Effective configuration, secrets redacted | session | Administration ≥ view | 401 403 429 | [system.routes.ts:329](../../Backend/routes/system.routes.ts#L329) |
+| `GET` | `/api/_metrics` | Request metrics (format=prometheus for text exposition) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:338](../../Backend/routes/system.routes.ts#L338) |
+| `GET` | `/api/_logs` | Recent structured logs (level, q, limit) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:355](../../Backend/routes/system.routes.ts#L355) |
+| `GET` | `/api/_events` | Live event stream (Server-Sent Events) | session | — | 401 403 429 | [system.routes.ts:373](../../Backend/routes/system.routes.ts#L373) |
+| `GET` | `/console` | Backend console (HTML) | public | — | 429 | [system.routes.ts:464](../../Backend/routes/system.routes.ts#L464) |
+| `GET` | `/backend.html` | Backend console (HTML, alias) | public | — | 429 | [system.routes.ts:470](../../Backend/routes/system.routes.ts#L470) |
+| `GET` | `/fonts/:file` | Console webfonts (self-hosted) | public | — | 429 | [system.routes.ts:498](../../Backend/routes/system.routes.ts#L498) |
+| `GET` | `/` | Redirect to the console | public | — | 429 | [system.routes.ts:504](../../Backend/routes/system.routes.ts#L504) |
 
 ## query
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/_query/collections` | Queryable collections and their fields | session | — | 401 403 429 | [system.routes.ts:413](../../Backend/routes/system.routes.ts#L413) |
-| `POST` | `/api/_query` | Run a safe JSON query against an allow-listed collection | session | — | 401 422 | [system.routes.ts:427](../../Backend/routes/system.routes.ts#L427) |
+| `GET` | `/api/_query/collections` | Queryable collections and their fields | session | — | 401 403 429 | [system.routes.ts:411](../../Backend/routes/system.routes.ts#L411) |
+| `POST` | `/api/_query` | Run a safe JSON query against an allow-listed collection | session | — | 401 422 | [system.routes.ts:425](../../Backend/routes/system.routes.ts#L425) |
 
 ## auth
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/auth/invite` | Inspect an invite link before accepting it | public | auth rate limit | 400 410 429 | [auth.routes.ts:319](../../Backend/routes/auth.routes.ts#L319) |
-| `POST` | `/api/auth/accept-invite` | Set a password and activate an invited account | public | auth rate limit | 400 410 422 429 | [auth.routes.ts:350](../../Backend/routes/auth.routes.ts#L350) |
-| `GET` | `/api/auth/demo-accounts` | Demo accounts available outside production | public | — | 429 | [auth.routes.ts:387](../../Backend/routes/auth.routes.ts#L387) |
-| `POST` | `/api/auth/demo` | One-step demo sign-in by role (non-production only) | public | auth rate limit | 404 422 429 | [auth.routes.ts:412](../../Backend/routes/auth.routes.ts#L412) |
-| `POST` | `/api/auth/sign-in` | Password sign-in (step 1 of 2) | public | auth rate limit | 401 403 422 423 429 | [auth.routes.ts:439](../../Backend/routes/auth.routes.ts#L439) |
-| `GET` | `/api/auth/pending` | Member for the current password-only session | partial (password only) | — | 401 | [auth.routes.ts:512](../../Backend/routes/auth.routes.ts#L512) |
-| `POST` | `/api/auth/mfa/enroll` | First authenticator enrollment during sign-in (only for members with no second factor) | partial (password only) | per-account rate limit · auth rate limit | 401 403 409 429 | [auth.routes.ts:529](../../Backend/routes/auth.routes.ts#L529) |
-| `POST` | `/api/auth/mfa/enroll/confirm` | Confirm the first authenticator with one valid code and finish sign-in | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:569](../../Backend/routes/auth.routes.ts#L569) |
-| `POST` | `/api/auth/mfa/totp` | Verify a 6-digit authenticator code (step 2 of 2) | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 422 429 | [auth.routes.ts:626](../../Backend/routes/auth.routes.ts#L626) |
-| `POST` | `/api/auth/step-up` | Re-verify with an authenticator code for sensitive actions or to unlock | session | interactive session · per-account rate limit · auth rate limit | 401 403 422 429 | [auth.routes.ts:666](../../Backend/routes/auth.routes.ts#L666) |
-| `POST` | `/api/auth/totp/enroll` | Start authenticator-app enrollment — returns the secret once (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:709](../../Backend/routes/auth.routes.ts#L709) |
-| `POST` | `/api/auth/totp/confirm` | Finish authenticator-app enrollment with one valid code | session | interactive session · per-account rate limit · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:742](../../Backend/routes/auth.routes.ts#L742) |
-| `POST` | `/api/auth/webauthn/options` | Passkey challenge for sign-in, second factor or step-up/unlock | public | auth rate limit | 401 403 409 422 429 | [auth.routes.ts:793](../../Backend/routes/auth.routes.ts#L793) |
-| `POST` | `/api/auth/webauthn/verify` | Passkey sign-in, second factor or step-up/unlock verification | public | auth rate limit | 400 401 403 422 429 | [auth.routes.ts:821](../../Backend/routes/auth.routes.ts#L821) |
-| `GET` | `/api/auth/passkeys` | Your registered passkeys | session | interactive session | 401 403 | [auth.routes.ts:917](../../Backend/routes/auth.routes.ts#L917) |
-| `POST` | `/api/auth/passkeys/options` | Begin passkey registration (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:938](../../Backend/routes/auth.routes.ts#L938) |
-| `POST` | `/api/auth/passkeys` | Complete passkey registration | session | interactive session · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:952](../../Backend/routes/auth.routes.ts#L952) |
-| `DELETE` | `/api/auth/passkeys/:credentialId` | Remove one of your passkeys (step-up) | session | step-up · interactive session | 401 403 404 409 | [auth.routes.ts:985](../../Backend/routes/auth.routes.ts#L985) |
-| `GET` | `/api/auth/session` | Current principal, sessions and elevations | session | — | 401 403 429 | [auth.routes.ts:1019](../../Backend/routes/auth.routes.ts#L1019) |
-| `DELETE` | `/api/auth/sessions/:sessionPrefix` | Revoke one of your other sessions | session | interactive session | 401 403 404 | [auth.routes.ts:1037](../../Backend/routes/auth.routes.ts#L1037) |
-| `POST` | `/api/auth/sign-out` | End this session | partial (password only) | — | 401 403 429 | [auth.routes.ts:1057](../../Backend/routes/auth.routes.ts#L1057) |
-| `POST` | `/api/auth/sign-out-everywhere` | Revoke all sessions for this account | session | interactive session | 401 403 429 | [auth.routes.ts:1074](../../Backend/routes/auth.routes.ts#L1074) |
-| `GET` | `/api/me/capabilities` | Effective permissions for the signed-in member | session | — | 401 403 429 | [team.routes.ts:121](../../Backend/routes/team.routes.ts#L121) |
+| `GET` | `/api/auth/invite` | Inspect an invite link before accepting it | public | auth rate limit | 400 410 429 | [auth.routes.ts:328](../../Backend/routes/auth.routes.ts#L328) |
+| `POST` | `/api/auth/accept-invite` | Set a password and activate an invited account | public | auth rate limit | 400 410 422 429 | [auth.routes.ts:359](../../Backend/routes/auth.routes.ts#L359) |
+| `GET` | `/api/auth/demo-accounts` | Demo accounts available outside production | public | — | 429 | [auth.routes.ts:396](../../Backend/routes/auth.routes.ts#L396) |
+| `POST` | `/api/auth/demo` | One-step demo sign-in by role (non-production only) | public | auth rate limit | 404 422 429 | [auth.routes.ts:421](../../Backend/routes/auth.routes.ts#L421) |
+| `POST` | `/api/auth/sign-in` | Password sign-in (step 1 of 2) | public | auth rate limit | 401 403 422 423 429 | [auth.routes.ts:448](../../Backend/routes/auth.routes.ts#L448) |
+| `GET` | `/api/auth/pending` | Member for the current password-only session | partial (password only) | — | 401 | [auth.routes.ts:521](../../Backend/routes/auth.routes.ts#L521) |
+| `POST` | `/api/auth/mfa/enroll` | First authenticator enrollment during sign-in (only for members with no second factor) | partial (password only) | per-account rate limit · auth rate limit | 401 403 409 429 | [auth.routes.ts:538](../../Backend/routes/auth.routes.ts#L538) |
+| `POST` | `/api/auth/mfa/enroll/confirm` | Confirm the first authenticator with one valid code and finish sign-in | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:578](../../Backend/routes/auth.routes.ts#L578) |
+| `POST` | `/api/auth/mfa/totp` | Verify a 6-digit authenticator code (step 2 of 2) | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 422 429 | [auth.routes.ts:635](../../Backend/routes/auth.routes.ts#L635) |
+| `POST` | `/api/auth/mfa/backup` | Use a one-time backup code as the second factor (step 2 of 2) | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 422 429 | [auth.routes.ts:675](../../Backend/routes/auth.routes.ts#L675) |
+| `GET` | `/api/auth/backup-codes` | How many unused backup codes you have | session | interactive session | 401 403 | [auth.routes.ts:719](../../Backend/routes/auth.routes.ts#L719) |
+| `POST` | `/api/auth/backup-codes` | Generate a new set of one-time backup codes — returned once, replaces the old set (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:728](../../Backend/routes/auth.routes.ts#L728) |
+| `POST` | `/api/auth/step-up` | Re-verify with an authenticator code for sensitive actions or to unlock | session | interactive session · per-account rate limit · auth rate limit | 401 403 422 429 | [auth.routes.ts:757](../../Backend/routes/auth.routes.ts#L757) |
+| `POST` | `/api/auth/totp/enroll` | Start authenticator-app enrollment — returns the secret once (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:800](../../Backend/routes/auth.routes.ts#L800) |
+| `POST` | `/api/auth/totp/confirm` | Finish authenticator-app enrollment with one valid code | session | interactive session · per-account rate limit · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:833](../../Backend/routes/auth.routes.ts#L833) |
+| `POST` | `/api/auth/webauthn/options` | Passkey challenge for sign-in, second factor or step-up/unlock | public | auth rate limit | 401 403 409 422 429 | [auth.routes.ts:884](../../Backend/routes/auth.routes.ts#L884) |
+| `POST` | `/api/auth/webauthn/verify` | Passkey sign-in, second factor or step-up/unlock verification | public | auth rate limit | 400 401 403 422 429 | [auth.routes.ts:912](../../Backend/routes/auth.routes.ts#L912) |
+| `GET` | `/api/auth/passkeys` | Your registered passkeys | session | interactive session | 401 403 | [auth.routes.ts:1008](../../Backend/routes/auth.routes.ts#L1008) |
+| `POST` | `/api/auth/passkeys/options` | Begin passkey registration (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:1029](../../Backend/routes/auth.routes.ts#L1029) |
+| `POST` | `/api/auth/passkeys` | Complete passkey registration | session | interactive session · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:1043](../../Backend/routes/auth.routes.ts#L1043) |
+| `DELETE` | `/api/auth/passkeys/:credentialId` | Remove one of your passkeys (step-up) | session | step-up · interactive session | 401 403 404 409 | [auth.routes.ts:1076](../../Backend/routes/auth.routes.ts#L1076) |
+| `GET` | `/api/auth/session` | Current principal, sessions and elevations | session | — | 401 403 429 | [auth.routes.ts:1110](../../Backend/routes/auth.routes.ts#L1110) |
+| `DELETE` | `/api/auth/sessions/:sessionPrefix` | Revoke one of your other sessions | session | interactive session | 401 403 404 | [auth.routes.ts:1128](../../Backend/routes/auth.routes.ts#L1128) |
+| `POST` | `/api/auth/sign-out` | End this session | partial (password only) | — | 401 403 429 | [auth.routes.ts:1148](../../Backend/routes/auth.routes.ts#L1148) |
+| `POST` | `/api/auth/sign-out-everywhere` | Revoke all sessions for this account | session | interactive session | 401 403 429 | [auth.routes.ts:1165](../../Backend/routes/auth.routes.ts#L1165) |
+| `GET` | `/api/me/capabilities` | Effective permissions for the signed-in member | session | — | 401 403 429 | [team.routes.ts:128](../../Backend/routes/team.routes.ts#L128) |
 | `POST` | `/api/auth/recovery/request` | Request a password reset link (always 202, no enumeration) | public | — | 202 422 429 | [recovery.routes.ts:57](../../Backend/routes/recovery.routes.ts#L57) |
 | `POST` | `/api/auth/recovery/reset` | Set a new password from a reset link (signs out every session) | public | — | 400 410 422 429 | [recovery.routes.ts:117](../../Backend/routes/recovery.routes.ts#L117) |
 
@@ -108,30 +111,31 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 | `GET` | `/api/tasks/_activity` | Events, comments, subtasks and time logs for visible tasks | session | Project ≥ view | 401 403 429 | [tasks.routes.ts:173](../../Backend/routes/tasks.routes.ts#L173) |
 | `GET` | `/api/tasks/:key` | One task | session | — | 401 404 | [tasks.routes.ts:195](../../Backend/routes/tasks.routes.ts#L195) |
 | `POST` | `/api/tasks` | Create a task | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:203](../../Backend/routes/tasks.routes.ts#L203) |
-| `PATCH` | `/api/tasks/:key` | Update a task (status, assignee, priority…) | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:242](../../Backend/routes/tasks.routes.ts#L242) |
-| `DELETE` | `/api/tasks/:key` | Delete a task | session | Project ≥ manage | 401 403 404 | [tasks.routes.ts:296](../../Backend/routes/tasks.routes.ts#L296) |
-| `POST` | `/api/tasks/:key/comments` | Comment on a task | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:319](../../Backend/routes/tasks.routes.ts#L319) |
-| `POST` | `/api/tasks/:key/subtasks` | Add a subtask | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:350](../../Backend/routes/tasks.routes.ts#L350) |
-| `PATCH` | `/api/tasks/:key/subtasks/:subtaskId` | Complete or reopen a subtask | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:367](../../Backend/routes/tasks.routes.ts#L367) |
-| `POST` | `/api/tasks/:key/time` | Log time against a task | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:394](../../Backend/routes/tasks.routes.ts#L394) |
+| `PATCH` | `/api/tasks/:key` | Update a task (status, assignee, priority…) | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:243](../../Backend/routes/tasks.routes.ts#L243) |
+| `DELETE` | `/api/tasks/:key` | Delete a task | session | Project ≥ manage | 401 403 404 | [tasks.routes.ts:294](../../Backend/routes/tasks.routes.ts#L294) |
+| `POST` | `/api/tasks/:key/comments` | Comment on a task | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:317](../../Backend/routes/tasks.routes.ts#L317) |
+| `POST` | `/api/tasks/:key/subtasks` | Add a subtask | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:348](../../Backend/routes/tasks.routes.ts#L348) |
+| `PATCH` | `/api/tasks/:key/subtasks/:subtaskId` | Complete or reopen a subtask | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:365](../../Backend/routes/tasks.routes.ts#L365) |
+| `POST` | `/api/tasks/:key/time` | Log time against a task | session | Project ≥ contribute | 401 403 404 422 | [tasks.routes.ts:392](../../Backend/routes/tasks.routes.ts#L392) |
 
 ## team
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/team` | Members who share a product with the caller | session | Organization ≥ view | 401 403 429 | [team.routes.ts:79](../../Backend/routes/team.routes.ts#L79) |
-| `GET` | `/api/team/roles` | Role × area permission matrix | session | — | 401 403 429 | [team.routes.ts:108](../../Backend/routes/team.routes.ts#L108) |
-| `POST` | `/api/team/invites` | Invite a member to the workspace | session | Organization ≥ admin · step-up | 401 403 409 422 | [team.routes.ts:155](../../Backend/routes/team.routes.ts#L155) |
-| `PATCH` | `/api/team/:memberId` | Change role, products or status | session | Organization ≥ admin · step-up | 401 403 429 | [team.routes.ts:211](../../Backend/routes/team.routes.ts#L211) |
+| `GET` | `/api/team` | Members who share a product with the caller | session | Organization ≥ view | 401 403 429 | [team.routes.ts:86](../../Backend/routes/team.routes.ts#L86) |
+| `GET` | `/api/team/roles` | Role × area permission matrix | session | — | 401 403 429 | [team.routes.ts:115](../../Backend/routes/team.routes.ts#L115) |
+| `POST` | `/api/team/invites` | Invite a member to the workspace | session | Organization ≥ admin · step-up | 401 403 409 422 | [team.routes.ts:162](../../Backend/routes/team.routes.ts#L162) |
+| `PATCH` | `/api/team/:memberId` | Change role, products or status | session | Organization ≥ admin · step-up | 401 403 429 | [team.routes.ts:218](../../Backend/routes/team.routes.ts#L218) |
+| `POST` | `/api/access/requests` | Ask the admins for access to an area of the app | session | — | 401 422 | [team.routes.ts:267](../../Backend/routes/team.routes.ts#L267) |
 
 ## access
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/access/grants` | All JIT grants | session | Administration ≥ view | 401 403 429 | [team.routes.ts:254](../../Backend/routes/team.routes.ts#L254) |
-| `POST` | `/api/access/grants` | Request time-boxed production access | session | step-up | 401 403 429 | [team.routes.ts:263](../../Backend/routes/team.routes.ts#L263) |
-| `POST` | `/api/access/grants/:grantId/approve` | Approve a JIT grant (two-person rule) | session | step-up | 401 403 429 | [team.routes.ts:283](../../Backend/routes/team.routes.ts#L283) |
-| `POST` | `/api/access/grants/:grantId/revoke` | Revoke or deny a JIT grant | session | Deployment ≥ manage · step-up | 401 403 429 | [team.routes.ts:296](../../Backend/routes/team.routes.ts#L296) |
+| `GET` | `/api/access/grants` | All JIT grants | session | Administration ≥ view | 401 403 429 | [team.routes.ts:309](../../Backend/routes/team.routes.ts#L309) |
+| `POST` | `/api/access/grants` | Request time-boxed production access | session | step-up | 401 403 429 | [team.routes.ts:318](../../Backend/routes/team.routes.ts#L318) |
+| `POST` | `/api/access/grants/:grantId/approve` | Approve a JIT grant (two-person rule) | session | step-up | 401 403 429 | [team.routes.ts:338](../../Backend/routes/team.routes.ts#L338) |
+| `POST` | `/api/access/grants/:grantId/revoke` | Revoke or deny a JIT grant | session | Deployment ≥ manage · step-up | 401 403 429 | [team.routes.ts:351](../../Backend/routes/team.routes.ts#L351) |
 
 ## docs
 
@@ -217,22 +221,22 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/stream` | Realtime collaboration events (SSE, filtered per subscriber) | session | — | 401 503 | [messaging.routes.ts:268](../../Backend/routes/messaging.routes.ts#L268) |
-| `GET` | `/api/channels` | Channels and DMs visible to the caller | session | — | 401 403 429 | [messaging.routes.ts:285](../../Backend/routes/messaging.routes.ts#L285) |
-| `POST` | `/api/channels` | Create a channel or start a DM | session | Project ≥ view | 401 403 404 422 429 | [messaging.routes.ts:302](../../Backend/routes/messaging.routes.ts#L302) |
-| `GET` | `/api/channels/:id` | One channel | session | — | 401 404 | [messaging.routes.ts:398](../../Backend/routes/messaging.routes.ts#L398) |
-| `PATCH` | `/api/channels/:id` | Update channel settings and membership | session | — | 401 403 404 422 | [messaging.routes.ts:409](../../Backend/routes/messaging.routes.ts#L409) |
-| `POST` | `/api/channels/:id/join` | Join a public channel | session | — | 401 403 404 | [messaging.routes.ts:470](../../Backend/routes/messaging.routes.ts#L470) |
-| `POST` | `/api/channels/:id/leave` | Leave a channel | session | — | 401 404 409 | [messaging.routes.ts:492](../../Backend/routes/messaging.routes.ts#L492) |
-| `POST` | `/api/channels/:id/read` | Mark a channel read up to now (or `at`) | session | — | 401 404 422 | [messaging.routes.ts:516](../../Backend/routes/messaging.routes.ts#L516) |
-| `GET` | `/api/channels/:id/messages` | Messages, newest page first (?before=cursor&limit=&thread=messageId) | session | — | 401 404 422 | [messaging.routes.ts:535](../../Backend/routes/messaging.routes.ts#L535) |
-| `GET` | `/api/channels/:id/pins` | Pinned messages in a channel | session | — | 401 404 | [messaging.routes.ts:576](../../Backend/routes/messaging.routes.ts#L576) |
-| `POST` | `/api/channels/:id/messages` | Post a message (text, code, poll, sticker, file) or thread reply | session | — | 401 403 404 422 429 | [messaging.routes.ts:592](../../Backend/routes/messaging.routes.ts#L592) |
-| `PATCH` | `/api/messages/:id` | Edit your message, or close your poll | session | — | 401 403 404 409 422 | [messaging.routes.ts:701](../../Backend/routes/messaging.routes.ts#L701) |
-| `DELETE` | `/api/messages/:id` | Delete a message (author or channel admin) — leaves a tombstone | session | — | 401 403 404 | [messaging.routes.ts:754](../../Backend/routes/messaging.routes.ts#L754) |
-| `POST` | `/api/messages/:id/reactions` | Toggle your reaction on a message | session | — | 401 403 404 409 422 | [messaging.routes.ts:797](../../Backend/routes/messaging.routes.ts#L797) |
-| `POST` | `/api/messages/:id/pin` | Pin or unpin a message (toggles when `pinned` is omitted) | session | — | 401 403 404 409 | [messaging.routes.ts:829](../../Backend/routes/messaging.routes.ts#L829) |
-| `POST` | `/api/messages/:id/vote` | Vote on a poll (toggles; one option per member) | session | — | 401 403 404 409 422 | [messaging.routes.ts:861](../../Backend/routes/messaging.routes.ts#L861) |
+| `GET` | `/api/stream` | Realtime collaboration events (SSE, filtered per subscriber) | session | — | 401 503 | [messaging.routes.ts:271](../../Backend/routes/messaging.routes.ts#L271) |
+| `GET` | `/api/channels` | Channels and DMs visible to the caller | session | — | 401 403 429 | [messaging.routes.ts:288](../../Backend/routes/messaging.routes.ts#L288) |
+| `POST` | `/api/channels` | Create a channel or start a DM | session | Project ≥ view | 401 403 404 422 429 | [messaging.routes.ts:305](../../Backend/routes/messaging.routes.ts#L305) |
+| `GET` | `/api/channels/:id` | One channel | session | — | 401 404 | [messaging.routes.ts:401](../../Backend/routes/messaging.routes.ts#L401) |
+| `PATCH` | `/api/channels/:id` | Update channel settings and membership | session | — | 401 403 404 422 | [messaging.routes.ts:412](../../Backend/routes/messaging.routes.ts#L412) |
+| `POST` | `/api/channels/:id/join` | Join a public channel | session | — | 401 403 404 | [messaging.routes.ts:473](../../Backend/routes/messaging.routes.ts#L473) |
+| `POST` | `/api/channels/:id/leave` | Leave a channel | session | — | 401 404 409 | [messaging.routes.ts:495](../../Backend/routes/messaging.routes.ts#L495) |
+| `POST` | `/api/channels/:id/read` | Mark a channel read up to now (or `at`) | session | — | 401 404 422 | [messaging.routes.ts:519](../../Backend/routes/messaging.routes.ts#L519) |
+| `GET` | `/api/channels/:id/messages` | Messages, newest page first (?before=cursor&limit=&thread=messageId) | session | — | 401 404 422 | [messaging.routes.ts:538](../../Backend/routes/messaging.routes.ts#L538) |
+| `GET` | `/api/channels/:id/pins` | Pinned messages in a channel | session | — | 401 404 | [messaging.routes.ts:579](../../Backend/routes/messaging.routes.ts#L579) |
+| `POST` | `/api/channels/:id/messages` | Post a message (text, code, poll, sticker, file) or thread reply | session | — | 401 403 404 422 429 | [messaging.routes.ts:595](../../Backend/routes/messaging.routes.ts#L595) |
+| `PATCH` | `/api/messages/:id` | Edit your message, or close your poll | session | — | 401 403 404 409 422 | [messaging.routes.ts:704](../../Backend/routes/messaging.routes.ts#L704) |
+| `DELETE` | `/api/messages/:id` | Delete a message (author or channel admin) — leaves a tombstone | session | — | 401 403 404 | [messaging.routes.ts:757](../../Backend/routes/messaging.routes.ts#L757) |
+| `POST` | `/api/messages/:id/reactions` | Toggle your reaction on a message | session | — | 401 403 404 409 422 | [messaging.routes.ts:800](../../Backend/routes/messaging.routes.ts#L800) |
+| `POST` | `/api/messages/:id/pin` | Pin or unpin a message (toggles when `pinned` is omitted) | session | — | 401 403 404 409 | [messaging.routes.ts:832](../../Backend/routes/messaging.routes.ts#L832) |
+| `POST` | `/api/messages/:id/vote` | Vote on a poll (toggles; one option per member) | session | — | 401 403 404 409 422 | [messaging.routes.ts:864](../../Backend/routes/messaging.routes.ts#L864) |
 
 ## workspaces
 
@@ -322,9 +326,9 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/integrations` | Integrations: built-ins, connected channels and the connect catalogue | session | Administration ≥ view | 401 403 429 | [integrations.routes.ts:195](../../Backend/routes/integrations.routes.ts#L195) |
-| `POST` | `/api/integrations/:kind/connect` | Connect Slack, a generic webhook or PagerDuty (credential sealed at rest) | session | Administration ≥ manage · step-up | 401 403 404 422 503 | [integrations.routes.ts:233](../../Backend/routes/integrations.routes.ts#L233) |
-| `DELETE` | `/api/integrations/:id` | Disconnect an integration (removes its subscriptions) | session | Administration ≥ manage · step-up | 401 403 404 | [integrations.routes.ts:316](../../Backend/routes/integrations.routes.ts#L316) |
+| `GET` | `/api/integrations` | Integrations: built-ins, connected channels and the connect catalogue | session | Administration ≥ view | 401 403 429 | [integrations.routes.ts:191](../../Backend/routes/integrations.routes.ts#L191) |
+| `POST` | `/api/integrations/:kind/connect` | Connect Slack, a generic webhook or PagerDuty (credential sealed at rest) | session | Administration ≥ manage · step-up | 401 403 404 422 503 | [integrations.routes.ts:229](../../Backend/routes/integrations.routes.ts#L229) |
+| `DELETE` | `/api/integrations/:id` | Disconnect an integration (removes its subscriptions) | session | Administration ≥ manage · step-up | 401 403 404 | [integrations.routes.ts:312](../../Backend/routes/integrations.routes.ts#L312) |
 
 ## webhooks
 

@@ -310,7 +310,6 @@ describe('lib/http — Router', () => {
   // keys on 5xx). It should be a 400 (or 404).
   it(
     'malformed percent-encoding in a path param is a client error, not a 500',
-    { todo: 'FINDING B-3: decodeURIComponent URIError becomes 500' },
     async () => {
       const res = await app.client().get('/api/items/%E0%A4%A');
       assert.ok(res.status >= 400 && res.status < 500, `got ${res.status}`);

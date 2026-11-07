@@ -146,8 +146,9 @@ export function hasOwnerPowers(p: Principal): boolean {
   return p.role === 'Owner' && effectiveLevel(p, 'Organization') === 'admin';
 }
 
+/** Owners see every product only through `hasOwnerPowers` (so PAT scope applies; FINDING B-8). */
 export function canSeeProduct(p: Principal, product: ProductId): boolean {
-  return p.role === 'Owner' || p.products.includes(product);
+  return hasOwnerPowers(p) || p.products.includes(product);
 }
 
 /** Route guard: rejects personal access tokens (account and credential management are session-only). */

@@ -251,7 +251,6 @@ describe('db/driver — backpressure and serialisation', () => {
   // persisting. Keys need the same treatment as values.
   it(
     'never sends a \\u0000 escape to jsonb, even inside object keys',
-    { todo: 'FINDING B-30: NUL in object keys poisons the row' },
     async () => {
       const { pg, driver } = setup();
       driver.write('collab_messages', 'msg-1', { reactions: { '\u0000': ['m4'] } });

@@ -165,7 +165,6 @@ describe('storage/magic — text types', () => {
   // Content-Type, but the check is incomplete as written.
   it(
     'refuses every WHATWG HTML sniffing pattern as text',
-    { todo: 'FINDING B-20: magic text check misses most WHATWG HTML sniff patterns' },
     () => {
       for (const s of [
         '<!-- c --><script>x</script>',

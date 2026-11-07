@@ -59,11 +59,24 @@ const LOAD_SQL = `
   ORDER BY updated_at DESC, key
   LIMIT $2`;
 
-/** jsonb rejects NUL characters; strip them rather than poison a batch. */
+const stripNul = (s: string) => (s.includes('\u0000') ? s.replaceAll('\u0000', '') : s);
+
+/**
+ * jsonb rejects NUL characters; strip them from string values *and* object keys
+ * rather than poison a batch (FINDING B-30).
+ */
 function serialise(value: unknown): string {
-  return JSON.stringify(value, (_k, v: unknown) =>
-    typeof v === 'string' && v.includes('\u0000') ? v.replaceAll('\u0000', '') : v,
-  );
+  return JSON.stringify(value, (_k, v: unknown) => {
+    if (typeof v === 'string') return stripNul(v);
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const keys = Object.keys(v);
+      if (keys.some((k) => k.includes('\u0000')))
+        return Object.fromEntries(
+          keys.map((k) => [stripNul(k), (v as Record<string, unknown>)[k]]),
+        );
+    }
+    return v;
+  });
 }
 
 function sqlState(err: unknown): string {

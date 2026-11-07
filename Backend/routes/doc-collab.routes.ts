@@ -17,7 +17,7 @@
 import type { Ctx, Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
-import { can, canSeeProduct, requireArea } from '../auth/rbac.ts';
+import { can, canSeeProduct, hasOwnerPowers, requireArea } from '../auth/rbac.ts';
 import { audit } from '../audit/auditLog.ts';
 import { subscribe } from '../lib/events.ts';
 import { db } from '../store/db.ts';
@@ -53,7 +53,7 @@ const commentPatch = v.object({
 function readable(p: Principal, d: ProjectDoc) {
   return (
     canSeeProduct(p, d.product) &&
-    (d.visibility !== 'restricted' || d.editors.includes(p.memberId) || p.role === 'Owner')
+    (d.visibility !== 'restricted' || d.editors.includes(p.memberId) || hasOwnerPowers(p))
   );
 }
 

@@ -15,7 +15,7 @@
 import type { Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
-import { requireArea, requireStepUp } from '../auth/rbac.ts';
+import { canSeeProduct, requireArea, requireStepUp } from '../auth/rbac.ts';
 import { audit } from '../audit/auditLog.ts';
 import { publish } from '../lib/events.ts';
 import { config } from '../config/env.ts';
@@ -146,13 +146,9 @@ export function integrationView(i: IntegrationRow) {
 function builtIns(p: Principal) {
   const mode = githubMode();
   const visibleRepos = [...repos.values()].filter(
-    (r) =>
-      (githubLive() ? r.source !== 'demo' : true) &&
-      (p.role === 'Owner' || p.products.includes(r.product)),
+    (r) => (githubLive() ? r.source !== 'demo' : true) && canSeeProduct(p, r.product),
   );
-  const ownMonitors = [...monitors.values()].filter(
-    (m) => p.role === 'Owner' || p.products.includes(m.product),
-  );
+  const ownMonitors = [...monitors.values()].filter((m) => canSeeProduct(p, m.product));
   const failing = ownMonitors.filter((m) => m.status === 'down');
   return [
     {

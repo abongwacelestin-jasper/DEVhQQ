@@ -228,10 +228,14 @@ export function registerTeamRoutes(r: Router) {
       if (!target) throw new HttpError(404, 'not_found', 'Not found');
       if (target.id === ctx.principal!.memberId && patch.role && patch.role !== target.role)
         throw new HttpError(403, 'self_demotion', 'Ask another Owner to change your role');
+      if (target.id === ctx.principal!.memberId && patch.status && patch.status !== target.status)
+        throw new HttpError(403, 'self_demotion', 'Ask another Owner to change your status');
+      // Demoting or deactivating the last active Owner would leave nobody to administer the
+      // workspace (FINDING B-7).
       if (
         target.role === 'Owner' &&
-        patch.role &&
-        patch.role !== 'Owner' &&
+        target.status === 'active' &&
+        ((patch.role && patch.role !== 'Owner') || (patch.status && patch.status !== 'active')) &&
         [...db.members.values()].filter((m) => m.role === 'Owner' && m.status === 'active')
           .length === 1
       ) {

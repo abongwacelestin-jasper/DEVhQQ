@@ -110,7 +110,10 @@ const editBody = v.object({
   text: v.optional(v.string({ max: TEXT_MAX, trim: false })),
   pollClosed: v.optional(v.boolean()),
 });
-const reactionBody = v.object({ emoji: v.string({ min: 1, max: 16, pattern: /^\S+$/u }) });
+// No whitespace and no control characters (a NUL here used to become an object key).
+const reactionBody = v.object({
+  emoji: v.string({ min: 1, max: 16, pattern: /^[^\s\p{Cc}]+$/u }),
+});
 const pinBody = v.object({ pinned: v.optional(v.boolean()) });
 const voteBody = v.object({ option: v.int({ min: 0, max: 9 }) });
 const readBody = v.object({ at: v.optional(v.string({ max: 40 })) });

@@ -26,7 +26,11 @@ function looksLikeSafeText(b: Uint8Array): boolean {
   try {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(b.subarray(0, end));
     // Browsers sniff these as HTML/SVG/XML in some contexts — refuse even as attachments.
-    return !/^\s*<(!doctype|html|svg|\?xml|script|head|body|iframe)/i.test(text);
+    // Covers every WHATWG MIME Sniffing HTML pattern (§7.1); short tags need a
+    // tag-terminating space or '>' as in the spec (FINDING B-20).
+    return !/^\s*(<!--|<\?xml|<(!doctype|html|svg|script|head|body|iframe)|<(a|b|br|p|h1|div|font|table|style|title)[\s>])/i.test(
+      text,
+    );
   } catch {
     return false;
   }

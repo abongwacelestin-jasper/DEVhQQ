@@ -102,7 +102,9 @@ const signInBody = v.object({
   password: v.string({ min: 1, max: 512, trim: false }),
 });
 const totpBody = v.object({ code: v.string({ pattern: /^\d{6}$/ }) });
-const backupBody = v.object({ code: v.string({ pattern: /^[A-Za-z0-9]{4}[\s-]?[A-Za-z0-9]{4}$/ }) });
+const backupBody = v.object({
+  code: v.string({ pattern: /^[A-Za-z0-9]{4}[\s-]?[A-Za-z0-9]{4}$/ }),
+});
 const demoBody = v.object({
   role: v.enumOf(demoAccounts.map((a) => a.key) as [string, ...string[]]),
 });
@@ -727,7 +729,8 @@ export function registerAuthRoutes(r: Router) {
     'POST',
     '/api/auth/backup-codes',
     {
-      summary: 'Generate a new set of one-time backup codes — returned once, replaces the old set (step-up)',
+      summary:
+        'Generate a new set of one-time backup codes — returned once, replaces the old set (step-up)',
       tag: 'auth',
       responses: [401, 403, 429],
     },

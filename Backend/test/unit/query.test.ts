@@ -141,7 +141,6 @@ describe('lib/query — operator laws (property)', () => {
   // blog. `nin` must be the complement of `in` for array fields too.
   it(
     'nin is the complement of in for array-valued fields',
-    { todo: 'FINDING B-2: nin ignores array-valued fields' },
     () => {
       for (let i = 0; i < 50; i++) {
         const data = randomRows(12);

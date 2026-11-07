@@ -144,9 +144,7 @@ export const collections: Record<string, Collection> = {
     fields: ['seq', 'at', 'actor', 'action', 'target', 'sensitive'],
     // Same rule as GET /api/audit: the trail is for Administration:view only.
     rows: (p) =>
-      can(p, 'Administration', 'view')
-        ? (audit.list({ limit: 2000 }) as unknown as Row[])
-        : [],
+      can(p, 'Administration', 'view') ? (audit.list({ limit: 2000 }) as unknown as Row[]) : [],
   },
 };
 

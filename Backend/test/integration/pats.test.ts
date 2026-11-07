@@ -115,7 +115,6 @@ describe('PATs — Owner shortcuts honour token scope', () => {
   // not assigned to.
   it(
     'an Owner token without organization:admin cannot read restricted docs it does not edit',
-    { todo: 'FINDING B-8: raw role check bypasses PAT scope for Owner shortcuts' },
     async () => {
       const t = await issue(owner, ['project:view'], 'ci-docs');
       const res = await patClient(t.token).get('/api/docs/doc-api-runbook');
