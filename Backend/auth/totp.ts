@@ -7,7 +7,9 @@
  */
 
 import { createHmac, randomBytes } from 'node:crypto';
-import { safeEqual } from '../security/crypto.ts';
+import { isSealed, needsReseal, open, reseal, safeEqual, seal } from '../security/crypto.ts';
+import { createCollection } from '../store/collection.ts';
+import type { Member } from '../types.ts';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const STEP_SECONDS = 30;
@@ -55,6 +57,125 @@ export function verifyTotp(
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Secrets at rest, replay protection and enrollment
+// ---------------------------------------------------------------------------
+
+/** AAD context binding a sealed TOTP secret to its member (a copied ciphertext won't open). */
+export function totpContext(memberId: string): string {
+  return `member:${memberId}:totp`;
+}
+
+/** Seals a base32 secret for storage on `Member.totpSecret`. */
+export function sealTotpSecret(memberId: string, secret: string): string {
+  return seal(secret, totpContext(memberId));
+}
+
+/**
+ * Upgrades a member's stored secret in place when it is legacy plaintext or
+ * sealed under a retired key. Returns true when the caller must persist the
+ * member.
+ */
+export function migrateTotpSecret(member: Member): boolean {
+  if (!member.totpSecret || !needsReseal(member.totpSecret)) return false;
+  member.totpSecret = reseal(member.totpSecret, totpContext(member.id));
+  return true;
+}
+
+/** Plaintext base32 secret for verification only. Never log or return it. */
+export function openTotpSecret(member: Member): string | null {
+  if (!member.totpSecret) return null;
+  return isSealed(member.totpSecret)
+    ? open(member.totpSecret, totpContext(member.id))
+    : member.totpSecret;
+}
+
+/**
+ * Last accepted TOTP counter per member, across every session — a code that
+ * worked once can never be replayed on another session or device.
+ */
+interface TotpCounter {
+  memberId: string;
+  lastCounter: number;
+}
+const totpCounters = createCollection<TotpCounter>('auth.totp_counters');
+
+/**
+ * Verifies `code` for a member, enforcing per-member and per-session replay
+ * protection, and records the counter on success. Returns the matched counter.
+ */
+export function verifyMemberTotp(
+  member: Member,
+  code: string,
+  sessionLastCounter = -1,
+): number | null {
+  const secret = openTotpSecret(member);
+  if (!secret) return null;
+  const memberLast = totpCounters.get(member.id)?.lastCounter ?? -1;
+  const counter = verifyTotp(secret, code, Math.max(memberLast, sessionLastCounter));
+  if (counter !== null) totpCounters.set(member.id, { memberId: member.id, lastCounter: counter });
+  return counter;
+}
+
+interface PendingEnrollment {
+  sealedSecret: string;
+  sessionId: string;
+  expiresAt: number;
+  attempts: number;
+}
+
+export const ENROLLMENT_TTL_MS = 10 * 60_000;
+const MAX_ENROLLMENT_ATTEMPTS = 5;
+const enrollments = new Map<string, PendingEnrollment>();
+
+/** Starts (or restarts) enrollment. The secret is kept sealed until confirmed. */
+export function beginEnrollment(member: Member, sessionId: string) {
+  const secret = generateTotpSecret();
+  const expiresAt = Date.now() + ENROLLMENT_TTL_MS;
+  enrollments.set(member.id, {
+    sealedSecret: seal(secret, `member:${member.id}:totp-pending`),
+    sessionId,
+    expiresAt,
+    attempts: 0,
+  });
+  return { secret, otpauthUri: totpUri(secret, member.email), expiresAt };
+}
+
+export type ConfirmResult =
+  | { ok: true; sealedSecret: string; counter: number }
+  | { ok: false; reason: 'no_enrollment' | 'wrong_session' | 'invalid_code' | 'too_many_attempts' };
+
+/**
+ * Confirms a pending enrollment with one valid code from the authenticator.
+ * The enrollment must belong to the session that started it.
+ */
+export function confirmEnrollment(member: Member, sessionId: string, code: string): ConfirmResult {
+  const p = enrollments.get(member.id);
+  if (!p || p.expiresAt < Date.now()) {
+    enrollments.delete(member.id);
+    return { ok: false, reason: 'no_enrollment' };
+  }
+  if (p.sessionId !== sessionId) return { ok: false, reason: 'wrong_session' };
+  const secret = open(p.sealedSecret, `member:${member.id}:totp-pending`);
+  const counter = verifyTotp(secret, code);
+  if (counter === null) {
+    p.attempts += 1;
+    if (p.attempts >= MAX_ENROLLMENT_ATTEMPTS) {
+      enrollments.delete(member.id);
+      return { ok: false, reason: 'too_many_attempts' };
+    }
+    return { ok: false, reason: 'invalid_code' };
+  }
+  enrollments.delete(member.id);
+  totpCounters.set(member.id, { memberId: member.id, lastCounter: counter });
+  return { ok: true, sealedSecret: sealTotpSecret(member.id, secret), counter };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, e] of enrollments) if (e.expiresAt < now) enrollments.delete(k);
+}, 60_000).unref();
 
 function base32Encode(buf: Buffer): string {
   let bits = 0;

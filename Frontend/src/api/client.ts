@@ -1,32 +1,28 @@
 /**
  * The one place the web app talks to the API.
  *
- * - Same origin in development (Vite proxies `/api` → the API), so the
- *   `__Host-` session cookie and the server's origin checks behave exactly as
- *   they do in production.
+ * - Same origin (Vite proxies `/api` in development; the edge does in
+ *   production), so the HttpOnly `__Host-` session cookie is the *only*
+ *   credential a browser session uses. No token is ever read from a response
+ *   body or written to JS-readable storage.
  * - Errors are never swallowed: callers get a typed `ApiError` and decide.
  * - Two server signals are handled centrally because every caller needs them:
- *   `401` with a dead session signs the user out; a step-up challenge opens
- *   re-verification instead of failing silently.
+ *   a dead session signs the user out; `401 step_up_required` opens
+ *   re-verification and then **retries the original request**, resolving or
+ *   rejecting the caller's promise with the retried result.
  */
 
 import type { ApiErrorBody } from './types';
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
-/**
- * Browsers on plain http (localhost) may refuse the `Secure` `__Host-` cookie,
- * so we also ask for the token in the response body and send it as a bearer
- * token. Production can drop this by removing the header below and relying on
- * the cookie alone.
- */
-export const TOKEN_CLIENT_HEADER = 'X-DevHQ-Client';
-
-const TOKEN_KEY = 'devhq.api.token';
 const SESSION_ENDED = new Set([
   'unauthenticated',
+  'invalid_token',
   'session_revoked',
   'session_expired',
+  'session_context_changed',
+  'account_inactive',
   'mfa_required',
 ]);
 
@@ -55,45 +51,69 @@ export class ApiError extends Error {
   get isSessionEnded() {
     return this.status === 401 && SESSION_ENDED.has(this.code);
   }
-}
 
-function readToken(): string | null {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
+  /** True when the server wants a fresh strong verification before this action. */
+  get isStepUp() {
+    return this.status === 401 && this.code === 'step_up_required';
   }
-}
 
-let token: string | null = readToken();
-
-export function getToken() {
-  return token;
-}
-
-export function setToken(next: string | null) {
-  token = next;
-  try {
-    if (next) sessionStorage.setItem(TOKEN_KEY, next);
-    else sessionStorage.removeItem(TOKEN_KEY);
-  } catch {
-    /* storage unavailable — the token still works for this page life */
+  /** The endpoint is not deployed (yet) or the integration behind it is not configured. */
+  get isUnavailable() {
+    return (
+      this.status === 404 ||
+      this.status === 501 ||
+      this.status === 503 ||
+      this.code === 'integration_unconfigured'
+    );
   }
 }
 
 type Handlers = {
   signedOut?: () => void;
-  stepUpRequired?: () => void;
+  /**
+   * Opens re-verification for a request the server refused with
+   * `step_up_required`. Resolves `true` once the session is verified again,
+   * `false` if the person cancelled.
+   */
+  stepUp?: (cause: ApiError) => Promise<boolean>;
 };
 
 const handlers: Handlers = {};
 
 /**
  * Merges handlers rather than replacing them: AuthProvider owns `signedOut`
- * while ReauthProvider owns `stepUpRequired`, and either may mount first.
+ * while ReauthProvider owns `stepUp`, and either may mount first.
  */
 export function setAuthHandlers(next: Handlers) {
   Object.assign(handlers, next);
+}
+
+/** One re-verification dialog serves every request that is waiting on it. */
+let pendingStepUp: Promise<boolean> | null = null;
+
+function awaitStepUp(cause: ApiError, signal?: AbortSignal): Promise<boolean> {
+  const handler = handlers.stepUp;
+  if (!handler) return Promise.resolve(false);
+  pendingStepUp ??= handler(cause).finally(() => {
+    pendingStepUp = null;
+  });
+  const shared = pendingStepUp;
+  if (!signal) return shared;
+  return new Promise<boolean>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    shared.then(
+      (v) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(v);
+      },
+      (e: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(e);
+      },
+    );
+  });
 }
 
 export interface RequestOptions {
@@ -102,67 +122,88 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Suppress the automatic sign-out/step-up reactions (used by the auth calls themselves). */
   silent?: boolean;
+  /** Internal: this attempt is already the retry after a step-up. */
+  retried?: boolean;
+}
+
+/** Parses a fetch Response into JSON-or-null without throwing. */
+export async function readBody(res: Response): Promise<{ text: string; body: unknown }> {
+  const text = await res.text();
+  if (!text) return { text, body: null };
+  try {
+    return { text, body: JSON.parse(text) as unknown };
+  } catch {
+    return { text, body: null };
+  }
+}
+
+/** Builds the typed error for a non-2xx response. */
+export function errorFrom(res: Response, body: unknown): ApiError {
+  const err = (body as ApiErrorBody | null)?.error;
+  const stepUp =
+    res.status === 401 &&
+    (err?.code === 'step_up_required' ||
+      (!err?.code && res.headers.get('x-step-up-required') === '1'));
+  return new ApiError(
+    res.status,
+    stepUp ? 'step_up_required' : (err?.code ?? `http_${res.status}`),
+    err?.message ?? `HTTP ${res.status}`,
+    err?.requestId ?? res.headers.get('x-request-id') ?? undefined,
+    err?.details,
+  );
+}
+
+export function networkError(): ApiError {
+  return new ApiError(0, 'network', `Couldn't reach DevHQ. Check your connection and try again.`);
+}
+
+/** True when `url` (absolute or relative) targets this page's own origin. */
+export function isSameOrigin(url: string): boolean {
+  try {
+    return new URL(url, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
 }
 
 export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    accept: 'application/json',
-    [TOKEN_CLIENT_HEADER]: 'console',
-  };
+  const headers: Record<string, string> = { accept: 'application/json' };
   if (opts.body !== undefined) headers['content-type'] = 'application/json';
-  if (token) headers.authorization = `Bearer ${token}`;
 
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
       method: opts.method ?? 'GET',
       headers,
-      credentials: 'include',
+      // Same-origin only: the session cookie must never ride along to another origin.
+      credentials: 'same-origin',
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
       signal: opts.signal,
     });
   } catch (e) {
-    if ((e as Error)?.name === 'AbortError') throw e;
-    throw new ApiError(
-      0,
-      'network',
-      `Couldn't reach the DevHQ API. Is the backend running on :8080?`,
-    );
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+    throw networkError();
   }
 
-  const text = await res.text();
-  let body: unknown = null;
-  if (text) {
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = null;
-    }
-  }
+  const { body } = await readBody(res);
 
   if (!res.ok) {
-    const err = (body as ApiErrorBody | null)?.error;
-    const stepUp =
-      res.status === 401 &&
-      (err?.code === 'step_up_required' || res.headers.get('x-step-up-required') === '1');
-    const error = new ApiError(
-      res.status,
-      err?.code ?? `http_${res.status}`,
-      err?.message ?? `HTTP ${res.status}`,
-      err?.requestId,
-      err?.details,
-    );
+    const error = errorFrom(res, body);
     if (!opts.silent) {
-      if (stepUp) handlers.stepUpRequired?.();
-      else if (error.isSessionEnded) handlers.signedOut?.();
+      if (error.isStepUp && !opts.retried) {
+        const verified = await awaitStepUp(error, opts.signal);
+        if (verified) return api<T>(path, { ...opts, retried: true });
+        throw new ApiError(
+          401,
+          'step_up_cancelled',
+          'Verification was cancelled, so the action was not performed.',
+          error.requestId,
+        );
+      }
+      if (error.isSessionEnded) handlers.signedOut?.();
     }
     throw error;
   }
 
   return (body ?? undefined) as T;
-}
-
-/** Captures a token the API returned alongside the cookie (see TOKEN_CLIENT_HEADER). */
-export function rememberToken(body: { token?: string } | null | undefined) {
-  if (body?.token) setToken(body.token);
 }

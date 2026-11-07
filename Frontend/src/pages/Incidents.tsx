@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { lazy, Suspense, useCallback, useMemo } from 'react';
 import { SirenIcon } from 'lucide-react';
 import { PageHero } from '../components/ui/PageHero';
 import { Button } from '../components/ui/Button';
@@ -7,7 +7,8 @@ import { StatCard, StatStrip } from '../components/ui/StatCard';
 import { FirefighterIllustration } from '../components/illustrations/FirefighterIllustration';
 import { EmptyIllustration } from '../components/illustrations/EmptyIllustration';
 import { IncidentRow, IncidentRowHeader } from '../components/operations/IncidentRow';
-import { IncidentAnalytics } from '../components/operations/IncidentAnalytics';
+import { DataState, LoadingRows } from '../components/engineering/states';
+import { useIncidentStats } from '../components/engineering/data/hooks';
 import { useIncidents } from '../contexts/IncidentContext';
 import { useProductFilter } from '../contexts/ProductFilterContext';
 import { useDateRange } from '../contexts/DateRangeContext';
@@ -15,8 +16,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { members } from '../data/team';
 import { parseWhen } from '../utils/date';
-import { formatDuration, incidentRecords, mttr } from '../utils/metrics';
+import { formatDuration } from '../utils/metrics';
 import type { Incident } from '../types/operations';
+
+// The analytics column is secondary; load it after the list.
+const IncidentAnalytics = lazy(() => import('../components/operations/IncidentAnalytics'));
 
 const keys = ['q', 'severity', 'status', 'product', 'service', 'owner'] as const;
 const groups: { status: Incident['status']; title: string; tone: string }[] = [
@@ -26,7 +30,8 @@ const groups: { status: Incident['status']; title: string; tone: string }[] = [
 ];
 
 export function Incidents() {
-  const { incidents, setDeclareOpen } = useIncidents();
+  const { incidents, setDeclareOpen, loading, error, reload } = useIncidents();
+  const stats = useIncidentStats();
   const { matches, allowedProducts } = useProductFilter();
   const { inRange, label } = useDateRange();
   const { canDo } = useAuth();
@@ -51,9 +56,6 @@ export function Incidents() {
 
   const open = scoped.filter((i) => i.status !== 'resolved');
   const resolved = scoped.filter((i) => i.status === 'resolved');
-  const records = incidentRecords(incidents).filter(
-    (r) => matches(r.product) && inRange(r.started),
-  );
   const services = Array.from(new Set(scoped.map((i) => i.service)));
   const owners = Array.from(new Set(scoped.map((i) => i.owner)));
   const apply = useCallback(
@@ -121,8 +123,18 @@ export function Incidents() {
         />
         <StatCard
           label="MTTR"
-          value={formatDuration(mttr(records))}
-          note={`${records.filter((r) => r.minutes !== null).length} resolved records`}
+          value={
+            stats.status === 'ready' && stats.data?.mttrMinutes != null
+              ? formatDuration(stats.data.mttrMinutes)
+              : '—'
+          }
+          note={
+            stats.status === 'ready' && stats.data
+              ? `${stats.data.resolved} resolved · all products you can see`
+              : stats.status === 'loading'
+                ? 'Loading…'
+                : 'Stats unavailable'
+          }
         />
         <StatCard
           label={`Resolved · ${label.toLowerCase()}`}
@@ -184,7 +196,18 @@ export function Incidents() {
           aria-label="Incident list"
         >
           <IncidentRowHeader />
-          {filtered.length === 0 ? (
+          {loading && incidents.length === 0 ? (
+            <LoadingRows rows={4} label="Loading incidents" />
+          ) : error && incidents.length === 0 ? (
+            <div className="p-3">
+              <DataState
+                status="error"
+                error={error}
+                what="Incidents"
+                onRetry={() => void reload().catch(() => undefined)}
+              />
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-4 py-10 text-center sm:flex-row sm:justify-center sm:text-left">
               <EmptyIllustration className="h-16 w-auto" />
               <div>
@@ -216,7 +239,9 @@ export function Incidents() {
             })
           )}
         </section>
-        <IncidentAnalytics />
+        <Suspense fallback={<LoadingRows rows={3} label="Loading analytics" />}>
+          <IncidentAnalytics />
+        </Suspense>
       </div>
     </div>
   );

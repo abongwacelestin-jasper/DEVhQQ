@@ -1,6 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ScrollTextIcon, ShieldOffIcon, SlidersHorizontalIcon, type LucideIcon } from 'lucide-react';
+import {
+  ScrollTextIcon,
+  ShieldOffIcon,
+  SlidersHorizontalIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useReauth } from '../../contexts/ReauthContext';
 import { api } from '../../api/client';
@@ -38,9 +43,7 @@ export function useMemberActions(onReload?: () => Promise<void>) {
       await onReload?.();
       done?.();
       toast.success(
-        list.length === 1
-          ? `${list[0].name} deactivated`
-          : `${list.length} members deactivated`,
+        list.length === 1 ? `${list[0].name} deactivated` : `${list.length} members deactivated`,
         { description: 'Their sessions were revoked by the server.' },
       );
     } catch (e) {

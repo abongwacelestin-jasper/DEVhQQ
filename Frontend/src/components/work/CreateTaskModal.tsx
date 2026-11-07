@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Modal, Field, inputClass } from '../ui/Modal';
@@ -8,8 +8,8 @@ import { ChecklistIllustration } from '../illustrations/ChecklistIllustration';
 import { useWork } from '../../contexts/WorkContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
 import { products } from '../../data/portfolio';
-import { projects } from '../../data/work';
-import { members } from '../../data/team';
+import { useProductFilter } from '../../contexts/ProductFilterContext';
+import { useDirectory } from '../team/useDirectory';
 import { NOW, addDays, formatDay, fromInputDate, toInputDate } from '../../utils/date';
 import { priorityMeta, taskStatusMeta } from '../../utils/status';
 import type { ProductId } from '../../types/portfolio';
@@ -24,7 +24,11 @@ const types: { value: TaskType; label: string }[] = [
 
 export function CreateTaskModal() {
   const { createTaskDefaults, closeCreateTask } = useWorkspaceUI();
+  const { allowedProjects: projects } = useProductFilter();
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
   const { createTask, tasks } = useWork();
+  const { members } = useDirectory();
   const navigate = useNavigate();
   const open = createTaskDefaults !== null;
 
@@ -44,6 +48,7 @@ export function CreateTaskModal() {
   useEffect(() => {
     if (!createTaskDefaults) return;
     const d = createTaskDefaults;
+    const projects = projectsRef.current;
     const proj = d.projectId ? projects.find((p) => p.id === d.projectId) : undefined;
     const prod = d.product ?? proj?.product ?? 'renewberry';
     setTitle('');
@@ -62,7 +67,7 @@ export function CreateTaskModal() {
 
   const eligible = useMemo(
     () => members.filter((m) => m.status === 'active' && m.products.includes(product)),
-    [product],
+    [members, product],
   );
   const load = (id: string) =>
     tasks

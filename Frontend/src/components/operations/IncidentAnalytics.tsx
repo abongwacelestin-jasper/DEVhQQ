@@ -123,3 +123,5 @@ export function IncidentAnalytics() {
     </div>
   );
 }
+
+export default IncidentAnalytics;

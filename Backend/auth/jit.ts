@@ -9,6 +9,7 @@
 
 import { randomToken } from '../security/crypto.ts';
 import { audit } from '../audit/auditLog.ts';
+import { createCollection } from '../store/collection.ts';
 import { HttpError, type RoleName } from '../types.ts';
 
 export interface Grant {
@@ -26,7 +27,8 @@ export interface Grant {
 
 const MAX_DURATION_MS = 8 * 60 * 60_000;
 const APPROVER_ROLES: RoleName[] = ['Owner', 'Operations'];
-const grants = new Map<string, Grant>();
+/** Persisted so pending approvals and active (time-boxed) grants survive a restart. */
+const grants = createCollection<Grant>('jitGrants');
 
 export function requestGrant(
   memberId: string,
@@ -67,6 +69,7 @@ export function approveGrant(id: string, approver: { memberId: string; role: Rol
   g.status = 'active';
   g.approvedBy = approver.memberId;
   g.expiresAt = Date.now() + g.durationMs;
+  grants.save(g.id);
   audit.append({
     actor: approver.memberId,
     action: 'jit.approved',
@@ -81,6 +84,7 @@ export function revokeGrant(id: string, by: string): Grant {
   if (!g || (g.status !== 'active' && g.status !== 'pending'))
     throw new HttpError(404, 'not_found', 'No active grant');
   g.status = g.status === 'pending' ? 'denied' : 'revoked';
+  grants.save(g.id);
   audit.append({
     actor: by,
     action: `jit.${g.status}`,
@@ -108,6 +112,7 @@ setInterval(() => {
   for (const g of grants.values()) {
     if (g.status === 'active' && (g.expiresAt ?? 0) <= now) {
       g.status = 'expired';
+      grants.save(g.id);
       audit.append({
         actor: 'system',
         action: 'jit.expired',

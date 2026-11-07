@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   CheckIcon,
+  AlertCircleIcon,
   CopyIcon,
+  DownloadIcon,
   FileIcon,
   ListPlusIcon,
   MessageSquareReplyIcon,
@@ -17,22 +18,23 @@ import { Avatar } from '../ui/Avatar';
 import { Sticker } from './Sticker';
 import { useMessaging } from '../../contexts/MessagingContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
-import { useAuth } from '../../contexts/AuthContext';
 import { emojiSet } from '../../data/messaging';
-import { memberById } from '../../utils/status';
 import { formatTime } from '../../utils/date';
-import type { Channel, Message } from '../../types/messaging';
+import { useDirectory } from '../team/useDirectory';
+import { errorMessage } from '../work/apiState';
+import { fileUrl, formatBytes } from '../work/useFileUpload';
+import { RichText, safeHref } from './RichText';
+import type { ChatMessage } from './types';
+import type { Channel } from '../../types/messaging';
 
 interface MessageItemProps {
-  message: Message;
+  message: ChatMessage;
   channel: Channel;
   compact?: boolean;
   replies?: number;
   onThread?: (id: string) => void;
   highlight?: string;
 }
-
-const tokenRe = /(@[A-Za-z]+|\b(?:RB|BL|MA)-\d+\b|\bINC-\d+\b|(?:^|\s)#\d{2,3}\b|https?:\/\/\S+)/g;
 
 export function MessageItem({
   message: m,
@@ -42,16 +44,20 @@ export function MessageItem({
   onThread,
   highlight,
 }: MessageItemProps) {
-  const { react, edit, remove, togglePin, vote, canModerate } = useMessaging();
+  const { me, react, edit, remove, togglePin, vote, canModerate, retry, discard } = useMessaging();
   const { openCreateTask } = useWorkspaceUI();
-  const { session } = useAuth();
-  const me = session?.memberId ?? 'm1';
+  const { members, memberById } = useDirectory();
+  const mentionable = useMemo(
+    () => new Map(members.map((x) => [x.id.toLowerCase(), x.name])),
+    [members],
+  );
   const [picker, setPicker] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.text);
   const author = memberById(m.author);
   const mine = m.author === me;
   const mod = canModerate(channel);
+  const pending = !!m.delivery;
 
   if (m.kind === 'system') {
     return (
@@ -69,7 +75,8 @@ export function MessageItem({
 
   return (
     <article
-      className={`group relative grid grid-cols-[32px_minmax(0,1fr)] gap-x-2.5 rounded-md px-2 transition-colors duration-150 hover:bg-white/80 ${compact ? 'py-0.5' : 'pt-2 pb-1'} ${m.pinned ? 'bg-warn-soft/40' : ''}`}
+      className={`group relative grid grid-cols-[32px_minmax(0,1fr)] gap-x-2.5 rounded-md px-2 transition-colors duration-150 hover:bg-white/80 ${compact ? 'py-0.5' : 'pt-2 pb-1'} ${m.pinned ? 'bg-warn-soft/40' : ''} ${m.delivery === 'sending' ? 'opacity-60' : ''}`}
+      aria-busy={m.delivery === 'sending' || undefined}
     >
       <div className="pt-0.5">
         {compact ? (
@@ -92,6 +99,30 @@ export function MessageItem({
           </p>
         )}
 
+        {m.delivery === 'failed' && m.nonce && (
+          <p
+            role="alert"
+            className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-bad"
+          >
+            <AlertCircleIcon className="h-3.5 w-3.5" aria-hidden />
+            Not sent{m.deliveryError ? ` — ${m.deliveryError}` : ''}.
+            <button
+              type="button"
+              onClick={() => retry(m.nonce!)}
+              className="font-semibold underline hover:no-underline"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => discard(m.nonce!)}
+              className="text-muted underline hover:no-underline"
+            >
+              Discard
+            </button>
+          </p>
+        )}
+        {m.delivery === 'sending' && <span className="sr-only">Sending…</span>}
         {m.deleted ? (
           <p className="text-[12.5px] italic text-muted">Message deleted</p>
         ) : editing ? (
@@ -117,7 +148,12 @@ export function MessageItem({
           <>
             {m.text && (
               <p className="whitespace-pre-wrap break-words text-[13px] leading-[1.5] text-ink">
-                {renderText(m.text, channel.permissions.externalLinks, highlight)}
+                <RichText
+                  text={m.text}
+                  allowLinks={channel.permissions.externalLinks}
+                  highlight={highlight}
+                  mentionable={mentionable}
+                />
                 {m.edited && <span className="ml-1 text-[11px] text-muted">(edited)</span>}
               </p>
             )}
@@ -146,19 +182,12 @@ export function MessageItem({
               </div>
             )}
             {m.kind === 'file' && m.file && (
-              <div className="mt-1 inline-flex max-w-full items-center gap-2.5 rounded-md border border-line bg-white px-2.5 py-1.5">
-                <span className="flex h-8 w-8 items-center justify-center rounded bg-accent-soft text-accent">
-                  <FileIcon className="h-4 w-4" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-[12.5px] font-medium text-ink">
-                    {m.file.name}
-                  </span>
-                  <span className="text-[11px] text-muted">
-                    {formatSize(m.file.size)} · scanned, no malware
-                  </span>
-                </span>
-              </div>
+              <FileCard
+                name={m.file.name}
+                size={m.file.size}
+                fileId={m.file.fileId}
+                pending={pending}
+              />
             )}
             {m.kind === 'poll' && m.poll && (
               <div className="mt-1 max-w-md rounded-lg border border-line bg-white p-2.5">
@@ -167,11 +196,13 @@ export function MessageItem({
                   {m.poll.options.map((o, i) => {
                     const total = m.poll!.options.reduce((s, x) => s + x.votes.length, 0) || 1;
                     const pct = Math.round((o.votes.length / total) * 100);
-                    const voted = o.votes.includes(me);
+                    const voted = !!me && o.votes.includes(me);
                     return (
                       <li key={o.label}>
                         <button
                           onClick={() => vote(m.id, i)}
+                          disabled={pending || m.poll!.closed}
+                          aria-pressed={voted}
                           className={`relative flex w-full items-center justify-between overflow-hidden rounded-md border px-2 py-1 text-left text-[12px] ${voted ? 'border-accent' : 'border-line hover:border-line-strong'}`}
                         >
                           <span
@@ -202,8 +233,10 @@ export function MessageItem({
               <button
                 key={emoji}
                 onClick={() => channel.permissions.reactions && react(m.id, emoji)}
+                aria-label={`${emoji} ${who.length} — ${who.includes(me ?? '') ? 'remove your reaction' : 'react'}`}
+                aria-pressed={who.includes(me ?? '')}
                 title={who.map((w) => memberById(w).name).join(', ')}
-                className={`inline-flex h-6 items-center gap-1 rounded-full border px-1.5 text-[12px] transition-colors duration-150 ${who.includes(me) ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line bg-white text-ink hover:border-line-strong'}`}
+                className={`inline-flex h-6 items-center gap-1 rounded-full border px-1.5 text-[12px] transition-colors duration-150 ${who.includes(me ?? '') ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line bg-white text-ink hover:border-line-strong'}`}
               >
                 <span>{emoji}</span>
                 <span className="text-[11px] font-semibold tabular-nums">{who.length}</span>
@@ -223,7 +256,7 @@ export function MessageItem({
         )}
       </div>
 
-      {!m.deleted && !editing && (
+      {!m.deleted && !editing && !pending && (
         <div className="absolute -top-3 right-2 hidden items-center gap-0.5 rounded-md border border-line bg-white p-0.5 shadow-sm group-hover:flex group-focus-within:flex">
           {channel.permissions.reactions && (
             <>
@@ -334,87 +367,56 @@ export function MessageItem({
   );
 }
 
-function renderText(text: string, allowLinks: boolean, highlight?: string) {
-  const parts = text.split(tokenRe);
-  return parts.map((p, i) => {
-    if (!p) return null;
-    const t = p.trim();
-    if (/^@[A-Za-z]+$/.test(p))
-      return (
-        <span key={i} className="rounded bg-accent-soft px-0.5 font-medium text-accent-ink">
-          {p}
-        </span>
-      );
-    if (/^(RB|BL|MA)-\d+$/.test(p))
-      return (
-        <Link
-          key={i}
-          to={`/tasks/${p}`}
-          className="font-mono text-[12px] font-medium text-accent hover:underline"
-        >
-          {p}
-        </Link>
-      );
-    if (/^INC-\d+$/.test(p))
-      return (
-        <Link
-          key={i}
-          to={`/incidents/${p}`}
-          className="font-mono text-[12px] font-medium text-bad hover:underline"
-        >
-          {p}
-        </Link>
-      );
-    if (/^#\d{2,3}$/.test(t))
-      return (
-        <React.Fragment key={i}>
-          {p.startsWith(' ') ? ' ' : ''}
-          <Link
-            to={`/pull-requests/${t.slice(1)}`}
-            className="font-medium text-accent hover:underline"
-          >
-            {t}
-          </Link>
-        </React.Fragment>
-      );
-    if (/^https?:\/\//.test(p))
-      return allowLinks ? (
-        <a
-          key={i}
-          href={p}
-          target="_blank"
-          rel="noopener noreferrer nofollow"
-          className="text-accent underline"
-        >
-          {p}
-        </a>
-      ) : (
-        <span
-          key={i}
-          className="text-muted line-through"
-          title="External links are disabled in this channel"
-        >
-          {p}
-        </span>
-      );
-    if (highlight && highlight.length > 1) {
-      const re = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig');
-      return p.split(re).map((s, j) =>
-        re.test(s) && s.toLowerCase() === highlight.toLowerCase() ? (
-          <mark key={`${i}-${j}`} className="rounded bg-warn-soft px-0.5 text-ink">
-            {s}
-          </mark>
-        ) : (
-          <React.Fragment key={`${i}-${j}`}>{s}</React.Fragment>
-        ),
-      );
+function FileCard({
+  name,
+  size,
+  fileId,
+  pending,
+}: {
+  name: string;
+  size: number;
+  fileId?: string;
+  pending: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    if (!fileId) return;
+    setBusy(true);
+    try {
+      const href = safeHref(await fileUrl(fileId));
+      if (!href) throw new Error('The storage service returned an unsafe link.');
+      window.open(href, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      toast.error("Couldn't open the file", { description: errorMessage(e) });
+    } finally {
+      setBusy(false);
     }
-    return <React.Fragment key={i}>{p}</React.Fragment>;
-  });
+  };
+  return (
+    <div className="mt-1 inline-flex max-w-full items-center gap-2.5 rounded-md border border-line bg-white px-2.5 py-1.5">
+      <span className="flex h-8 w-8 items-center justify-center rounded bg-accent-soft text-accent">
+        <FileIcon className="h-4 w-4" aria-hidden />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-[12.5px] font-medium text-ink">{name}</span>
+        <span className="text-[11px] text-muted">
+          {formatBytes(size)}
+          {pending ? ' · uploading…' : fileId ? ' · stored' : ''}
+        </span>
+      </span>
+      {fileId && !pending && (
+        <button
+          type="button"
+          onClick={open}
+          disabled={busy}
+          className="rounded p-1 text-muted hover:bg-sunken hover:text-ink disabled:opacity-50"
+          aria-label={`Download ${name}`}
+        >
+          <DownloadIcon className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
 }
 
-export function formatSize(b: number) {
-  if (b > 1_000_000) return `${(b / 1_000_000).toFixed(1)} MB`;
-  if (b > 1000) return `${Math.round(b / 1000)} KB`;
-  return `${b} B`;
-}
+export const formatSize = formatBytes;

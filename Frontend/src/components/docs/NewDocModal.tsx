@@ -6,7 +6,7 @@ import { Button } from '../ui/Button';
 import { DocsIllustration } from '../illustrations/DocsIllustration';
 import { useDocs } from '../../contexts/DocsContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { projects } from '../../data/work';
+import { useProductFilter } from '../../contexts/ProductFilterContext';
 import { docKindMeta, docTemplates } from '../../data/docs';
 import type { DocKind, DocVisibility } from '../../types/docs';
 
@@ -23,6 +23,7 @@ export function NewDocModal({
 }) {
   const { create } = useDocs();
   const { canSeeProduct, log } = useAuth();
+  const { allowedProjects: projects } = useProductFilter();
   const navigate = useNavigate();
   const allowed = projects.filter((p) => canSeeProduct(p.product));
   const [title, setTitle] = useState('');

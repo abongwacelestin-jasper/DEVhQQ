@@ -1,0 +1,11 @@
+.venv
+.model-registry
+**/__pycache__
+**/*.pyc
+.mypy_cache
+.ruff_cache
+.pytest_cache
+tests
+data
+*.joblib
+node_modules
