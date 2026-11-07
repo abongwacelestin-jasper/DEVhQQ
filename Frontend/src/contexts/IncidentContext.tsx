@@ -22,7 +22,8 @@ export interface DeclareInput {
 interface IncidentValue {
   incidents: Incident[];
   declare: (input: DeclareInput) => Promise<string>;
-  setStatus: (id: string, status: Incident['status'], note?: string) => void;
+  /** Resolves `true` once the server accepted the change (callers announce success only then). */
+  setStatus: (id: string, status: Incident['status'], note?: string) => Promise<boolean>;
   addEvent: (id: string, event: Omit<IncidentEvent, 'time'>) => void;
   declareOpen: boolean;
   setDeclareOpen: (v: boolean) => void;
@@ -151,12 +152,14 @@ export function IncidentProvider({ children }: { children: React.ReactNode }) {
         });
         setIncidents((l) => l.map((i) => (i.id === id ? toIncident(updated) : i)));
         remember([updated]);
+        return true;
       } catch (e) {
         setWriteError(e);
         toast.error(`${action} failed`, {
           description: e instanceof Error ? e.message : 'The incidents API did not respond.',
         });
         void reload().catch(() => undefined);
+        return false;
       }
     },
     [reload, remember],
@@ -223,7 +226,7 @@ export function IncidentProvider({ children }: { children: React.ReactNode }) {
             : i,
         ),
       );
-      void patch(
+      return patch(
         id,
         { status, note: note ?? `Changed by ${firstName(currentUserId)}` },
         'Changing the status',

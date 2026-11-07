@@ -31,6 +31,7 @@ import { useDeployments, type DeploymentRow } from '../hooks/useDeployments';
 import { currentUserId } from '../data/team';
 import { firstName, memberById, productById } from '../utils/status';
 import type { IncidentEvent } from '../types/operations';
+import { ProductionAccessStatus } from '../components/jit/ProductionAccessStatus';
 
 const RelationshipGraph = lazy(() => import('../components/operations/RelationshipGraph'));
 
@@ -152,10 +153,13 @@ export function IncidentDetail() {
                 size="sm"
                 variant="primary"
                 icon={<CircleCheckIcon className="h-3.5 w-3.5" />}
-                onClick={() => {
-                  setStatus(incident.id, 'resolved', `Resolved by ${firstName(currentUserId)}`);
-                  toast.success(`${incident.id} resolved`);
-                }}
+                onClick={() =>
+                  void setStatus(
+                    incident.id,
+                    'resolved',
+                    `Resolved by ${firstName(currentUserId)}`,
+                  ).then((ok) => ok && toast.success(`${incident.id} resolved`))
+                }
               >
                 Resolve
               </Button>
@@ -175,6 +179,14 @@ export function IncidentDetail() {
       />
 
       {!!writeError && <InlineError error={writeError} />}
+      {!resolved &&
+        ((isOps && incident.severity === 'SEV1') ||
+          (mayRollback && deploy?.env === 'production')) && (
+          <ProductionAccessStatus
+            scope={`production:${incident.product}`}
+            what="Changing severity, resolving a SEV1 or rolling back production"
+          />
+        )}
 
       <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Panel

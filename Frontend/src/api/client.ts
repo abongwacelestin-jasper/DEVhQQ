@@ -10,6 +10,9 @@
  *   a dead session signs the user out; `401 step_up_required` opens
  *   re-verification and then **retries the original request**, resolving or
  *   rejecting the caller's promise with the retried result.
+ * - `403 elevation_required` (a production action without a just-in-time grant)
+ *   is announced to the JIT host, which offers to request access for the scope
+ *   the server named. It is not retried: a grant needs a second person's approval.
  */
 
 import type { ApiErrorBody } from './types';
@@ -61,6 +64,17 @@ export class ApiError extends Error {
     return this.status === 401 && this.code === 'step_up_required';
   }
 
+  /** The server refused a production action because no just-in-time grant is active. */
+  get isElevationRequired() {
+    return this.status === 403 && this.code === 'elevation_required';
+  }
+
+  /** The scope the server asked for, e.g. `production:renewberry` (elevation refusals only). */
+  get elevationScope(): string | undefined {
+    const scope = (this.details as { scope?: unknown } | undefined)?.scope;
+    return typeof scope === 'string' ? scope : undefined;
+  }
+
   /** The endpoint is not deployed (yet) or the integration behind it is not configured. */
   get isUnavailable() {
     return (
@@ -80,13 +94,16 @@ type Handlers = {
    * `false` if the person cancelled.
    */
   stepUp?: (cause: ApiError) => Promise<boolean>;
+  /** A production action was refused for want of a JIT grant (`error.elevationScope`). */
+  elevationRequired?: (cause: ApiError) => void;
 };
 
 const handlers: Handlers = {};
 
 /**
- * Merges handlers rather than replacing them: AuthProvider owns `signedOut`
- * while ReauthProvider owns `stepUp`, and either may mount first.
+ * Merges handlers rather than replacing them: AuthProvider owns `signedOut`,
+ * ReauthProvider owns `stepUp` and JitAccessHost owns `elevationRequired`;
+ * any may mount first.
  */
 export function setAuthHandlers(next: Handlers) {
   Object.assign(handlers, next);
@@ -205,6 +222,7 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
         );
       }
       if (error.isSessionEnded) handlers.signedOut?.();
+      if (error.isElevationRequired && error.elevationScope) handlers.elevationRequired?.(error);
     }
     throw error;
   }
