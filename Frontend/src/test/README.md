@@ -76,11 +76,9 @@ Coverage reports go to `Frontend/coverage/` (`text` in the terminal,
   When the fix lands, the `it.fails` test starts passing, Vitest reports it as a
   failure, and the fixer turns it back into `it(...)`.
 
-Open findings: F-FE-1 (`metrics.test.ts`), F-FE-2 and F-FE-3
-(`snippets.test.ts`), F-FE-4 (`audit.test.ts`), F-FE-6 (`CodeInput.test.tsx`)
-and F-FE-10 (`components/messaging/RichText.test.tsx`). F-FE-5 was fixed on the
-merged branch and its test is now a plain `it(...)`. List open findings with
-`grep -rn "FINDING F-FE" src`.
+Open findings: none. F-FE-1 to F-FE-6 and F-FE-10 are fixed and their tests are
+plain `it(...)` regression guards. List open findings with
+`grep -rn "it.fails" src`.
 
 Phase 2 notes:
 
