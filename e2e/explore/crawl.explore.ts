@@ -12,7 +12,7 @@ import { test } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { seedOnboarding } from '../support/auth';
+import { completeOnboarding, seedOnboarding } from '../support/auth';
 import { MAIN_ROUTES, personas, type RoleKey } from '../support/personas';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +36,7 @@ for (const role of roles) {
     const page = await context.newPage();
     const res = await page.request.post('/api/auth/demo', { data: { role } });
     if (res.status() !== 200) throw new Error(`demo sign-in ${role} → ${res.status()}`);
+    await completeOnboarding(page.request, role);
 
     let bucket: { console: string[]; errors: string[]; api: string[] } = { console: [], errors: [], api: [] };
     page.on('console', (m) => m.type() === 'error' && bucket.console.push(m.text().slice(0, 300)));

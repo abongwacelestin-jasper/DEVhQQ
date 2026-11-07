@@ -82,15 +82,22 @@ test.describe('Owner journey', () => {
     await expect(page.getByRole('region', { name: 'Events' }).or(page.locator('main')).getByText(email).first()).toBeVisible();
   });
 
-  test('changes a member’s role behind step-up', async ({ page }) => {
-    test.info().annotations.push({ type: 'defect', description: 'QA-001: no UI to change a member role' });
-    test.fail(true, 'QA-001: PATCH /api/team/:id supports role changes but no screen offers it');
+  test('changes a member’s role behind step-up; the server applies it', async ({ page }) => {
+    // QA-001 (phase 1: no UI) is fixed in wave 4: MemberDetail has a role select behind step-up.
     await signInViaApi(page, 'admin', '/team/m12');
     await expect(page.getByRole('heading', { name: 'Noah Adeyemi' }).first()).toBeVisible();
-    const roleControl = page
-      .getByRole('combobox', { name: /role/i })
-      .or(page.getByRole('button', { name: /change role/i }));
-    await expect(roleControl.first()).toBeVisible({ timeout: 3000 });
+    await page.getByRole('combobox', { name: /^Role/ }).selectOption('Tester');
+    await completeStepUp(page, { title: 'Change role', action: 'Verify & save' });
+    await expect(page.getByText('Noah Adeyemi is now Tester').first()).toBeVisible();
+    const team = await (await page.request.get('/api/team')).json();
+    const rows = (Array.isArray(team) ? team : team.items) as { id: string; role: string }[];
+    expect(rows.find((m) => m.id === 'm12')?.role).toBe('Tester');
+    await page.reload();
+    await expect(page.getByRole('combobox', { name: /^Role/ })).toHaveValue('Tester');
+    // Put it back so other journeys see the seed.
+    await page.getByRole('combobox', { name: /^Role/ }).selectOption('Developer');
+    await completeStepUp(page, { title: 'Change role', action: 'Verify & save' });
+    await expect(page.getByText('Noah Adeyemi is now Developer').first()).toBeVisible();
   });
 
   test('role change is enforced by the API: step-up required, last owner protected', async ({ page, baseURL }) => {
@@ -100,14 +107,14 @@ test.describe('Owner journey', () => {
     expect(own.status(), 'self-demotion is refused').toBe(403);
 
     const pm = await apiSession(baseURL!, 'pm');
-    const forbidden = await pm.patch('/api/team/m12', { data: { role: 'Tester' } });
+    const forbidden = await pm.patch('/api/team/m8', { data: { role: 'Tester' } });
     expect(forbidden.status(), 'a PM cannot change roles').toBe(403);
     await pm.dispose();
 
-    const ok = await page.request.patch('/api/team/m12', { data: { role: 'Tester' } });
+    const ok = await page.request.patch('/api/team/m8', { data: { role: 'Tester' } });
     expect(ok.status()).toBe(200);
     expect((await ok.json()).role).toBe('Tester');
-    const back = await page.request.patch('/api/team/m12', { data: { role: 'Developer' } });
+    const back = await page.request.patch('/api/team/m8', { data: { role: 'Developer' } });
     expect(back.status()).toBe(200);
   });
 
@@ -136,7 +143,7 @@ test.describe('Owner journey', () => {
     await expect(page.locator('main').getByText(/approved/i).first()).toBeVisible();
   });
 
-  test('cannot approve their own production deploy', async ({ page }) => {
+  test('cannot approve their own production deploy (button disabled, API refuses)', async ({ page }) => {
     const tag = uid('v');
     await signInViaApi(page, 'admin', '/deployments');
     const sha = 'abcdef1';
@@ -149,8 +156,11 @@ test.describe('Owner journey', () => {
       .getByRole('listitem')
       .filter({ hasText: tag })
       .filter({ has: page.getByRole('button', { name: 'Approve' }) });
-    await row.getByRole('button', { name: 'Approve' }).click();
-    await completeStepUp(page, { title: /Approve production deploy/, action: 'Verify & approve' });
-    await expect(page.getByText(/can’t approve your own deployment/i).first()).toBeVisible();
+    // Wave 4 disables Approve on your own request; phase 1 let you click and got a 403 toast.
+    await expect(row.getByRole('button', { name: 'Approve' })).toBeDisabled();
+    const id = ((await res.json()) as { id: string }).id;
+    const self = await page.request.post(`/api/deployments/${id}/approve`);
+    expect(self.status()).toBe(403);
+    expect(((await self.json()) as { error: { code: string } }).error.code).toBe('self_approval');
   });
 });

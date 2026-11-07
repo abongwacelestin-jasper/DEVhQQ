@@ -20,11 +20,12 @@ test.describe('Project manager journey', () => {
     await modal.getByRole('textbox', { name: 'Title' }).fill(title);
     await modal.getByRole('combobox', { name: /^Assignee/ }).selectOption({ label: await optionLabel(modal, /^Assignee/, 'Kofi Mensah') });
     await modal.getByLabel('Due date').fill('2026-12-15');
+    const createdRes = page.waitForResponse((r) => r.url().endsWith('/api/tasks') && r.request().method() === 'POST');
     await modal.getByRole('button', { name: 'Create task' }).click();
-
-    const toast = page.getByText(/^[A-Z]+-\d+ created$/).first();
-    await expect(toast).toBeVisible();
-    const key = (await toast.textContent())!.replace(' created', '').trim();
+    const created = await createdRes;
+    expect(created.status(), await created.text()).toBe(201);
+    const key = ((await created.json()) as { key: string }).key;
+    await expect(page.getByText(`${key} created`).first(), 'toast names the new key').toBeVisible();
     await page.goto(`/tasks/${key}`);
     await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible();
     await expect(page.getByLabel('Due date')).toHaveValue('2026-12-15');
@@ -80,7 +81,7 @@ test.describe('Project manager journey', () => {
   });
 
   test('does not see the Approve action for deploys they cannot approve', async ({ page, baseURL }) => {
-    test.fail(true, 'QA-007: Approve/Reject buttons are offered to roles with Deployment: view');
+    // QA-007 (phase 1: Approve offered to Deployment: view) is fixed in wave 4.
     const d = await requestProductionDeploy(baseURL!, 'operations', 'renewberry', uid('v'));
     await signInViaApi(page, 'pm', '/deployments');
     await expect(page.getByText(d.sha).first()).toBeVisible();

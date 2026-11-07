@@ -1,5 +1,6 @@
 import { expect, request as pwRequest, type APIRequestContext } from '@playwright/test';
 import type { ProductId, RoleKey } from './personas';
+import { completeOnboarding } from './auth';
 
 /**
  * A separate, cookie-isolated API session for arranging data as another person
@@ -10,6 +11,7 @@ export async function apiSession(baseURL: string, role: RoleKey): Promise<APIReq
   const ctx = await pwRequest.newContext({ baseURL });
   const res = await ctx.post('/api/auth/demo', { data: { role } });
   expect(res.status(), `demo sign-in ${role}`).toBe(200);
+  await completeOnboarding(ctx, role);
   return ctx;
 }
 

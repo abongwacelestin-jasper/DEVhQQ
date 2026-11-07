@@ -57,6 +57,14 @@ export default defineConfig({
   },
   projects: [
     {
+      // Real onboarding screens. Run as a separate invocation (`npm run test:onboarding`) so it
+      // gets its own fresh server before any journey onboards the Tester through the API.
+      name: 'onboarding',
+      testDir: './tests',
+      testMatch: /onboarding\.flow\.ts/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
+    },
+    {
       name: 'chromium',
       testDir: './tests',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },

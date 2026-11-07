@@ -45,6 +45,7 @@ test.describe('Accessibility (axe)', () => {
 
   for (const route of MAIN_ROUTES) {
     test(`app ${route}`, async ({ page }) => {
+      if (route === '/messages') test.fail(true, 'QA-032: axe critical aria-required-children on Messages');
       await signInViaApi(page, 'admin', route);
       const rows = await audit(page, route, 'light');
       expect(rows.filter((r) => r.impact === 'critical')).toEqual([]);

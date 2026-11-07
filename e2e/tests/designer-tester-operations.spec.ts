@@ -74,6 +74,7 @@ test.describe('Operations journey', () => {
     await page.getByRole('button', { name: 'Declare incident' }).click();
     const modal = page.getByRole('dialog', { name: 'Declare an incident' });
     await modal.getByRole('textbox', { name: /What’s happening/ }).fill(title);
+    await modal.getByRole('textbox', { name: /^Impact/ }).fill('About 5% of checkout attempts fail in the EU.');
     await modal.getByRole('button', { name: /^Declare SEV/ }).click();
 
     await expect(page).toHaveURL(/\/incidents\/[\w-]+$/);
@@ -104,6 +105,7 @@ test.describe('Operations journey', () => {
     await page.getByRole('button', { name: 'Declare incident' }).click();
     const modal = page.getByRole('dialog', { name: 'Declare an incident' });
     await modal.getByRole('textbox', { name: /What’s happening/ }).fill(`Escalation check ${uid()}`);
+    await modal.getByRole('textbox', { name: /^Impact/ }).fill('Internal check, no customer impact.');
     await modal.getByRole('button', { name: /^Declare SEV/ }).click();
     await expect(page).toHaveURL(/\/incidents\/[\w-]+$/);
     calls.length = 0;

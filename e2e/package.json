@@ -5,7 +5,8 @@
   "type": "module",
   "description": "DevHQ end-to-end and beta test suite (Playwright). Not part of the npm workspaces on purpose.",
   "scripts": {
-    "test": "playwright test",
+    "test": "npm run test:onboarding; playwright test --project=chromium",
+    "test:onboarding": "playwright test --project=onboarding",
     "test:chromium": "playwright test --project=chromium",
     "test:phase1": "playwright test --project=chromium --grep-invert @wave4",
     "test:wave4": "playwright test --project=chromium --grep @wave4",

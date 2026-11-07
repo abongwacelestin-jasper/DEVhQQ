@@ -27,12 +27,31 @@ test.describe('Developer journey', () => {
     for (const [value, label] of [
       ['in-progress', 'In progress'],
       ['review', 'In review'],
-      ['done', 'Done'],
     ] as const) {
       await status.selectOption(value);
       await expect(page.getByText(`${key} → ${label}`).first()).toBeVisible();
       await expect.poll(async () => (await (await page.request.get(`/api/tasks/${key}`)).json()).status).toBe(value);
     }
+    // Business rule (BOARD gate): you cannot close your own task; a reviewer or manager does.
+    const refused = page.waitForResponse((r) => r.url().endsWith(`/api/tasks/${key}`) && r.request().method() === 'PATCH');
+    await status.selectOption('done');
+    expect((await refused).status()).toBe(403);
+    await expect(page.getByText(/reviewer or manager/i).first()).toBeVisible();
+    await expect(status, 'the select snaps back to the server value').toHaveValue('review');
+    expect((await (await page.request.get(`/api/tasks/${key}`)).json()).status).toBe('review');
+  });
+
+  test('My work does not announce a status change the server refused', async ({ page }) => {
+    test.fail(true, 'QA-029: the "KEY → Done" success toast fires before the API answers, so a refused self-close is announced');
+    await signInViaApi(page, 'developer');
+    const created = await page.request.post('/api/tasks', {
+      data: { title: `Self close ${uid()}`, projectId: await firstProject(page), assignee: 'm4', status: 'review', priority: 'low', type: 'task', estimate: 1, due: '2026-12-31' },
+    });
+    const { key } = (await created.json()) as { key: string };
+    await page.reload();
+    await page.getByRole('combobox', { name: `Status of ${key}` }).selectOption('done');
+    await page.waitForTimeout(1500);
+    await expect(page.getByText(`${key} → Done`)).toHaveCount(0);
   });
 
   for (const path of ['/audit', '/security', '/integrations', '/workspaces']) {
@@ -44,9 +63,14 @@ test.describe('Developer journey', () => {
     });
   }
 
+  test('the audit trail API is closed to a Developer', async ({ page }) => {
+    test.fail(true, 'QA-028 (S1): GET /api/audit has no requireArea guard; any member reads the whole sensitive trail, all products');
+    await signInViaApi(page, 'developer');
+    expect((await page.request.get('/api/audit?sensitive=1&limit=5')).status()).toBe(403);
+  });
+
   test('the API refuses admin data too (not only the UI)', async ({ page }) => {
     await signInViaApi(page, 'developer');
-    expect((await page.request.get('/api/audit')).status()).toBe(403);
     expect((await page.request.get('/api/access/grants')).status()).toBe(403);
     expect((await page.request.patch('/api/team/m12', { data: { role: 'Tester' } })).status()).toBe(403);
   });
