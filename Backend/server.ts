@@ -27,6 +27,7 @@ import { logger } from './lib/logger.ts';
 import { originGuard, securityHeaders } from './security/headers.ts';
 import { apiLimiter } from './security/rateLimit.ts';
 import { DEMO, seed } from './store/db.ts';
+import { closePersistence, initPersistence } from './db/boot.ts';
 import { audit } from './audit/auditLog.ts';
 import { createBackup, pruneBackups } from './resilience/backups.ts';
 import { registerSystemRoutes } from './routes/system.routes.ts';
@@ -41,7 +42,8 @@ import { registerSecurityRoutes } from './routes/security.routes.ts';
 import { registerCodespaceRoutes } from './routes/codespaces.routes.ts';
 
 export async function buildApp() {
-  await seed();
+  // Postgres when DATABASE_URL is set (migrate → driver → hydrate → seed-if-empty), else in-memory.
+  await initPersistence(seed);
   const router = new Router();
   router.use(securityHeaders);
   router.use(originGuard);
@@ -96,7 +98,15 @@ async function main() {
   const shutdown = (signal: string) => {
     logger.info('shutdown', { signal });
     audit.append({ actor: 'system', action: 'server.stopping', target: signal });
-    server.close(() => process.exit(0));
+    // Stop accepting requests, then flush queued writes before exiting.
+    server.close(() =>
+      void closePersistence()
+        .then(() => process.exit(0))
+        .catch((err) => {
+          logger.error('shutdown flush failed', { err: String(err) });
+          process.exit(1);
+        }),
+    );
     setTimeout(() => process.exit(1), 10_000).unref();
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));

@@ -118,6 +118,7 @@ export function registerOperationsRoutes(r: Router) {
         throw new HttpError(403, 'self_approval', 'You can’t approve your own deployment');
       d.status = 'running';
       d.approvedBy = ctx.principal!.memberId;
+      db.deployments.save(d.id);
       audit.append({
         actor: d.approvedBy,
         action: 'deploy.approved',
@@ -130,6 +131,7 @@ export function registerOperationsRoutes(r: Router) {
       setTimeout(() => {
         if (d.status === 'running') {
           d.status = 'succeeded';
+          db.deployments.save(d.id);
           publish('deployment', { id: d.id, status: d.status });
         }
       }, 4000).unref();
@@ -150,6 +152,7 @@ export function registerOperationsRoutes(r: Router) {
       if (d.status === 'rolled-back')
         throw new HttpError(409, 'already_rolled_back', 'Already rolled back');
       d.status = 'rolled-back';
+      db.deployments.save(d.id);
       audit.append({
         actor: ctx.principal!.memberId,
         action: 'deploy.rolled_back',
@@ -297,6 +300,7 @@ export function registerOperationsRoutes(r: Router) {
       if (patch.note) notes.push(patch.note);
       if (!notes.length) throw new HttpError(422, 'no_change', 'Nothing to update');
       i.timeline.push({ at, by: ctx.principal!.memberId, note: notes.join(' · ') });
+      db.incidents.save(i.id);
       audit.append({
         actor: ctx.principal!.memberId,
         action: 'incident.updated',

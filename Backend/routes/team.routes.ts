@@ -233,6 +233,7 @@ export function registerTeamRoutes(r: Router) {
       if (patch.role) target.role = patch.role as RoleName;
       if (patch.products) target.products = patch.products as ProductId[];
       if (patch.status) target.status = patch.status;
+      db.members.save(target.id);
       const revoked = revokeAllFor(target.id);
       audit.append({
         actor: ctx.principal!.memberId,

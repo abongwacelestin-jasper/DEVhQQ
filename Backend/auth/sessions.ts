@@ -8,6 +8,13 @@
  * A user-agent change kills the session (likely token theft). An IP change or
  * idle timeout keeps the session but clears `verifiedAt`, so the next
  * sensitive action demands step-up verification.
+ *
+ * Storage: sessions live in the persisted `sessions` collection so they survive
+ * a restart. The bearer token is `sign(rawId)`; the stored record is keyed by
+ * SHA-256(rawId) and never contains the raw id or the token, so a database
+ * dump cannot be replayed as a session even with the signing key. Activity
+ * (`lastSeenAt`) is persisted at most once per LAST_SEEN_PERSIST_MS to avoid a
+ * write per request; security-relevant changes are persisted immediately.
  */
 
 import { createHash } from 'node:crypto';
@@ -15,11 +22,13 @@ import type { IncomingMessage } from 'node:http';
 import { config } from '../config/env.ts';
 import { randomToken, signToken, verifySignedToken } from '../security/crypto.ts';
 import { lookupIp } from '../lib/geo.ts';
+import { createCollection } from '../store/collection.ts';
 import { HttpError, type GeoLocation } from '../types.ts';
 
 export type SessionStage = 'password' | 'verified';
 
 export interface SessionRecord {
+  /** Opaque handle: SHA-256 (base64url) of the random id inside the token. Never the token itself. */
   id: string;
   memberId: string;
   stage: SessionStage;
@@ -38,7 +47,32 @@ export interface SessionRecord {
   lastTotpCounter: number;
 }
 
-const sessions = new Map<string, SessionRecord>();
+const sessions = createCollection<SessionRecord>('sessions');
+
+/** How stale a persisted `lastSeenAt` may get before it is written again. */
+const LAST_SEEN_PERSIST_MS = 60_000;
+/** Last persisted `lastSeenAt` per session (memory only). */
+const persistedSeen = new Map<string, number>();
+
+/** Storage key for a token's random id. */
+function handleFor(rawId: string): string {
+  return createHash('sha256').update(rawId).digest('base64url');
+}
+
+function persist(s: SessionRecord) {
+  sessions.save(s.id);
+  persistedSeen.set(s.id, s.lastSeenAt);
+}
+
+function store(s: SessionRecord) {
+  sessions.set(s.id, s);
+  persistedSeen.set(s.id, s.lastSeenAt);
+}
+
+function drop(id: string) {
+  sessions.delete(id);
+  persistedSeen.delete(id);
+}
 
 function uaHash(req: IncomingMessage): string {
   return createHash('sha256')
@@ -81,10 +115,10 @@ export function createSession(
   method: SessionRecord['method'],
   stage: SessionStage,
 ) {
-  const id = randomToken(32);
+  const rawId = randomToken(32);
   const now = Date.now();
   const rec: SessionRecord = {
-    id,
+    id: handleFor(rawId),
     memberId,
     stage,
     createdAt: now,
@@ -98,26 +132,32 @@ export function createSession(
     method,
     lastTotpCounter: -1,
   };
-  sessions.set(id, rec);
-  return { token: signToken(id), session: rec };
+  store(rec);
+  return { token: signToken(rawId), session: rec };
 }
 
 /** Issues a fresh token for the same session state and kills the old one (prevents session fixation). */
 export function rotateSession(old: SessionRecord, patch: Partial<SessionRecord> = {}) {
   old.revoked = true;
-  sessions.delete(old.id);
-  const id = randomToken(32);
-  const rec: SessionRecord = { ...old, ...patch, id, revoked: false, lastSeenAt: Date.now() };
-  sessions.set(id, rec);
-  return { token: signToken(id), session: rec };
+  drop(old.id);
+  const rawId = randomToken(32);
+  const rec: SessionRecord = {
+    ...old,
+    ...patch,
+    id: handleFor(rawId),
+    revoked: false,
+    lastSeenAt: Date.now(),
+  };
+  store(rec);
+  return { token: signToken(rawId), session: rec };
 }
 
 export type ValidationResult = { session: SessionRecord; stepUpRequired: boolean };
 
 export function validateSession(token: string, req: IncomingMessage, ip: string): ValidationResult {
-  const id = verifySignedToken(token);
-  if (!id) throw new HttpError(401, 'invalid_token', 'Invalid session');
-  const s = sessions.get(id);
+  const rawId = verifySignedToken(token);
+  if (!rawId) throw new HttpError(401, 'invalid_token', 'Invalid session');
+  const s = sessions.get(handleFor(rawId));
   if (!s || s.revoked) throw new HttpError(401, 'session_revoked', 'Session ended');
 
   const now = Date.now();
@@ -125,9 +165,11 @@ export function validateSession(token: string, req: IncomingMessage, ip: string)
     revoke(s.id);
     throw new HttpError(401, 'session_expired', 'Session expired — sign in again');
   }
-  if (now - s.lastSeenAt > config.sessionIdleMs) {
+  let changed = false;
+  if (now - s.lastSeenAt > config.sessionIdleMs && s.verifiedAt !== 0) {
     // Idle: keep the session but demand re-verification (maps to the frontend lock screen).
     s.verifiedAt = 0;
+    changed = true;
   }
   if (s.uaHash !== uaHash(req)) {
     revoke(s.id);
@@ -141,8 +183,10 @@ export function validateSession(token: string, req: IncomingMessage, ip: string)
     s.ip = ip;
     s.location = lookupIp(ip);
     s.verifiedAt = 0;
+    changed = true;
   }
   s.lastSeenAt = now;
+  if (changed || now - (persistedSeen.get(s.id) ?? 0) >= LAST_SEEN_PERSIST_MS) persist(s);
   return { session: s, stepUpRequired: s.verifiedAt === 0 };
 }
 
@@ -157,7 +201,7 @@ export function markVerified(s: SessionRecord, totpCounter?: number) {
 export function revoke(id: string) {
   const s = sessions.get(id);
   if (s) s.revoked = true;
-  sessions.delete(id);
+  drop(id);
 }
 
 /** Used on password reset, deactivation, role change, or suspected compromise. */
