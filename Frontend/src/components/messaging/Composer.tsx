@@ -1,6 +1,5 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { toast } from 'sonner';
 import {
   AtSignIcon,
   BarChart3Icon,
@@ -18,9 +17,9 @@ import { Sticker, stickerList } from './Sticker';
 import { Avatar } from '../ui/Avatar';
 import { useMessaging } from '../../contexts/MessagingContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
-import { useAuth } from '../../contexts/AuthContext';
 import { emojiSet } from '../../data/messaging';
-import { members } from '../../data/team';
+import { useDirectory } from '../team/useDirectory';
+import { useFileUpload } from '../work/useFileUpload';
 import type { Channel } from '../../types/messaging';
 
 type Popover = 'emoji' | 'sticker' | 'tools' | 'mention' | null;
@@ -40,9 +39,12 @@ export function Composer({
   threadOf?: string;
   compact?: boolean;
 }) {
-  const { send, canPost, join, canModerate } = useMessaging();
-  const { session } = useAuth();
+  const { me, send, canPost, join, canModerate } = useMessaging();
+  const { members } = useDirectory();
   const { openCreateTask } = useWorkspaceUI();
+  const uploader = useFileUpload('message-attachment');
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const [text, setText] = useState('');
   const [pop, setPop] = useState<Popover>(null);
   const [mode, setMode] = useState<Mode>('text');
@@ -52,10 +54,30 @@ export function Composer({
   const fileRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const p = channel.permissions;
-  const chanMembers = members.filter((m) => channel.members.includes(m.id));
+  /** Mention candidates from GET /api/team: channel members first, then everyone else active. */
+  const candidates = useMemo(() => {
+    const q = (mentionQuery ?? '').toLowerCase();
+    return members
+      .filter((m) => m.status !== 'deactivated' && m.id !== me)
+      .filter(
+        (m) =>
+          !q ||
+          m.name
+            .toLowerCase()
+            .split(' ')
+            .some((part) => part.startsWith(q)) ||
+          m.id.toLowerCase() === q,
+      )
+      .sort(
+        (a, b) =>
+          Number(channel.members.includes(b.id)) - Number(channel.members.includes(a.id)) ||
+          a.name.localeCompare(b.name),
+      )
+      .slice(0, 8);
+  }, [members, mentionQuery, channel.members, me]);
 
   if (!canPost(channel)) {
-    const isMember = channel.members.includes(session?.memberId ?? '');
+    const isMember = !!me && channel.members.includes(me);
     return (
       <div className="flex items-center justify-between gap-2 border-t border-line bg-sunken/50 px-3 py-2.5 text-[12px] text-muted">
         <span className="flex items-center gap-1.5">
@@ -84,6 +106,16 @@ export function Composer({
     setOptions(['', '']);
     setError('');
     setPop(null);
+    setMentionQuery(null);
+  };
+
+  /** Inserts `@memberId` — the token the server parses into notifications. */
+  const pickMention = (id: string) => {
+    setText((t) => t.replace(/@([\w.-]*)$/, `@${id} `));
+    setMentionQuery(null);
+    setPop(null);
+    setMentionIndex(0);
+    taRef.current?.focus();
   };
 
   const submit = () => {
@@ -165,24 +197,25 @@ export function Composer({
     taRef.current?.focus();
   };
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
     if (!f) return;
-    if (f.size > 25_000_000)
-      return setError('Files over 25 MB are blocked. Share via the docs storage instead.');
-    if (/\.(exe|bat|sh|ps1|cmd)$/i.test(f.name))
-      return setError('Executable files are blocked for security.');
+    setError('');
+    const stored = await uploader.upload(f, channel.id);
+    if (!stored) return;
     send({
       channelId: channel.id,
       kind: 'file',
       text: text.trim(),
-      file: { name: f.name, size: f.size, type: f.type || 'file' },
+      attachment: stored,
       threadOf,
     });
-    toast.success('File shared', { description: 'Scanned for malware before delivery.' });
+    uploader.reset();
     reset();
   };
+
+  const mentionOpen = pop === 'mention' && candidates.length > 0;
 
   return (
     <div
@@ -195,6 +228,33 @@ export function Composer({
         >
           <LockIcon className="mt-0.5 h-3 w-3 shrink-0" /> <span className="flex-1">{error}</span>
           <button onClick={() => setError('')} aria-label="Dismiss">
+            <XIcon className="h-3 w-3" />
+          </button>
+        </p>
+      )}
+      {uploader.state.status === 'uploading' && (
+        <div className="mb-1.5 flex items-center gap-2 text-[11.5px] text-muted" role="status">
+          <PaperclipIcon className="h-3 w-3" aria-hidden />
+          <span className="min-w-0 flex-1 truncate">
+            Uploading {uploader.state.name} · {uploader.state.progress}%
+          </span>
+          <button
+            type="button"
+            onClick={uploader.cancel}
+            className="font-medium text-ink hover:underline"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {(uploader.state.status === 'error' || uploader.state.status === 'unavailable') && (
+        <p
+          role="alert"
+          className="mb-1.5 flex items-start gap-1.5 rounded-md bg-bad-soft px-2 py-1 text-[11.5px] font-medium text-bad"
+        >
+          <PaperclipIcon className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+          <span className="flex-1">{uploader.state.message}</span>
+          <button onClick={uploader.reset} aria-label="Dismiss">
             <XIcon className="h-3 w-3" />
           </button>
         </p>
@@ -228,11 +288,41 @@ export function Composer({
           ref={taRef}
           value={text}
           onChange={(e) => {
-            setText(e.target.value);
+            const value = e.target.value;
+            setText(value);
             setError('');
-            if (e.target.value.endsWith('@')) setPop('mention');
+            const caret = e.target.selectionStart ?? value.length;
+            const match =
+              mode === 'text' ? /(?:^|\s)@([\w.-]*)$/.exec(value.slice(0, caret)) : null;
+            if (match) {
+              setMentionQuery(match[1]);
+              setMentionIndex(0);
+              setPop('mention');
+            } else if (pop === 'mention') {
+              setMentionQuery(null);
+              setPop(null);
+            }
           }}
           onKeyDown={(e) => {
+            if (mentionOpen) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const step = e.key === 'ArrowDown' ? 1 : -1;
+                setMentionIndex((i) => (i + step + candidates.length) % candidates.length);
+                return;
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                pickMention(candidates[Math.min(mentionIndex, candidates.length - 1)].id);
+                return;
+              }
+            }
+            if (e.key === 'Escape' && pop) {
+              e.preventDefault();
+              setPop(null);
+              setMentionQuery(null);
+              return;
+            }
             if (e.key === 'Enter' && !e.shiftKey && mode !== 'code') {
               e.preventDefault();
               submit();
@@ -250,6 +340,12 @@ export function Composer({
                   : `Message ${channel.kind === 'dm' ? channel.name : `#${channel.name}`} — try /task or /poll`
           }
           aria-label="Message"
+          aria-autocomplete="list"
+          aria-expanded={mentionOpen}
+          aria-controls={mentionOpen ? `mentions-${channel.id}` : undefined}
+          aria-activedescendant={
+            mentionOpen ? `mention-${channel.id}-${candidates[mentionIndex]?.id}` : undefined
+          }
           className={`block w-full resize-none bg-transparent px-2.5 py-2 text-[13px] outline-none placeholder:text-subtle ${mode === 'code' ? 'font-mono text-[12px] text-[#E5E7EB]' : 'text-ink'}`}
         />
 
@@ -288,15 +384,34 @@ export function Composer({
               <StickerIcon className="h-4 w-4" />
             </IconBtn>
           )}
-          <IconBtn label="Mention" onClick={() => setPop(pop === 'mention' ? null : 'mention')}>
+          <IconBtn
+            label="Mention"
+            onClick={() => {
+              if (pop === 'mention') return setPop(null);
+              setText((t) => `${t}${t && !t.endsWith(' ') ? ' ' : ''}@`);
+              setMentionQuery('');
+              setMentionIndex(0);
+              setPop('mention');
+              taRef.current?.focus();
+            }}
+          >
             <AtSignIcon className="h-4 w-4" />
           </IconBtn>
           {p.files && (
-            <IconBtn label="Attach file" onClick={() => fileRef.current?.click()}>
+            <IconBtn
+              label={uploader.state.status === 'uploading' ? 'Uploading…' : 'Attach file'}
+              onClick={() => fileRef.current?.click()}
+            >
               <PaperclipIcon className="h-4 w-4" />
             </IconBtn>
           )}
-          <input ref={fileRef} type="file" className="hidden" onChange={onFile} />
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => void onFile(e)}
+            aria-label="Attach a file"
+          />
           <span className="ml-auto hidden text-[10.5px] sm:inline">
             {mode === 'code' ? '⌘↵ send' : '↵ send · ⇧↵ new line'}
           </span>
@@ -361,20 +476,36 @@ export function Composer({
               </div>
             )}
             {pop === 'mention' && (
-              <ul className="max-h-56 w-56 overflow-y-auto scroll-thin">
-                {chanMembers.map((m) => (
-                  <li key={m.id}>
+              <ul
+                id={`mentions-${channel.id}`}
+                role="listbox"
+                aria-label="Mention someone"
+                className="max-h-56 w-60 overflow-y-auto scroll-thin"
+              >
+                {candidates.length === 0 && (
+                  <li className="px-2 py-1.5 text-[12px] text-muted">
+                    {members.length ? 'No one matches.' : 'Loading the team…'}
+                  </li>
+                )}
+                {candidates.map((m, i) => (
+                  <li
+                    key={m.id}
+                    id={`mention-${channel.id}-${m.id}`}
+                    role="option"
+                    aria-selected={i === mentionIndex}
+                  >
                     <button
-                      onClick={() => {
-                        setText((t) => `${t.replace(/@$/, '')}@${m.name.split(' ')[0]} `);
-                        setPop(null);
-                        taRef.current?.focus();
-                      }}
-                      className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12.5px] text-ink hover:bg-sunken"
+                      type="button"
+                      tabIndex={-1}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pickMention(m.id)}
+                      className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12.5px] text-ink ${i === mentionIndex ? 'bg-sunken' : 'hover:bg-sunken'}`}
                     >
                       <Avatar id={m.id} size="xs" />{' '}
                       <span className="flex-1 truncate">{m.name}</span>
-                      <span className="text-[11px] text-muted">{m.role}</span>
+                      <span className="text-[11px] text-muted">
+                        {channel.members.includes(m.id) ? m.role : 'Not in channel'}
+                      </span>
                     </button>
                   </li>
                 ))}
@@ -413,7 +544,7 @@ export function Composer({
                   <Tool
                     icon={PaperclipIcon}
                     label="Upload file"
-                    hint="Max 25 MB · scanned"
+                    hint="Max 25 MB · verified by storage"
                     onClick={() => {
                       fileRef.current?.click();
                       setPop(null);

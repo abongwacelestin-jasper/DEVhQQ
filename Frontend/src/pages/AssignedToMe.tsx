@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeftIcon,
@@ -8,15 +8,13 @@ import {
   MailIcon,
   MailOpenIcon,
   PlayIcon,
-  SettingsIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar } from '../components/ui/Avatar';
-import { EmailSettingsModal } from '../components/assignments/EmailSettingsModal';
 import { useWork } from '../contexts/WorkContext';
 import { useAssignmentEmails, type AssignmentEmail } from '../hooks/useAssignmentEmails';
-import { currentUserId } from '../data/team';
-import { memberById, priorityMeta, taskStatusMeta } from '../utils/status';
+import { useDirectory } from '../components/team/useDirectory';
+import { priorityMeta, taskStatusMeta } from '../utils/status';
 import { formatDateTime, relative } from '../utils/date';
 
 type View = 'all' | 'unread' | 'open' | 'overdue';
@@ -28,29 +26,19 @@ const views: { id: View; label: string }[] = [
 ];
 
 const subject = (e: AssignmentEmail, title: string) =>
-  e.kind === 'test'
-    ? `[Test] ${e.taskKey} · ${title}`
-    : e.kind === 'assigned'
-      ? `${e.taskKey} was assigned to you · ${title}`
-      : `${e.taskKey} was reassigned · ${title}`;
+  e.kind === 'assigned'
+    ? `${e.taskKey} was assigned to you · ${title}`
+    : `${e.taskKey} was reassigned · ${title}`;
 
-/** Every assignment made to the signed-in member, as an inbox with simulated email delivery. */
+/**
+ * Every assignment made to the signed-in member, from the task history the API
+ * records. Email preferences appear only when the server exposes them.
+ */
 export function AssignedToMe() {
   const { tasks, updateTask } = useWork();
-  const {
-    emails,
-    prefs,
-    setPrefs,
-    read,
-    markRead,
-    markUnread,
-    markAllRead,
-    sendTest,
-    myEmail,
-    willEmail,
-  } = useAssignmentEmails();
+  const { me, emails, read, markRead, markUnread, markAllRead } = useAssignmentEmails();
+  const { memberById } = useDirectory();
   const [params, setParams] = useSearchParams();
-  const [settings, setSettings] = useState(false);
   const view = (params.get('view') as View) || 'all';
   const selectedId = params.get('id');
 
@@ -61,7 +49,7 @@ export function AssignedToMe() {
         const t = taskOf(e.taskKey);
         if (view === 'unread') return !read.includes(e.id);
         if (view === 'open')
-          return e.kind === 'assigned' && t?.assignee === currentUserId && t?.status !== 'done';
+          return e.kind === 'assigned' && t?.assignee === me && t?.status !== 'done';
         if (view === 'overdue') return !!t?.overdue && e.kind === 'assigned';
         return true;
       }),
@@ -69,7 +57,7 @@ export function AssignedToMe() {
   );
   const selected = list.find((e) => e.id === selectedId) ?? null;
   const unread = emails.filter((e) => !read.includes(e.id)).length;
-  const openCount = tasks.filter((t) => t.assignee === currentUserId && t.status !== 'done').length;
+  const openCount = tasks.filter((t) => t.assignee === me && t.status !== 'done').length;
 
   useEffect(() => {
     if (selected && !read.includes(selected.id)) markRead(selected.id);
@@ -91,9 +79,8 @@ export function AssignedToMe() {
         <div>
           <h1 className="text-[20px] font-semibold tracking-tight text-ink">Assigned to me</h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            {unread} unread · {openCount} still open · email{' '}
-            {prefs.mode === 'off' ? 'off' : prefs.mode === 'daily' ? 'daily digest' : 'instant'} to{' '}
-            {myEmail}
+            {unread} unread · {openCount} still open · unread items may be emailed in a digest when
+            your administrator enables it
           </p>
         </div>
         <div className="flex gap-2">
@@ -103,12 +90,6 @@ export function AssignedToMe() {
             className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong px-2.5 text-[12.5px] font-medium text-ink hover:bg-sunken/60 disabled:opacity-40"
           >
             <CheckCheckIcon className="h-3.5 w-3.5" /> Mark all read
-          </button>
-          <button
-            onClick={() => setSettings(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-2.5 text-[12.5px] font-semibold text-white hover:bg-ink/90"
-          >
-            <SettingsIcon className="h-3.5 w-3.5" /> Email settings
           </button>
         </div>
       </header>
@@ -137,7 +118,7 @@ export function AssignedToMe() {
               <InboxIcon className="h-6 w-6 text-muted" />
               <p className="text-[13px] font-medium text-ink">Nothing here</p>
               <p className="text-[12px] text-muted">
-                New assignments appear here and in your email.
+                New assignments appear here as they’re recorded.
               </p>
             </div>
           ) : (
@@ -162,7 +143,7 @@ export function AssignedToMe() {
                           <span
                             className={`truncate text-[12.5px] ${isUnread ? 'font-semibold' : 'font-medium'} text-ink`}
                           >
-                            {e.kind === 'test' ? 'DevHQ' : memberById(e.actor).name}
+                            {memberById(e.actor).name}
                           </span>
                           <span className="shrink-0 text-[11px] tabular-nums text-muted">
                             {relative(new Date(e.at)).replace(' ago', '')}
@@ -174,7 +155,6 @@ export function AssignedToMe() {
                           {subject(e, task?.title ?? '')}
                         </span>
                         <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
-                          {willEmail(e) ? <MailIcon className="h-3 w-3" /> : null}
                           {task ? taskStatusMeta[task.status].label : ''}
                           {task?.overdue && e.kind === 'assigned' ? (
                             <span className="font-semibold text-bad">· Overdue</span>
@@ -191,7 +171,7 @@ export function AssignedToMe() {
         </section>
 
         <section
-          aria-label="Email"
+          aria-label="Assignment detail"
           className={`min-h-0 flex-col overflow-y-auto scroll-thin ${selected ? 'flex' : 'hidden md:flex'}`}
         >
           {!selected || !t ? (
@@ -199,7 +179,7 @@ export function AssignedToMe() {
               <MailOpenIcon className="h-6 w-6 text-muted" />
               <p className="text-[13px] font-medium text-ink">Select an assignment</p>
               <p className="max-w-xs text-[12px] text-muted">
-                You’ll see the email exactly as it was delivered, with actions to start the work.
+                You’ll see who assigned it, when, and actions to start the work.
               </p>
             </div>
           ) : (
@@ -213,21 +193,10 @@ export function AssignedToMe() {
                 </button>
                 <h2 className="text-[15px] font-semibold text-ink">{subject(selected, t.title)}</h2>
                 <dl className="mt-1.5 grid grid-cols-[48px_minmax(0,1fr)] gap-y-0.5 text-[12px]">
-                  <dt className="text-muted">From</dt>
-                  <dd className="truncate text-ink">
-                    DevHQ &lt;notify@devhq.app&gt; on behalf of {memberById(selected.actor).name}
-                  </dd>
-                  <dt className="text-muted">To</dt>
-                  <dd className="truncate text-ink">{myEmail}</dd>
-                  <dt className="text-muted">Sent</dt>
-                  <dd className="text-ink">
-                    {formatDateTime(new Date(selected.at))} ·{' '}
-                    {willEmail(selected)
-                      ? prefs.mode === 'daily'
-                        ? 'in daily digest'
-                        : 'delivered'
-                      : 'in-app only'}
-                  </dd>
+                  <dt className="text-muted">By</dt>
+                  <dd className="truncate text-ink">{memberById(selected.actor).name}</dd>
+                  <dt className="text-muted">When</dt>
+                  <dd className="text-ink">{formatDateTime(new Date(selected.at))}</dd>
                 </dl>
               </header>
               <div className="flex-1 space-y-4 px-4 py-4">
@@ -300,30 +269,11 @@ export function AssignedToMe() {
                     <MailIcon className="h-3.5 w-3.5" /> Mark unread
                   </button>
                 </div>
-                <p className="border-t border-line pt-3 text-[11px] text-muted">
-                  You get this because email for assignments is{' '}
-                  {prefs.mode === 'off' ? 'off' : 'on'}.{' '}
-                  <button
-                    onClick={() => setSettings(true)}
-                    className="font-medium text-accent hover:underline"
-                  >
-                    Change preferences
-                  </button>
-                </p>
               </div>
             </article>
           )}
         </section>
       </div>
-
-      <EmailSettingsModal
-        open={settings}
-        onClose={() => setSettings(false)}
-        prefs={prefs}
-        email={myEmail}
-        onSave={setPrefs}
-        onTest={sendTest}
-      />
     </div>
   );
 }

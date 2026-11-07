@@ -18,8 +18,9 @@ import { useProductFilter } from '../contexts/ProductFilterContext';
 import { useWorkspaceUI } from '../contexts/WorkspaceUIContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUrlFilters } from '../hooks/useUrlFilters';
-import { members } from '../data/team';
-import { firstName } from '../utils/status';
+import { useDirectory } from '../components/team/useDirectory';
+import { useTaskInsights } from '../components/work/useTaskInsights';
+import { TaskInsightBadge } from '../components/work/TaskInsightBadge';
 import { formatDateTime, relative } from '../utils/date';
 import { describeEvent } from '../utils/taskEvents';
 import type { Task } from '../types/work';
@@ -33,6 +34,8 @@ export function Assignments() {
   const { matches, matchesTask, allowedProducts } = useProductFilter();
   const { openCreateTask } = useWorkspaceUI();
   const { canDo } = useAuth();
+  const { members, memberById } = useDirectory();
+  const firstName = (id: string) => memberById(id).name.split(' ')[0];
   const f = useUrlFilters(keys);
   const v = f.values;
   const [tab, setTab] = useState<Tab>('reviewer');
@@ -76,7 +79,7 @@ export function Assignments() {
               .reduce((s, l) => s + l.minutes, 0),
           };
         }),
-    [scopedTasks, events, timeLogs, inRange, matches],
+    [members, scopedTasks, events, timeLogs, inRange, matches],
   );
 
   const rows = useMemo(() => {
@@ -112,6 +115,7 @@ export function Assignments() {
     (t) => (t.status === 'review' || t.status === 'in-progress') && !t.reviewer,
   );
   const overCap = allRows.filter((r) => r.load > r.m.capacity).length;
+  const insights = useTaskInsights(needsReviewer.map((t) => t.key));
   const apply = useCallback(
     (vals: Record<string, string>) =>
       f.setMany(Object.fromEntries(keys.map((k) => [k, vals[k] ?? '']))),
@@ -252,6 +256,11 @@ export function Assignments() {
                       >
                         <span className="font-mono text-[11.5px] text-muted">{t.key}</span>{' '}
                         <span className="font-medium text-ink">{t.title}</span>
+                        {insights.available && (
+                          <span className="ml-1.5 align-middle">
+                            <TaskInsightBadge insight={insights.get(t.key)} />
+                          </span>
+                        )}
                       </Link>
                       <span className="hidden items-center gap-1.5 text-[12px] text-ink sm:flex">
                         <Avatar id={t.assignee} size="xs" />

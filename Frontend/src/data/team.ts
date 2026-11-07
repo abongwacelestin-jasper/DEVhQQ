@@ -1,28 +1,261 @@
-import type {
-  AuditEvent,
-  Integration,
-  Member,
-  PermissionArea,
-  PermissionLevel,
-  RoleName,
-} from '../types/team';
+import type { Integration, Member, PermissionArea, PermissionLevel, RoleName } from '../types/team';
 
-/** The signed-in member. Live binding — updated by the auth session on sign-in. */
-export let currentUserId = 'm1';
+/**
+ * Team presentation data: role copy, role colours, permission-area copy.
+ *
+ * Immutable. Who exists, their role and the live permission matrix come from
+ * the API (`GET /api/team`, `GET /api/team/roles`).
+ */
 
+export const roles: readonly { name: RoleName; summary: string }[] = [
+  { name: 'Owner', summary: 'Full organization control. Production actions require MFA.' },
+  { name: 'Project manager', summary: 'Plans and assigns work. No production access by default.' },
+  { name: 'Developer', summary: 'Works on assigned products and repositories.' },
+  { name: 'Designer', summary: 'Contributes to design and product tasks.' },
+  { name: 'Tester', summary: 'Manages testing, reports defects, reads staging.' },
+  { name: 'Operations', summary: 'Approved deployments and incident response.' },
+];
+
+/** Longer role descriptions and the colour used for the role dot across the Team UI. */
+export const roleDetails: Readonly<
+  Record<RoleName, { description: string; dot: string; productionDefault: boolean }>
+> = {
+  Owner: {
+    description: 'Full control, billing, and the only role that can delete the workspace.',
+    dot: 'bg-ink',
+    productionDefault: true,
+  },
+  'Project manager': {
+    description: 'Plans projects, assigns work, publishes docs and approves releases.',
+    dot: 'bg-accent',
+    productionDefault: false,
+  },
+  Developer: {
+    description:
+      'Writes code and opens PRs on assigned products; can view deployments, while releases are run by Operations.',
+    dot: 'bg-info',
+    productionDefault: false,
+  },
+  Designer: {
+    description: 'Owns design tasks and specs; read access to code and releases.',
+    dot: 'bg-warn',
+    productionDefault: false,
+  },
+  Tester: {
+    description: 'Runs the test queue, passes or returns work, files bugs.',
+    dot: 'bg-ok',
+    productionDefault: false,
+  },
+  Operations: {
+    description: 'Runs deploys, monitors and incidents; time-limited production access.',
+    dot: 'bg-bad',
+    productionDefault: false,
+  },
+};
+
+export const permissionAreas: readonly { area: PermissionArea; example: string }[] = [
+  { area: 'Organization', example: 'Manage membership and organization settings' },
+  { area: 'Product', example: 'View or administer a particular product' },
+  { area: 'Project', example: 'Create tasks, assign work, manage milestones' },
+  { area: 'Repository', example: 'View code activity or manage repo integrations' },
+  { area: 'Deployment', example: 'View deployments, approve releases, run permitted operations' },
+  { area: 'Infrastructure', example: 'View server metrics or manage designated resources' },
+  { area: 'Administration', example: 'Integration credentials, security policies, audit records' },
+];
+
+/**
+ * Copy of the server's role × area matrix (`GET /api/team/roles`), used only as
+ * labels where the matrix hasn't loaded. Team/MemberDetail read the live matrix
+ * through `useTeamData`. Keep in step with `Backend/auth/rbac.ts`.
+ */
+export const permissionMatrix: Readonly<
+  Record<PermissionArea, Readonly<Record<RoleName, PermissionLevel>>>
+> = {
+  Organization: {
+    Owner: 'admin',
+    'Project manager': 'view',
+    Developer: 'view',
+    Designer: 'view',
+    Tester: 'view',
+    Operations: 'view',
+  },
+  Product: {
+    Owner: 'admin',
+    'Project manager': 'manage',
+    Developer: 'contribute',
+    Designer: 'contribute',
+    Tester: 'contribute',
+    Operations: 'view',
+  },
+  Project: {
+    Owner: 'admin',
+    'Project manager': 'manage',
+    Developer: 'contribute',
+    Designer: 'contribute',
+    Tester: 'contribute',
+    Operations: 'view',
+  },
+  Repository: {
+    Owner: 'admin',
+    'Project manager': 'view',
+    Developer: 'contribute',
+    Designer: 'view',
+    Tester: 'view',
+    Operations: 'view',
+  },
+  Deployment: {
+    Owner: 'admin',
+    'Project manager': 'view',
+    Developer: 'view',
+    Designer: 'none',
+    Tester: 'view',
+    Operations: 'manage',
+  },
+  Infrastructure: {
+    Owner: 'admin',
+    'Project manager': 'none',
+    Developer: 'view',
+    Designer: 'none',
+    Tester: 'none',
+    Operations: 'manage',
+  },
+  Administration: {
+    Owner: 'admin',
+    'Project manager': 'none',
+    Developer: 'none',
+    Designer: 'none',
+    Tester: 'none',
+    Operations: 'view',
+  },
+};
+
+/** Integration catalogue copy (F-ENG replaces this with `GET /api/integrations`). */
+export const integrations: readonly Integration[] = [
+  {
+    id: 'i1',
+    name: 'GitHub App',
+    category: 'Source control',
+    status: 'connected',
+    detail: '4 repositories · webhooks signed',
+    lastSync: '2m ago',
+    authority: 'GitHub stays authoritative for code, reviews and merges.',
+    syncs: ['Pull requests', 'Commits', 'Reviews', 'CI checks', 'Tags'],
+  },
+  {
+    id: 'i2',
+    name: 'GitHub Actions',
+    category: 'Deployment',
+    status: 'connected',
+    detail: 'RenewBerry pipelines',
+    lastSync: '1m ago',
+    authority: 'Executes RenewBerry deployments. DevHQ records and approves.',
+    syncs: ['Workflow runs', 'Deploy events', 'Logs link'],
+  },
+  {
+    id: 'i3',
+    name: 'Coolify',
+    category: 'Deployment',
+    status: 'connected',
+    detail: 'Blog & Mirror Acture',
+    lastSync: '4m ago',
+    authority: 'Executes Blog and Mirror Acture deployments.',
+    syncs: ['Deploy events', 'Environment status'],
+  },
+  {
+    id: 'i4',
+    name: 'Uptime checks',
+    category: 'Monitoring',
+    status: 'degraded',
+    detail: '6 checks · 1 failing',
+    lastSync: '30s ago',
+    authority: 'Built into DevHQ. Source of truth for availability history.',
+    syncs: ['Availability', 'Latency'],
+  },
+  {
+    id: 'i5',
+    name: 'Supabase Auth',
+    category: 'Identity',
+    status: 'connected',
+    detail: 'SSO + MFA enforced for production',
+    lastSync: 'Live',
+    authority: 'Authoritative for identity and sessions.',
+    syncs: ['Sign-ins', 'MFA status'],
+  },
+  {
+    id: 'i6',
+    name: 'S3 storage',
+    category: 'Storage',
+    status: 'connected',
+    detail: 'Attachments · 18.4 GB',
+    lastSync: 'Live',
+    authority: 'Stores files; DevHQ stores references only.',
+    syncs: ['Attachments'],
+  },
+  {
+    id: 'i7',
+    name: 'Slack',
+    category: 'Notifications',
+    status: 'connected',
+    detail: '#releases, #incidents',
+    lastSync: '12m ago',
+    authority: 'Delivery channel only — discussions stay in DevHQ.',
+    syncs: ['Outbound alerts'],
+  },
+  {
+    id: 'i8',
+    name: 'Sentry',
+    category: 'Monitoring',
+    status: 'not-connected',
+    detail: 'Application exceptions',
+    lastSync: '—',
+    authority: 'Would remain authoritative for exception data.',
+    syncs: ['Exceptions', 'Releases'],
+  },
+  {
+    id: 'i9',
+    name: 'GitLab',
+    category: 'Source control',
+    status: 'planned',
+    detail: 'Phase 6 provider adapter',
+    lastSync: '—',
+    authority: 'Same adapter interface as GitHub.',
+    syncs: [],
+  },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGACY DIRECTORY MIRROR — deprecated, scheduled for removal.
+//
+// Nothing in the collaboration area (messaging, docs, work, team) reads these
+// any more: those views take the signed-in member from `useAuth().session` and
+// the directory from `useDirectory()` / `useTeamData()` (GET /api/team).
+// They remain only because files outside F-COLLAB still import them
+// (AuthContext, SignIn demo list, utils/status `memberById` → ui/Avatar,
+// CommandMenu, QuickActions, ApiTokens, IncidentContext, useNavEntries, …).
+// F-SEC is removing the AuthContext writes; the coordinator deletes this block
+// once the remaining importers are migrated.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @deprecated Use `useAuth().session?.memberId`. Empty until a session exists —
+ * it no longer falls back to the Owner account.
+ */
+export let currentUserId = '';
+
+/** @deprecated Written by AuthContext only; see the block comment above. */
 export function setCurrentUserId(id: string) {
   currentUserId = id;
 }
 
-/** Replaces the directory with the authoritative list from GET /api/team. */
+/** @deprecated Written by AuthContext only; see the block comment above. */
 export function setMembers(list: Member[]) {
   if (list.length) members = list;
 }
 
 /**
- * Directory cache. Seeded so every screen renders before the API answers, then
- * replaced wholesale by `setMembers()` with the server's list — the server is
- * the source of truth for who exists and what role they hold.
+ * @deprecated Use `useDirectory()` / `useTeamData()`. Seeded only because the
+ * sign-in screen and `utils/status.memberById` (non-F-COLLAB) need a row before
+ * the API answers; replaced wholesale by `setMembers()` after sign-in.
  */
 export let members: Member[] = [
   {
@@ -204,291 +437,5 @@ export let members: Member[] = [
     openTasks: 0,
     capacity: 10,
     color: '#475569',
-  },
-];
-
-export const roles: { name: RoleName; summary: string }[] = [
-  { name: 'Owner', summary: 'Full organization control. Production actions require MFA.' },
-  { name: 'Project manager', summary: 'Plans and assigns work. No production access by default.' },
-  { name: 'Developer', summary: 'Works on assigned products and repositories.' },
-  { name: 'Designer', summary: 'Contributes to design and product tasks.' },
-  { name: 'Tester', summary: 'Manages testing, reports defects, reads staging.' },
-  { name: 'Operations', summary: 'Approved deployments and incident response.' },
-];
-
-/** Longer role descriptions and the colour used for the role dot across the Team UI. */
-export const roleDetails: Record<
-  RoleName,
-  { description: string; dot: string; productionDefault: boolean }
-> = {
-  Owner: {
-    description: 'Full control, billing, and the only role that can delete the workspace.',
-    dot: 'bg-ink',
-    productionDefault: true,
-  },
-  'Project manager': {
-    description: 'Plans projects, assigns work, publishes docs and approves releases.',
-    dot: 'bg-accent',
-    productionDefault: false,
-  },
-  Developer: {
-    description: 'Writes code, opens PRs and deploys to staging on assigned products.',
-    dot: 'bg-info',
-    productionDefault: false,
-  },
-  Designer: {
-    description: 'Owns design tasks and specs; read access to code and releases.',
-    dot: 'bg-warn',
-    productionDefault: false,
-  },
-  Tester: {
-    description: 'Runs the test queue, passes or returns work, files bugs.',
-    dot: 'bg-ok',
-    productionDefault: false,
-  },
-  Operations: {
-    description: 'Runs deploys, monitors and incidents; time-limited production access.',
-    dot: 'bg-bad',
-    productionDefault: false,
-  },
-};
-
-export const permissionAreas: { area: PermissionArea; example: string }[] = [
-  { area: 'Organization', example: 'Manage membership and organization settings' },
-  { area: 'Product', example: 'View or administer a particular product' },
-  { area: 'Project', example: 'Create tasks, assign work, manage milestones' },
-  { area: 'Repository', example: 'View code activity or manage repo integrations' },
-  { area: 'Deployment', example: 'View deployments, approve releases, run permitted operations' },
-  { area: 'Infrastructure', example: 'View server metrics or manage designated resources' },
-  { area: 'Administration', example: 'Integration credentials, security policies, audit records' },
-];
-
-export const permissionMatrix: Record<PermissionArea, Record<RoleName, PermissionLevel>> = {
-  Organization: {
-    Owner: 'admin',
-    'Project manager': 'view',
-    Developer: 'view',
-    Designer: 'view',
-    Tester: 'view',
-    Operations: 'view',
-  },
-  Product: {
-    Owner: 'admin',
-    'Project manager': 'manage',
-    Developer: 'contribute',
-    Designer: 'contribute',
-    Tester: 'contribute',
-    Operations: 'view',
-  },
-  Project: {
-    Owner: 'admin',
-    'Project manager': 'manage',
-    Developer: 'contribute',
-    Designer: 'contribute',
-    Tester: 'contribute',
-    Operations: 'view',
-  },
-  Repository: {
-    Owner: 'admin',
-    'Project manager': 'view',
-    Developer: 'contribute',
-    Designer: 'view',
-    Tester: 'view',
-    Operations: 'view',
-  },
-  Deployment: {
-    Owner: 'admin',
-    'Project manager': 'view',
-    Developer: 'view',
-    Designer: 'none',
-    Tester: 'view',
-    Operations: 'manage',
-  },
-  Infrastructure: {
-    Owner: 'admin',
-    'Project manager': 'none',
-    Developer: 'view',
-    Designer: 'none',
-    Tester: 'none',
-    Operations: 'manage',
-  },
-  Administration: {
-    Owner: 'admin',
-    'Project manager': 'none',
-    Developer: 'none',
-    Designer: 'none',
-    Tester: 'none',
-    Operations: 'view',
-  },
-};
-
-export const auditEvents: AuditEvent[] = [
-  {
-    id: 'au1',
-    when: 'Today 09:41',
-    actor: 'm11',
-    action: 'Requested production rollback',
-    target: 'RenewBerry · 9be2c40',
-    area: 'Deployment',
-    sensitive: true,
-  },
-  {
-    id: 'au2',
-    when: 'Today 09:14',
-    actor: 'm1',
-    action: 'Approved release',
-    target: 'Blog v1.8.4',
-    area: 'Deployment',
-  },
-  {
-    id: 'au3',
-    when: 'Today 08:40',
-    actor: 'm1',
-    action: 'Invited member',
-    target: 'noah@techorg.io · Developer',
-    area: 'Organization',
-  },
-  {
-    id: 'au4',
-    when: 'Yesterday 17:22',
-    actor: 'm2',
-    action: 'Changed priority',
-    target: 'RB-212 → High',
-    area: 'Project',
-  },
-  {
-    id: 'au5',
-    when: 'Yesterday 15:03',
-    actor: 'm5',
-    action: 'Linked pull request',
-    target: 'PR #148 → RB-212',
-    area: 'Repository',
-  },
-  {
-    id: 'au6',
-    when: 'Yesterday 11:47',
-    actor: 'm1',
-    action: 'Granted production access',
-    target: 'Grace Liu · RenewBerry',
-    area: 'Administration',
-    sensitive: true,
-  },
-  {
-    id: 'au7',
-    when: 'Mon 16:10',
-    actor: 'm1',
-    action: 'Revoked API token',
-    target: 'legacy-deploy-token',
-    area: 'Administration',
-    sensitive: true,
-  },
-  {
-    id: 'au8',
-    when: 'Mon 10:02',
-    actor: 'm3',
-    action: 'Moved milestone',
-    target: 'Mirror Acture Beta → Dec 1',
-    area: 'Project',
-  },
-  {
-    id: 'au9',
-    when: 'Sun 22:52',
-    actor: 'm11',
-    action: 'Opened incident',
-    target: 'INC-30 · Mirror Acture',
-    area: 'Infrastructure',
-  },
-];
-
-export const integrations: Integration[] = [
-  {
-    id: 'i1',
-    name: 'GitHub App',
-    category: 'Source control',
-    status: 'connected',
-    detail: '4 repositories · webhooks signed',
-    lastSync: '2m ago',
-    authority: 'GitHub stays authoritative for code, reviews and merges.',
-    syncs: ['Pull requests', 'Commits', 'Reviews', 'CI checks', 'Tags'],
-  },
-  {
-    id: 'i2',
-    name: 'GitHub Actions',
-    category: 'Deployment',
-    status: 'connected',
-    detail: 'RenewBerry pipelines',
-    lastSync: '1m ago',
-    authority: 'Executes RenewBerry deployments. DevHQ records and approves.',
-    syncs: ['Workflow runs', 'Deploy events', 'Logs link'],
-  },
-  {
-    id: 'i3',
-    name: 'Coolify',
-    category: 'Deployment',
-    status: 'connected',
-    detail: 'Blog & Mirror Acture',
-    lastSync: '4m ago',
-    authority: 'Executes Blog and Mirror Acture deployments.',
-    syncs: ['Deploy events', 'Environment status'],
-  },
-  {
-    id: 'i4',
-    name: 'Uptime checks',
-    category: 'Monitoring',
-    status: 'degraded',
-    detail: '6 checks · 1 failing',
-    lastSync: '30s ago',
-    authority: 'Built into DevHQ. Source of truth for availability history.',
-    syncs: ['Availability', 'Latency'],
-  },
-  {
-    id: 'i5',
-    name: 'Supabase Auth',
-    category: 'Identity',
-    status: 'connected',
-    detail: 'SSO + MFA enforced for production',
-    lastSync: 'Live',
-    authority: 'Authoritative for identity and sessions.',
-    syncs: ['Sign-ins', 'MFA status'],
-  },
-  {
-    id: 'i6',
-    name: 'S3 storage',
-    category: 'Storage',
-    status: 'connected',
-    detail: 'Attachments · 18.4 GB',
-    lastSync: 'Live',
-    authority: 'Stores files; DevHQ stores references only.',
-    syncs: ['Attachments'],
-  },
-  {
-    id: 'i7',
-    name: 'Slack',
-    category: 'Notifications',
-    status: 'connected',
-    detail: '#releases, #incidents',
-    lastSync: '12m ago',
-    authority: 'Delivery channel only — discussions stay in DevHQ.',
-    syncs: ['Outbound alerts'],
-  },
-  {
-    id: 'i8',
-    name: 'Sentry',
-    category: 'Monitoring',
-    status: 'not-connected',
-    detail: 'Application exceptions',
-    lastSync: '—',
-    authority: 'Would remain authoritative for exception data.',
-    syncs: ['Exceptions', 'Releases'],
-  },
-  {
-    id: 'i9',
-    name: 'GitLab',
-    category: 'Source control',
-    status: 'planned',
-    detail: 'Phase 6 provider adapter',
-    lastSync: '—',
-    authority: 'Same adapter interface as GitHub.',
-    syncs: [],
   },
 ];

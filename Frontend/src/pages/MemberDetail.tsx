@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { LaptopIcon, MailIcon, ShieldCheckIcon, ShieldOffIcon, UserXIcon } from 'lucide-react';
+import { MailIcon, ShieldOffIcon, UserCheckIcon, UserXIcon } from 'lucide-react';
 import { DetailHeader } from '../components/ui/DetailHeader';
 import { Panel } from '../components/ui/Panel';
 import { StatusBadge } from '../components/ui/StatusBadge';
@@ -13,32 +13,41 @@ import { TaskList } from '../components/work/TaskList';
 import { useReauth } from '../contexts/ReauthContext';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
-import type { ApiAuditEntry } from '../api/types';
+import type { ApiAuditEntry, ApiGrant, ApiProduct, ApiRole } from '../api/types';
 import { areaFor } from '../utils/audit';
-import { currentUserId, members, permissionMatrix } from '../data/team';
-import type { AuditEvent } from '../types/team';
+import { roles } from '../data/team';
+import type { AuditEvent, RoleName } from '../types/team';
+import { useTeamData } from '../hooks/useTeamData';
+import { errorMessage } from '../components/work/apiState';
 import { products } from '../data/portfolio';
 import { useWork } from '../contexts/WorkContext';
 import { describeEvent } from '../utils/taskEvents';
 import { formatDateTime } from '../utils/date';
-import { accessGrants, sessions } from '../data/security';
 import type { ProductId } from '../types/portfolio';
 
-const jitOptions = ['1 hour', '4 hours', 'Until end of day', '24 hours'];
+const expiresIn = (g: ApiGrant) => {
+  if (!g.expiresAt) return 'no expiry recorded';
+  const mins = Math.max(0, Math.round((g.expiresAt - Date.now()) / 60_000));
+  return mins >= 60 ? `expires in ${Math.round(mins / 60)}h` : `expires in ${mins}m`;
+};
 
+/**
+ * One member, as the server knows them. Role, product access and status
+ * changes are `PATCH /api/team/:id` behind step-up; production access is
+ * just-in-time grants from `/api/access/grants`, revocable here.
+ */
 export function MemberDetail() {
   const { memberId } = useParams();
   const { requestReauth } = useReauth();
+  const { members, matrix, activeGrants, loading, error, reload, updateMember } = useTeamData();
   const member = members.find((m) => m.id === memberId);
-  const [access, setAccess] = useState<ProductId[]>(member?.products ?? []);
-  const [prod, setProd] = useState(member?.productionAccess ?? false);
-  const [jit, setJit] = useState(jitOptions[0]);
-  const [active, setActive] = useState(member?.status !== 'deactivated');
-  const [memberSessions, setMemberSessions] = useState(
-    sessions.filter((s) => s.member === memberId),
-  );
   const { tasks, events: taskEvents } = useWork();
   const { session } = useAuth();
+  const me = session?.memberId ?? '';
+  const myRole = members.find((m) => m.id === me)?.role;
+  // The live matrix decides who administers the organization; the server enforces it again.
+  const canAdminister = !!myRole && matrix?.Organization[myRole as ApiRole] === 'admin';
+  const [busy, setBusy] = useState(false);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
 
   // This member's trail, straight from the server's hash-chained log.
@@ -75,24 +84,83 @@ export function MemberDetail() {
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 6);
 
-  if (!member) return <NotFound what="Member" backTo="/team" backLabel="Back to team" />;
+  if (!member) {
+    if (loading) return <p className="px-1 py-6 text-[12.5px] text-muted">Loading member…</p>;
+    if (error)
+      return (
+        <div className="rounded-lg border border-line px-4 py-6 text-center text-[12.5px] text-muted">
+          {error}{' '}
+          <button onClick={() => void reload()} className="font-medium text-accent hover:underline">
+            Try again
+          </button>
+        </div>
+      );
+    return <NotFound what="Member" backTo="/team" backLabel="Back to team" />;
+  }
 
   const isOwner = member.role === 'Owner';
-  const isMe = member.id === currentUserId;
+  const isMe = member.id === me;
+  const active = member.status !== 'deactivated';
+  const access = member.products;
   const assigned = tasks.filter((t) => t.assignee === member.id);
   const events = auditEvents.filter((e) => e.actor === member.id);
-  const grant = accessGrants.find((g) => g.member === member.id);
+  const grants = activeGrants.filter((g) => g.memberId === member.id);
+  const level = (area: 'Product' | 'Deployment') =>
+    matrix ? matrix[area][member.role as ApiRole] : '…';
+
+  /** Every change is a server write behind step-up; the page shows what the server returns. */
+  const change = (
+    title: string,
+    description: string,
+    patch: { role?: RoleName; products?: ApiProduct[]; status?: 'active' | 'deactivated' },
+    success: string,
+  ) =>
+    requestReauth({
+      title,
+      description,
+      actionLabel: 'Verify & save',
+      onConfirm: () => {
+        setBusy(true);
+        updateMember(member.id, patch)
+          .then(() =>
+            toast.success(success, { description: 'Their sessions were revoked by the server.' }),
+          )
+          .catch((e: unknown) =>
+            toast.error(`${title} failed`, {
+              description: errorMessage(e, 'The team API did not respond.'),
+            }),
+          )
+          .finally(() => setBusy(false));
+      },
+    });
 
   const toggleProduct = (id: ProductId) => {
     const removing = access.includes(id);
-    requestReauth({
-      title: removing ? 'Remove product access' : 'Grant product access',
-      description: `${member.name} will ${removing ? 'lose' : 'gain'} access to ${products.find((p) => p.id === id)?.name}.`,
-      actionLabel: 'Verify & save',
-      successMessage: 'Access updated',
-      onConfirm: () => setAccess((a) => (removing ? a.filter((x) => x !== id) : [...a, id])),
-    });
+    const next = (removing ? access.filter((x) => x !== id) : [...access, id]) as ApiProduct[];
+    change(
+      removing ? 'Remove product access' : 'Grant product access',
+      `${member.name} will ${removing ? 'lose' : 'gain'} access to ${products.find((p) => p.id === id)?.name}.`,
+      { products: next },
+      'Access updated',
+    );
   };
+
+  const revokeGrant = (g: ApiGrant) =>
+    requestReauth({
+      title: 'Revoke production access',
+      description: `${member.name} loses ${g.scope} access immediately.`,
+      actionLabel: 'Verify & revoke',
+      onConfirm: () => {
+        api(`/api/access/grants/${encodeURIComponent(g.id)}/revoke`, { method: 'POST' })
+          .then(() => {
+            toast.success('Access revoked');
+            return reload();
+          })
+          .catch((e: unknown) =>
+            toast.error('Revocation failed', { description: errorMessage(e) }),
+          );
+      },
+    });
 
   return (
     <div className="space-y-4">
@@ -114,23 +182,38 @@ export function MemberDetail() {
             ) : (
               <StatusBadge tone="bad" label="MFA off" dot />
             )}
-            {prod && <StatusBadge tone="warn" label="Production access" />}
+            {grants.length > 0 && <StatusBadge tone="warn" label="Production access" />}
             {!active && <StatusBadge tone="bad" label="Deactivated" />}
             {member.status === 'invited' && <StatusBadge tone="info" label="Invite pending" />}
           </>
         }
         actions={
-          !member.mfa && member.status === 'active' ? (
-            <Button
-              icon={<ShieldCheckIcon className="h-3.5 w-3.5" />}
-              onClick={() =>
-                toast.success('MFA reminder sent', {
-                  description: `${member.name} has 7 days before sign-in is blocked.`,
-                })
-              }
-            >
-              Require MFA
-            </Button>
+          canAdminister && !isOwner && !isMe ? (
+            <label className="flex items-center gap-1.5 text-[12px] text-muted">
+              Role
+              <select
+                value={member.role}
+                disabled={busy}
+                onChange={(e) => {
+                  const role = e.target.value as RoleName;
+                  change(
+                    'Change role',
+                    `${member.name} becomes ${role}. Their sessions end so the new permissions apply at once.`,
+                    { role },
+                    `${member.name} is now ${role}`,
+                  );
+                }}
+                className="h-8 rounded-md border border-line bg-white px-2 text-[12.5px] font-medium text-ink"
+              >
+                {roles
+                  .filter((r) => r.name !== 'Owner')
+                  .map((r) => (
+                    <option key={r.name} value={r.name}>
+                      {r.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
           ) : undefined
         }
       />
@@ -148,17 +231,20 @@ export function MemberDetail() {
                       <p className="text-[12.5px] font-medium text-ink">{p.name}</p>
                       <p className="text-[11.5px] text-muted">
                         {has
-                          ? `Product: ${permissionMatrix.Product[member.role]} · Deployments: ${permissionMatrix.Deployment[member.role]}`
+                          ? `Product: ${level('Product')} · Deployments: ${level('Deployment')}`
                           : 'No access'}
                       </p>
                     </div>
                     {isOwner ? (
                       <span className="text-[11.5px] text-subtle">Always</span>
+                    ) : !canAdminister ? (
+                      <span className="text-[11.5px] text-subtle">{has ? 'Granted' : '—'}</span>
                     ) : (
                       <button
                         role="switch"
                         aria-checked={has}
                         aria-label={`Access to ${p.name}`}
+                        disabled={busy}
                         onClick={() => toggleProduct(p.id)}
                         className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-150 ${has ? 'bg-accent' : 'bg-line-strong'}`}
                       >
@@ -252,142 +338,81 @@ export function MemberDetail() {
         </div>
 
         <div className="grid content-start gap-4 md:grid-cols-2 lg:grid-cols-1">
-          <Panel title="Production access">
+          <Panel title="Production access" meta={<span>Just-in-time</span>}>
             <div className="space-y-2.5 px-3.5 py-3">
-              {prod ? (
-                <>
-                  <p className="text-[12.5px] text-ink">
-                    {grant ? grant.scope : 'Production · granted'}
-                  </p>
-                  <p className="text-[11.5px] text-muted">
-                    {grant ? `${grant.reason} · expires ${grant.expires}` : 'Standing access'}
-                  </p>
-                  {!isOwner && (
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      className="w-full"
-                      icon={<ShieldOffIcon className="h-3.5 w-3.5" />}
-                      onClick={() =>
-                        requestReauth({
-                          title: 'Revoke production access',
-                          description: `${member.name} loses production access immediately.`,
-                          actionLabel: 'Verify & revoke',
-                          successMessage: 'Access revoked',
-                          onConfirm: () => setProd(false),
-                        })
-                      }
-                    >
-                      Revoke now
-                    </Button>
-                  )}
-                </>
+              {grants.length ? (
+                <ul className="space-y-2">
+                  {grants.map((g) => (
+                    <li key={g.id} className="space-y-1">
+                      <p className="text-[12.5px] text-ink">{g.scope}</p>
+                      <p className="text-[11.5px] text-muted">
+                        {g.reason} · {expiresIn(g)}
+                      </p>
+                      {canAdminister && !isOwner && (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          className="w-full"
+                          icon={<ShieldOffIcon className="h-3.5 w-3.5" />}
+                          onClick={() => revokeGrant(g)}
+                        >
+                          Revoke now
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                <>
-                  <p className="text-[12px] text-muted">
-                    Grant time-boxed access. It expires automatically and every action is audited.
-                  </p>
-                  <label className="block">
-                    <span className="text-[11.5px] font-medium text-ink">Duration</span>
-                    <select
-                      value={jit}
-                      onChange={(e) => setJit(e.target.value)}
-                      className="mt-1 h-8 w-full rounded-md border border-line bg-white px-2 text-[12.5px]"
-                    >
-                      {jitOptions.map((o) => (
-                        <option key={o}>{o}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="w-full"
-                    disabled={!member.mfa || member.status !== 'active'}
-                    icon={<ShieldCheckIcon className="h-3.5 w-3.5" />}
-                    onClick={() =>
-                      requestReauth({
-                        title: 'Grant production access',
-                        description: `${member.name} gets production access for ${jit.toLowerCase()}.`,
-                        actionLabel: 'Verify & grant',
-                        successMessage: 'Time-boxed access granted',
-                        onConfirm: () => setProd(true),
-                      })
-                    }
-                  >
-                    Grant for {jit.toLowerCase()}
-                  </Button>
-                  {!member.mfa && (
-                    <p className="text-[11.5px] text-bad">
-                      MFA must be enabled before production access can be granted.
-                    </p>
-                  )}
-                </>
+                <p className="text-[12px] text-muted">
+                  No active production access. Members request time-boxed access themselves; it
+                  expires automatically and approvals appear in Access review.
+                </p>
+              )}
+              {!member.mfa && (
+                <p className="text-[11.5px] text-bad">
+                  MFA must be enabled before production access can be approved.
+                </p>
               )}
             </div>
           </Panel>
 
-          <Panel title="Sessions" meta={<span>{memberSessions.length}</span>}>
-            <ul className="divide-y divide-line">
-              {memberSessions.map((s) => (
-                <li key={s.id} className="flex items-center gap-2.5 px-3.5 py-2">
-                  <LaptopIcon className="h-4 w-4 shrink-0 text-muted" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12.5px] text-ink">{s.device}</p>
-                    <p className="truncate text-[11px] text-muted">
-                      {s.location} · {s.ip} · {s.lastSeen}
-                    </p>
-                  </div>
-                  {s.current ? (
-                    <span className="text-[11px] font-medium text-ok">This device</span>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setMemberSessions((l) => l.filter((x) => x.id !== s.id));
-                        toast.success('Session signed out');
-                      }}
-                    >
-                      Sign out
-                    </Button>
-                  )}
-                </li>
-              ))}
-              {memberSessions.length === 0 && (
-                <li className="px-3.5 py-3 text-[12.5px] text-muted">No active sessions.</li>
-              )}
-            </ul>
-          </Panel>
-
-          {!isOwner && !isMe && (
+          {canAdminister && !isOwner && !isMe && (
             <Panel title="Danger zone">
               <div className="space-y-2 px-3.5 py-3">
                 <p className="text-[12px] text-muted">
-                  Deactivating signs {member.name.split(' ')[0]} out everywhere, revokes tokens and
-                  keeps their history.
+                  {active
+                    ? `Deactivating signs ${member.name.split(' ')[0]} out everywhere and keeps their history.`
+                    : `${member.name.split(' ')[0]} is deactivated. Reactivating restores sign-in with their current role.`}
                 </p>
                 <Button
-                  variant="danger"
+                  variant={active ? 'danger' : 'secondary'}
                   size="sm"
                   className="w-full"
-                  disabled={!active}
-                  icon={<UserXIcon className="h-3.5 w-3.5" />}
+                  disabled={busy}
+                  icon={
+                    active ? (
+                      <UserXIcon className="h-3.5 w-3.5" />
+                    ) : (
+                      <UserCheckIcon className="h-3.5 w-3.5" />
+                    )
+                  }
                   onClick={() =>
-                    requestReauth({
-                      title: `Deactivate ${member.name}`,
-                      description: 'Signs them out of all sessions and revokes their API tokens.',
-                      actionLabel: 'Verify & deactivate',
-                      successMessage: 'Member deactivated',
-                      onConfirm: () => {
-                        setActive(false);
-                        setMemberSessions([]);
-                        setProd(false);
-                      },
-                    })
+                    active
+                      ? change(
+                          `Deactivate ${member.name}`,
+                          'Signs them out of all sessions. Their history stays in the audit log.',
+                          { status: 'deactivated' },
+                          'Member deactivated',
+                        )
+                      : change(
+                          `Reactivate ${member.name}`,
+                          'They can sign in again with their current role and products.',
+                          { status: 'active' },
+                          'Member reactivated',
+                        )
                   }
                 >
-                  {active ? 'Deactivate member' : 'Deactivated'}
+                  {active ? 'Deactivate member' : 'Reactivate member'}
                 </Button>
               </div>
             </Panel>
