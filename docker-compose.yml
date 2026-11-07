@@ -1,0 +1,408 @@
+# DevHQ — production-like stack.
+#
+#   make secrets && make up            # build + start (https://$DEVHQ_DOMAIN)
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up   # dev
+#
+# Topology and trust boundaries: docs/deploy/ARCHITECTURE.md
+# Operations: docs/deploy/RUNBOOK.md
+#
+# Networks
+#   public_net  edge only; the only network with published ports
+#   edge_net    internal: edge <-> frontend, backend
+#   app_net     internal: backend/migrate <-> postgres, minio, models
+#   egress_net  outbound internet for backend (GitHub, SMTP, monitors) and
+#               models (Anthropic API); nothing listens on it
+# Postgres, MinIO and models are never published.
+#
+# Secrets are files under infra/secrets/ (make secrets), mounted at
+# /run/secrets/<name>. Postgres and MinIO read them natively via *_FILE; the
+# backend image loads *_FILE into env in infra/docker/entrypoint.sh.
+# Host files are mode 0640 with the deploy user's group; containers join that
+# group via group_add (DEVHQ_SECRETS_GID, written to .env by make secrets).
+
+name: devhq
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+    tag: "{{.Name}}"
+
+# Applied to every service; services override only what they must.
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging: *logging
+  group_add: ["${DEVHQ_SECRETS_GID:-10001}"]
+  init: false
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: Backend/Dockerfile
+  args:
+    VERSION: ${DEVHQ_TAG:-local}
+    REVISION: ${DEVHQ_REVISION:-unknown}
+
+# Core settings config/env.ts needs to boot; shared by backend and migrate.
+x-core-env: &core-env
+  NODE_ENV: production
+  PORT: "8080"
+  APP_ORIGIN: https://${DEVHQ_DOMAIN:-localhost}
+  PUBLIC_URL: https://${DEVHQ_DOMAIN:-localhost}
+  CORS_ORIGINS: ${CORS_ORIGINS:-}
+  TRUST_PROXY: "1"
+  WEBAUTHN_RP_ID: ${DEVHQ_DOMAIN:-localhost}
+  WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-DevHQ}
+  APP_VERSION: ${DEVHQ_TAG:-local}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DEMO_DISABLED: ${DEMO_DISABLED:-1}
+  SESSION_SECRET_FILE: /run/secrets/session_secret
+  SESSION_SECRET_PREVIOUS_FILE: /run/secrets/session_secret_previous
+  DATA_ENCRYPTION_KEY_FILE: /run/secrets/data_encryption_key
+  DATABASE_SSL: ${DATABASE_SSL:-false}
+
+# Full backend env. Every *_FILE here must have its secret mounted: the
+# entrypoint fails closed on an unreadable secret file.
+x-backend-env: &backend-env
+  <<: *core-env
+  DATABASE_URL_FILE: /run/secrets/database_url
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_FORCE_PATH_STYLE: "true"
+  S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key_id
+  S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_access_key
+  S3_BUCKET_UPLOADS: ${S3_BUCKET_UPLOADS:-devhq-uploads}
+  S3_BUCKET_BACKUPS: ${S3_BUCKET_BACKUPS:-devhq-backups}
+  S3_BUCKET_AUDIT: ${S3_BUCKET_AUDIT:-devhq-audit}
+  S3_BUCKET_MODELS: ${S3_BUCKET_MODELS:-devhq-models}
+  ML_SERVICE_URL: http://models:8000
+  ML_SERVICE_TOKEN_FILE: /run/secrets/ml_service_token
+  MAIL_TRANSPORT: ${MAIL_TRANSPORT:-console}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+  GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_private_key
+  GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
+  GITHUB_CLIENT_SECRET_FILE: /run/secrets/github_client_secret
+  GITHUB_TOKEN_FILE: /run/secrets/github_token
+
+x-backend-secrets: &backend-secrets
+  - session_secret
+  - session_secret_previous
+  - data_encryption_key
+  - database_url
+  - s3_access_key_id
+  - s3_secret_access_key
+  - ml_service_token
+  - smtp_password
+  - github_app_private_key
+  - github_webhook_secret
+  - github_client_secret
+  - github_token
+
+services:
+  # -------------------------------------------------------------------------
+  # Edge: TLS, HSTS, HTTP/3, routing. The only service with published ports.
+  # -------------------------------------------------------------------------
+  edge:
+    <<: *hardened
+    build:
+      context: infra/edge
+      args:
+        VERSION: ${DEVHQ_TAG:-local}
+        REVISION: ${DEVHQ_REVISION:-unknown}
+    image: ${DEVHQ_IMAGE_PREFIX:-ghcr.io/devhq/devhq}-edge:${DEVHQ_TAG:-local}
+    environment:
+      DEVHQ_DOMAIN: ${DEVHQ_DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+      FRONTEND_UPSTREAM: frontend:8081
+      BACKEND_UPSTREAM: backend:8080
+      HSTS_VALUE: ${HSTS_VALUE:-max-age=63072000; includeSubDomains; preload}
+      MAX_BODY_SIZE: ${EDGE_MAX_BODY_SIZE:-2MB}
+      S3_PUBLIC_HOST: ${S3_PUBLIC_HOST:-}
+    # Bind :80/:443 as a non-root user without CAP_NET_BIND_SERVICE.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    ports:
+      - "${EDGE_BIND:-0.0.0.0}:${EDGE_HTTP_PORT:-80}:80/tcp"
+      - "${EDGE_BIND:-0.0.0.0}:${EDGE_HTTPS_PORT:-443}:443/tcp"
+      - "${EDGE_BIND:-0.0.0.0}:${EDGE_HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - edge_data:/data          # certificates + ACME account (back this up)
+      - edge_config:/config
+      - ./infra/edge/sites:/etc/caddy/sites:ro
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks: [public_net, edge_net]
+    depends_on:
+      frontend: { condition: service_healthy }
+      backend: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 256M, pids: 200 }
+
+  # -------------------------------------------------------------------------
+  # Frontend: static SPA on unprivileged nginx (:8081).
+  # -------------------------------------------------------------------------
+  frontend:
+    <<: *hardened
+    build:
+      context: .
+      dockerfile: Frontend/Dockerfile
+      args:
+        VERSION: ${DEVHQ_TAG:-local}
+        REVISION: ${DEVHQ_REVISION:-unknown}
+    image: ${DEVHQ_IMAGE_PREFIX:-ghcr.io/devhq/devhq}-frontend:${DEVHQ_TAG:-local}
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    networks: [edge_net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 128M, pids: 100 }
+
+  # -------------------------------------------------------------------------
+  # Backend API (:8080). Starts after migrations and storage bootstrap.
+  # -------------------------------------------------------------------------
+  backend:
+    <<: *hardened
+    build: *backend-build
+    image: ${DEVHQ_IMAGE_PREFIX:-ghcr.io/devhq/devhq}-backend:${DEVHQ_TAG:-local}
+    environment: *backend-env
+    secrets: *backend-secrets
+    volumes:
+      - backend_state:/var/lib/devhq   # local audit chain + snapshot backups
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    networks: [edge_net, app_net, egress_net]
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 4s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+      minio-init: { condition: service_completed_successfully }
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 512M, pids: 256 }
+
+  # One-shot schema migration (B-DATA's `migrate` script) before the backend.
+  # `node --run` executes the package.json script without npm, which is not
+  # shipped in the runtime image. Connects as the schema-owner role `devhq`
+  # (DDL); the backend itself runs as the DML-only role `devhq_app`.
+  migrate:
+    <<: *hardened
+    build: *backend-build
+    image: ${DEVHQ_IMAGE_PREFIX:-ghcr.io/devhq/devhq}-backend:${DEVHQ_TAG:-local}
+    command: ["node", "--run", "migrate"]
+    restart: "no"
+    environment:
+      <<: *core-env
+      DATABASE_URL_FILE: /run/secrets/database_url_migrator
+    secrets:
+      - session_secret
+      - session_secret_previous
+      - data_encryption_key
+      - database_url_migrator
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks: [app_net]
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 256M, pids: 64 }
+
+  # -------------------------------------------------------------------------
+  # ML service (FastAPI :8000, internal only). Dockerfile owned by ML lane.
+  # The backend degrades to heuristics when it is down, so nothing waits on it.
+  # -------------------------------------------------------------------------
+  models:
+    <<: *hardened
+    build:
+      context: Models
+      dockerfile: Dockerfile
+    image: ${DEVHQ_IMAGE_PREFIX:-ghcr.io/devhq/devhq}-models:${DEVHQ_TAG:-local}
+    environment:
+      ML_SERVICE_TOKEN_FILE: /run/secrets/ml_service_token
+      ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      ASSISTANT_MODEL: ${ASSISTANT_MODEL:-claude-sonnet-5-5}
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: "true"
+      S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key_id
+      S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_access_key
+      S3_BUCKET_MODELS: ${S3_BUCKET_MODELS:-devhq-models}
+    secrets:
+      - ml_service_token
+      - anthropic_api_key
+      - s3_access_key_id
+      - s3_secret_access_key
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    networks: [app_net, egress_net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 1G, pids: 256 }
+
+  # -------------------------------------------------------------------------
+  # PostgreSQL 17 (internal only). Runs as the image's postgres uid (70).
+  # -------------------------------------------------------------------------
+  postgres:
+    <<: *hardened
+    # To bump: docker buildx imagetools inspect postgres:17-alpine | grep Digest
+    image: postgres:17-alpine@sha256:3540c0362c809df084ffac0ae69fe794515f9de92692f02178bcdce0ef0302ac
+    user: "70:70"
+    environment:
+      POSTGRES_USER: devhq
+      POSTGRES_DB: devhq
+      # Bootstrap owner `devhq` (= migrator). infra/postgres/initdb creates
+      # the DML-only runtime role `devhq_app` on first init.
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --data-checksums"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets: [postgres_password, app_db_password]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/run/postgresql:size=1m,uid=70,gid=70,mode=0775
+    shm_size: 256m
+    networks: [app_net]
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "devhq", "-d", "devhq", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 1G, pids: 200 }
+
+  # -------------------------------------------------------------------------
+  # MinIO (S3 API :9000, internal only; console disabled outside dev).
+  # MinIO no longer publishes images to Docker Hub/Quay; Chainguard's image is
+  # rebuilt nightly from source and runs as uid 65532. `-dev` adds busybox,
+  # needed for the healthcheck.
+  # -------------------------------------------------------------------------
+  minio:
+    <<: *hardened
+    # To bump: docker buildx imagetools inspect cgr.dev/chainguard/minio:latest-dev | grep Digest
+    image: cgr.dev/chainguard/minio:latest-dev@sha256:32b5a874739ffae82c8d79ed10a66f675970576d6dc256b47caced2cfd1d8d10
+    entrypoint: ["/usr/bin/minio"]
+    command: ["server", "/data", "--address", ":9000"]
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      MINIO_BROWSER: "off"
+      MINIO_API_ROOT_ACCESS: "on"
+    secrets: [minio_root_user, minio_root_password]
+    volumes:
+      - minio_data:/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    networks: [app_net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 15s
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 1G, pids: 256 }
+
+  # One-shot bucket/user bootstrap. Runs STORAGE's infra/minio/bootstrap.sh
+  # when present, otherwise the minimal INFRA fallback.
+  minio-init:
+    <<: *hardened
+    # To bump: docker buildx imagetools inspect cgr.dev/chainguard/minio-client:latest-dev | grep Digest
+    image: cgr.dev/chainguard/minio-client:latest-dev@sha256:fcc386401031a266a961637d21f6939e0a3032b63e904950c6277bfca260cc29
+    entrypoint: ["/bin/sh", "/infra/minio-init.sh"]
+    restart: "no"
+    environment:
+      MINIO_URL: http://minio:9000
+      MC_CONFIG_DIR: /tmp/.mc
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key_id
+      S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_access_key
+      S3_BUCKET_UPLOADS: ${S3_BUCKET_UPLOADS:-devhq-uploads}
+      S3_BUCKET_BACKUPS: ${S3_BUCKET_BACKUPS:-devhq-backups}
+      S3_BUCKET_AUDIT: ${S3_BUCKET_AUDIT:-devhq-audit}
+      S3_BUCKET_MODELS: ${S3_BUCKET_MODELS:-devhq-models}
+    secrets: [minio_root_user, minio_root_password, s3_access_key_id, s3_secret_access_key]
+    volumes:
+      - ./infra/docker/minio-init.sh:/infra/minio-init.sh:ro
+      - ./infra/minio:/bootstrap:ro
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks: [app_net]
+    healthcheck:
+      disable: true
+    depends_on:
+      minio: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M, pids: 64 }
+
+networks:
+  public_net: {}
+  edge_net:
+    internal: true
+  app_net:
+    internal: true
+  egress_net: {}
+
+volumes:
+  pg_data:
+  minio_data:
+  backend_state:
+  edge_data:
+  edge_config:
+
+secrets:
+  session_secret:          { file: ./infra/secrets/session_secret }
+  session_secret_previous: { file: ./infra/secrets/session_secret_previous }
+  data_encryption_key:     { file: ./infra/secrets/data_encryption_key }
+  postgres_password:       { file: ./infra/secrets/postgres_password }
+  app_db_password:         { file: ./infra/secrets/app_db_password }
+  database_url:            { file: ./infra/secrets/database_url }
+  database_url_migrator:   { file: ./infra/secrets/database_url_migrator }
+  minio_root_user:         { file: ./infra/secrets/minio_root_user }
+  minio_root_password:     { file: ./infra/secrets/minio_root_password }
+  s3_access_key_id:        { file: ./infra/secrets/s3_access_key_id }
+  s3_secret_access_key:    { file: ./infra/secrets/s3_secret_access_key }
+  ml_service_token:        { file: ./infra/secrets/ml_service_token }
+  anthropic_api_key:       { file: ./infra/secrets/anthropic_api_key }
+  smtp_password:           { file: ./infra/secrets/smtp_password }
+  github_app_private_key:  { file: ./infra/secrets/github_app_private_key }
+  github_webhook_secret:   { file: ./infra/secrets/github_webhook_secret }
+  github_client_secret:    { file: ./infra/secrets/github_client_secret }
+  github_token:            { file: ./infra/secrets/github_token }

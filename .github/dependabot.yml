@@ -1,98 +1,73 @@
 version: 2
+# Branch model: develop = staging, main = production via tags. Dependency PRs
+# land on develop first and reach production with the next release tag.
 updates:
-  # Enable version updates for Backend
-  - package-ecosystem: "npm"
-    directory: "/Backend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 10
-    reviewers:
-      - "devhq-team"
-    labels:
-      - "dependencies"
-      - "backend"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-    ignore:
-      # Ignore major version updates for stability
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-    groups:
-      # Group dependencies to reduce noise
-      dev-dependencies:
-        patterns:
-          - "@types/*"
-          - "eslint*"
-          - "prettier*"
-          - "typescript*"
-
-  # Enable version updates for Frontend
-  - package-ecosystem: "npm"
-    directory: "/Frontend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 10
-    reviewers:
-      - "devhq-team"
-    labels:
-      - "dependencies"
-      - "frontend"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-    ignore:
-      # Ignore major version updates for stability
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-    groups:
-      dev-dependencies:
-        patterns:
-          - "@types/*"
-          - "eslint*"
-          - "prettier*"
-          - "typescript*"
-          - "vite*"
-      react-dependencies:
-        patterns:
-          - "react*"
-          - "@emotion/*"
-          - "framer-motion*"
-
-  # Enable version updates for Models
-  - package-ecosystem: "npm"
-    directory: "/Models"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "devhq-team"
-    labels:
-      - "dependencies"
-      - "ml"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-
-  # Enable version updates for root
-  - package-ecosystem: "npm"
+  # npm: a single workspace lockfile at the root covers Backend, Frontend and
+  # Models. (Per-package entries had no lockfile to update.)
+  - package-ecosystem: npm
     directory: "/"
+    target-branch: develop
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: weekly
+      day: monday
       time: "09:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "devhq-team"
-    labels:
-      - "dependencies"
-      - "root"
+    open-pull-requests-limit: 10
+    labels: [dependencies, npm]
     commit-message:
-      prefix: "chore"
-      include: "scope"
+      prefix: chore
+      include: scope
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      dev-tooling:
+        dependency-type: development
+        patterns: ["@types/*", "eslint*", "@eslint/*", "typescript*", "@typescript-eslint/*", "prettier*", "vite*", "@vitejs/*"]
+      react:
+        patterns: ["react*", "@emotion/*", "framer-motion*"]
+
+  # GitHub Actions are pinned by commit SHA; Dependabot bumps SHA + comment.
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Base images pinned by digest in Dockerfiles and compose.
+  - package-ecosystem: docker
+    directories: ["/Backend", "/Frontend", "/infra/edge", "/Models"]
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: build
+  - package-ecosystem: docker-compose
+    directory: "/"
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: build
+
+  # Python ML service (ML lane: Models/pyproject.toml).
+  - package-ecosystem: pip
+    directory: "/Models"
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, ml]
+    commit-message:
+      prefix: chore
+      include: scope
