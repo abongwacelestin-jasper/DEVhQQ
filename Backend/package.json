@@ -72,7 +72,9 @@
     "format": "prettier --write \"**/*.ts\"",
     "format:check": "prettier --check \"**/*.ts\"",
     "smoke": "node --experimental-strip-types scripts/smoke.ts",
-    "test": "npm run smoke",
+    "test": "npm run test:unit && npm run smoke",
+    "test:unit": "node --experimental-strip-types --import ./test/setup.ts --test 'test/unit/**/*.test.ts' 'test/integration/**/*.test.ts'",
+    "test:coverage": "node --experimental-strip-types test/coverage.ts",
     "test:smoke": "npm run smoke",
     "validate": "npm run typecheck && npm run lint",
     "precommit": "npm run validate"
