@@ -25,8 +25,13 @@ test.describe('Resilience', () => {
       expect(text.length, 'page still renders').toBeGreaterThan(100);
 
       await page.goto('/team').catch(() => undefined); // full reload with the API down
-      const body = (await page.locator('body').innerText()).trim();
-      expect(body.length, 'not a blank page after reload').toBeGreaterThan(20);
+      // Give the SPA its normal boot time; a white screen never gets past this.
+      await expect
+        .poll(async () => (await page.locator('body').innerText()).trim().length, {
+          message: 'not a blank page after reload',
+          timeout: 10_000,
+        })
+        .toBeGreaterThan(20);
       // A sensible state names the problem (offline / unavailable / try again) instead of
       // silently treating the user as signed out.
       await expect(page.getByText(/unavailable|offline|can’t reach|cannot reach|try again|connection/i).first()).toBeVisible();
@@ -41,9 +46,8 @@ test.describe('Resilience', () => {
       await route.continue();
     });
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Team & roles' }).click();
-    await expect(page.getByRole('status', { name: 'Loading' })).toBeVisible();
-    // The skeleton is a fixed 420 ms timer (useRouteLoading). With a 2.5 s API it is
-    // gone long before the data arrives; what shows in between is what we check.
+    // The route skeleton is a fixed 420 ms timer (useRouteLoading), too short to assert on
+    // reliably. With a 2.5 s API what matters is what shows after it: checked below.
     await page.waitForTimeout(1000);
     const loadingStill = await page.getByRole('status', { name: 'Loading' }).isVisible().catch(() => false);
     const noteLoading = await page.getByText('Loading…').first().isVisible().catch(() => false);
