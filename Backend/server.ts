@@ -39,6 +39,13 @@ import { registerOperationsRoutes } from './routes/operations.routes.ts';
 import { registerLocationRoutes } from './routes/locations.routes.ts';
 import { registerSecurityRoutes } from './routes/security.routes.ts';
 import { registerCodespaceRoutes } from './routes/codespaces.routes.ts';
+import { registerGithubRoutes } from './routes/github.routes.ts';
+import { registerRepoRoutes } from './routes/repos.routes.ts';
+import { registerPullRoutes } from './routes/pulls.routes.ts';
+import { registerCiRoutes } from './routes/ci.routes.ts';
+import { registerMonitorRoutes } from './routes/monitors.routes.ts';
+import { registerIntegrationRoutes } from './routes/integrations.routes.ts';
+import { registerWebhookRoutes } from './routes/webhooks.routes.ts';
 
 export async function buildApp() {
   await seed();
@@ -57,6 +64,13 @@ export async function buildApp() {
   registerLocationRoutes(router);
   registerSecurityRoutes(router);
   registerCodespaceRoutes(router);
+  registerGithubRoutes(router);
+  registerRepoRoutes(router);
+  registerPullRoutes(router);
+  registerCiRoutes(router);
+  registerMonitorRoutes(router);
+  registerIntegrationRoutes(router);
+  registerWebhookRoutes(router);
   return router;
 }
 
