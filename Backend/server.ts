@@ -37,6 +37,7 @@ import { registerTaskRoutes } from './routes/tasks.routes.ts';
 import { registerTeamRoutes } from './routes/team.routes.ts';
 import { registerDocRoutes } from './routes/docs.routes.ts';
 import { registerOperationsRoutes } from './routes/operations.routes.ts';
+import { registerIncidentActionRoutes } from './routes/incident-actions.routes.ts';
 import { registerLocationRoutes } from './routes/locations.routes.ts';
 import { registerSecurityRoutes } from './routes/security.routes.ts';
 import { registerCodespaceRoutes } from './routes/codespaces.routes.ts';
@@ -75,6 +76,7 @@ export async function buildApp() {
   registerTeamRoutes(router);
   registerDocRoutes(router);
   registerOperationsRoutes(router);
+  registerIncidentActionRoutes(router);
   registerLocationRoutes(router);
   registerSecurityRoutes(router);
   registerCodespaceRoutes(router);
