@@ -1,0 +1,24 @@
+{
+  "name": "@devhq/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DevHQ end-to-end and beta test suite (Playwright). Not part of the npm workspaces on purpose.",
+  "scripts": {
+    "test": "playwright test",
+    "test:chromium": "playwright test --project=chromium",
+    "test:phase1": "playwright test --project=chromium --grep-invert @wave4",
+    "test:wave4": "playwright test --project=chromium --grep @wave4",
+    "test:cross-browser": "playwright test --project=firefox --project=webkit --grep @smoke",
+    "explore": "playwright test --project=explore",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install chromium firefox webkit",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^22.20.5",
+    "typescript": "5.9"
+  }
+}
