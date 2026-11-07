@@ -19,7 +19,7 @@ export function DeployRiskBadge({ deploymentId }: { deploymentId: string }) {
   const panel = useId();
   if (status !== 'ready' || !data) return null;
 
-  const pct = Math.round(Math.max(0, Math.min(1, data.score)) * 100);
+  const pct = Math.round(Math.max(0, Math.min(1, data.probability)) * 100);
   const model = data.source === 'model';
   return (
     <section
@@ -42,9 +42,9 @@ export function DeployRiskBadge({ deploymentId }: { deploymentId: string }) {
             <ScaleIcon className="h-3 w-3" aria-hidden />
           )}
           {model ? 'model' : 'heuristic'}
-          {data.modelVersion ? ` · ${data.modelVersion}` : ''}
+          {data.model ? ` · ${data.model.version}${data.model.trainedOn === 'synthetic' ? ' (synthetic training data)' : ''}` : ''}
         </span>
-        {data.reasons.length > 0 && (
+        {data.drivers.length > 0 && (
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -62,7 +62,7 @@ export function DeployRiskBadge({ deploymentId }: { deploymentId: string }) {
       </div>
       {open && (
         <ul id={panel} className="mt-2 list-disc space-y-1 pl-5 text-[12px] text-ink">
-          {data.reasons.map((r) => (
+          {data.drivers.map((r) => (
             <li key={r}>{r}</li>
           ))}
         </ul>

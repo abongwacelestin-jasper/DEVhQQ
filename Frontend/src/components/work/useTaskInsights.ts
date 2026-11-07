@@ -33,13 +33,31 @@ function notify() {
   listeners.forEach((l) => l());
 }
 
-function isInsight(v: unknown): v is TaskInsight {
-  if (typeof v !== 'object' || v === null) return false;
+/**
+ * Maps the server's shape (Backend/routes/insights.routes.ts):
+ *   { source, eta: { p10, p50, p90, date }, overdue: { probability, drivers }, models? }
+ * to the compact TaskInsight the badges render. Returns null for anything else.
+ */
+function toInsight(v: unknown, key: string): TaskInsight | null {
+  if (typeof v !== 'object' || v === null) return null;
   const o = v as Record<string, unknown>;
-  return (
-    typeof o.overdueRisk === 'number' &&
-    (o.source === 'model' || o.source === 'heuristic' || o.source === 'demo')
-  );
+  const source = o.source;
+  if (source !== 'model' && source !== 'heuristic' && source !== 'demo') return null;
+  const overdue = o.overdue as { probability?: unknown } | undefined;
+  if (typeof overdue?.probability !== 'number') return null;
+  const eta = o.eta as { p50?: unknown; date?: unknown } | undefined;
+  const models = Array.isArray(o.models)
+    ? (o.models as { name?: unknown; version?: unknown }[])
+    : [];
+  const first = models.find((m) => typeof m?.name === 'string');
+  return {
+    key,
+    etaDays: typeof eta?.p50 === 'number' ? eta.p50 : undefined,
+    eta: typeof eta?.date === 'string' ? eta.date : undefined,
+    overdueRisk: overdue.probability,
+    source,
+    model: first ? `${String(first.name)}@${String(first.version)}` : undefined,
+  };
 }
 
 async function fetchBatch(keys: string[]) {
@@ -57,7 +75,7 @@ async function fetchBatch(keys: string[]) {
         const body = await api<unknown>(`/api/insights/tasks/${encodeURIComponent(key)}`, {
           silent: true,
         });
-        cache.set(key, isInsight(body) ? { ...body, key } : null);
+        cache.set(key, toInsight(body, key));
       } catch (e) {
         if (isUnavailable(e)) unavailable = true;
         else cache.set(key, null);

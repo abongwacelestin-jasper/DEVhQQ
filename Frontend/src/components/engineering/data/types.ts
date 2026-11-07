@@ -311,13 +311,19 @@ export interface ApiIncidentStats {
 }
 
 // ── ML insights ──────────────────────────────────────────────────────────
-/** GET /api/insights/deployments/:id */
+/** GET /api/insights/deployments/:id (Backend/routes/insights.routes.ts + integrations/ml/responses.ts) */
 export interface ApiDeployRisk {
-  deploymentId?: string;
-  /** 0–1 */
+  id: string;
+  /** Probability the deploy fails, 0–1. */
+  probability: number;
+  /** Same risk on a 0–100 scale. */
   score: number;
   level: 'low' | 'medium' | 'high';
   source: 'model' | 'heuristic';
-  reasons: string[];
-  modelVersion?: string;
+  /** Human-readable contributing factors. */
+  drivers: string[];
+  /** Present when `source === 'model'`. */
+  model?: { name: string; version: string; trainedOn: string };
+  /** Present when `source === 'heuristic'`: why the model was not used. */
+  fallbackReason?: string;
 }
