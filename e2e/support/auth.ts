@@ -142,6 +142,21 @@ export async function completeStepUp(
   return dialog;
 }
 
+/**
+ * Fills the "Request production access" dialog that opens when the server refuses a
+ * production action with `elevation_required`, and waits for the API to accept it.
+ */
+export async function requestJitAccess(page: Page, opts: { scope: string; reason: string; minutes?: number }) {
+  const dialog = page.getByRole('dialog', { name: 'Request production access' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(opts.scope);
+  await dialog.getByRole('textbox', { name: /Reason/ }).fill(opts.reason);
+  await dialog.getByRole('combobox', { name: 'Duration' }).selectOption(String(opts.minutes ?? 30));
+  await dialog.getByRole('button', { name: 'Request access' }).click();
+  await expect(page.getByText('Access requested').first()).toBeVisible();
+  await expect(dialog).toBeHidden();
+}
+
 /** The demo button on /sign-in: "Admin demo …", or "<initials> <name> <role> …" for the others. */
 export function demoButton(page: Page, role: RoleKey) {
   const p = personas[role];

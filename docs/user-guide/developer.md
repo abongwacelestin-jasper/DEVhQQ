@@ -31,9 +31,12 @@ Kofi Mensah (`m4`, renewberry).
 
 ## Production access
 
-If you need production for an incident, request a JIT grant for one product
-with a reason (at least 10 characters) and a duration (15 min – 8 h). An Owner
-or Operations member approves it; it expires by itself. Requests go through
-`POST /api/access/grants` (the backend console has a form). Note that an
-active grant does not unlock any API route yet. See
+Changing an incident's severity, or resolving a SEV1, is a production change:
+it needs a just-in-time (JIT) grant for that product. Without one the app
+shows **Request production access**: give a reason (at least 10 characters)
+and a duration (15 min – 8 h). An Owner or Operations member approves it; it
+expires by itself. The incident page shows your request as pending, then the
+time left once approved. Notes and the other status changes never need a
+grant. Requests go through `POST /api/access/grants`; your own grants are at
+`GET /api/access/grants/mine`. Personal access tokens never carry a grant. See
 [JIT elevation](../concepts/jit-access.md).

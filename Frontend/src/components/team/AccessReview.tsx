@@ -5,7 +5,7 @@ import { CheckIcon, ChevronRightIcon, KeyRoundIcon, ServerIcon, XIcon } from 'lu
 import { Avatar } from '../ui/Avatar';
 import { SearchInput } from '../ui/SearchInput';
 import { useReauth } from '../../contexts/ReauthContext';
-import { api } from '../../api/client';
+import { decideGrant as sendDecision, grantsChanged } from '../jit/jit';
 import type { ApiGrant } from '../../api/types';
 import type { Member } from '../../types/team';
 
@@ -64,7 +64,9 @@ export function AccessReview({
   const decideGrant = async (grant: ApiGrant, action: 'approve' | 'deny') => {
     setBusy(grant.id);
     try {
-      await api(`/api/access/grants/${encodeURIComponent(grant.id)}/${action}`, { method: 'POST' });
+      // The API denies a pending grant through /revoke; there is no /deny route.
+      await sendDecision(grant.id, action === 'approve' ? 'approve' : 'revoke');
+      grantsChanged();
       await onReload();
       toast.success(action === 'approve' ? 'Grant approved' : 'Grant revoked', {
         description: `${grant.scope} · ${grant.memberId}`,

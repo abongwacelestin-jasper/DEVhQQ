@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { ThemedToaster } from './components/layout/ThemedToaster';
+import { JitAccessHost } from './components/jit/JitAccessHost';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProductFilterProvider } from './contexts/ProductFilterContext';
 import { WorkspaceUIProvider } from './contexts/WorkspaceUIContext';
@@ -224,6 +225,7 @@ export function App() {
                                   </Route>
                                 </Routes>
                                 <ThemedToaster />
+                                <JitAccessHost />
                               </ReauthProvider>
                             </WorkspaceUIProvider>
                           </OffboardingProvider>

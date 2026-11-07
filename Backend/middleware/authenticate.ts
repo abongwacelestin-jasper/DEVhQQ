@@ -7,7 +7,9 @@
  *  - `Authorization: Bearer <session token>` (CLIs that signed in with
  *    `X-DevHQ-Client: cli`, see routes/auth.routes.ts → wantsBodyToken),
  *  - `Authorization: Bearer dhq_pat_…` personal access tokens (scoped,
- *    never step-up capable — see security/pats.ts).
+ *    never step-up capable and never JIT-elevated — see security/pats.ts).
+ * A session's `elevations` are rebuilt from the grant store on every request,
+ * so a grant that expires or is revoked stops applying on the next request.
  * Sessions that haven't completed MFA can only reach the MFA endpoints.
  */
 
@@ -58,7 +60,9 @@ function authenticateWith(allowPartial: boolean): Middleware {
         products: member.products,
         sessionId: `pat:${pat.id}`,
         verifiedAt: 0,
-        elevations: activeElevations(member.id),
+        // A token never carries a JIT elevation, even while its owner holds a grant:
+        // production access needs a person in an interactive session (assertElevation).
+        elevations: [],
       };
       setPrincipalAuth(ctx.principal, {
         kind: 'pat',

@@ -3,14 +3,30 @@
  *
  * Production deploys follow the two-person rule: the requester can never be
  * the approver, the approver needs Deployment:manage plus a fresh step-up,
- * and every transition is audited. Rollbacks are always allowed for
- * Deployment:manage so recovery is never blocked by process (MTTR first).
+ * and every transition is audited. Rollbacks need no step-up so recovery is
+ * fast (MTTR first).
+ *
+ * Production-impacting actions also need a just-in-time grant for
+ * `production:<product>` (`assertElevation`; the Owner passes, tokens never do):
+ *  - approving a deployment (only production deployments await approval),
+ *  - rolling back a production deployment that was approved or ran
+ *    (rejecting one still awaiting approval touches nothing live),
+ *  - changing an incident's severity, or resolving a SEV1.
+ * Staging deployments and the rest of incident response (notes, status) are
+ * not gated. See docs/concepts/jit-access.md.
  */
 
 import type { Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
-import { assertProduct, canSeeProduct, requireArea, requireStepUp } from '../auth/rbac.ts';
+import {
+  assertElevation,
+  assertProduct,
+  canSeeProduct,
+  requireArea,
+  requireStepUp,
+} from '../auth/rbac.ts';
+import { productionScope } from '../auth/jit.ts';
 import { audit } from '../audit/auditLog.ts';
 import { publish } from '../lib/events.ts';
 import { randomToken } from '../security/crypto.ts';
@@ -102,7 +118,7 @@ export function registerOperationsRoutes(r: Router) {
     'POST',
     '/api/deployments/:id/approve',
     {
-      summary: 'Approve a production deployment (two-person rule, step-up)',
+      summary: 'Approve a production deployment (two-person rule, step-up, JIT grant)',
       tag: 'deployments',
       responses: [401, 403, 404, 409],
     },
@@ -117,6 +133,11 @@ export function registerOperationsRoutes(r: Router) {
         throw new HttpError(409, 'not_pending', `Deployment is ${d.status}`);
       if (d.requestedBy === ctx.principal!.memberId)
         throw new HttpError(403, 'self_approval', 'You can’t approve your own deployment');
+      if (d.env === 'production')
+        assertElevation(ctx.principal!, productionScope(d.product), {
+          action: `deploy.approve ${d.id}`,
+          requestId: ctx.requestId,
+        });
       d.status = 'running';
       d.approvedBy = ctx.principal!.memberId;
       db.deployments.save(d.id);
@@ -143,7 +164,11 @@ export function registerOperationsRoutes(r: Router) {
   r.add(
     'POST',
     '/api/deployments/:id/rollback',
-    { summary: 'Roll back a deployment', tag: 'deployments', responses: [401, 403, 404, 409] },
+    {
+      summary: 'Roll back a deployment (production: JIT grant)',
+      tag: 'deployments',
+      responses: [401, 403, 404, 409],
+    },
     authenticate,
     requireArea('Deployment', 'manage'),
     (ctx) => {
@@ -152,6 +177,11 @@ export function registerOperationsRoutes(r: Router) {
         throw new HttpError(404, 'not_found', 'Not found');
       if (d.status === 'rolled-back')
         throw new HttpError(409, 'already_rolled_back', 'Already rolled back');
+      if (d.env === 'production' && d.status !== 'awaiting-approval')
+        assertElevation(ctx.principal!, productionScope(d.product), {
+          action: `deploy.rollback ${d.id}`,
+          requestId: ctx.requestId,
+        });
       d.status = 'rolled-back';
       db.deployments.save(d.id);
       audit.append({
@@ -279,9 +309,9 @@ export function registerOperationsRoutes(r: Router) {
     'PATCH',
     '/api/incidents/:id',
     {
-      summary: 'Update status/severity or add a timeline note',
+      summary: 'Update status/severity or add a timeline note (severity, SEV1 resolve: JIT grant)',
       tag: 'incidents',
-      responses: [401, 404, 422],
+      responses: [401, 403, 404, 422],
     },
     authenticate,
     (ctx) => {
@@ -289,6 +319,16 @@ export function registerOperationsRoutes(r: Router) {
       const i = db.incidents.get(ctx.params.id.toUpperCase());
       if (!i || !canSeeProduct(ctx.principal!, i.product))
         throw new HttpError(404, 'not_found', 'Not found');
+      // Incidents are about live services, so severity is a production decision; so is
+      // closing a SEV1. Notes and the other status moves stay open to every responder.
+      const changesSeverity = !!patch.severity && patch.severity !== i.severity;
+      const resolvesSev1 =
+        patch.status === 'resolved' && i.status !== 'resolved' && i.severity === 'SEV1';
+      if (changesSeverity || resolvesSev1)
+        assertElevation(ctx.principal!, productionScope(i.product), {
+          action: `incident.${changesSeverity ? 'severity' : 'resolve'} ${i.id}`,
+          requestId: ctx.requestId,
+        });
       const at = new Date().toISOString();
       const notes: string[] = [];
       if (patch.status && patch.status !== i.status) {

@@ -53,7 +53,11 @@ The **Access review** panel on the Team page lists:
 
 - **Pending JIT grants** — approve or deny. Approving needs Owner or
   Operations and must not be your own request; denying needs Deployment ≥
-  `manage`. Both re-verify first. See [JIT elevation](../concepts/jit-access.md).
+  `manage`. Both re-verify first. The same grants, plus active ones with the
+  time left and a **Revoke** action, are on **Security** → Production access.
+  A grant is what lets a member approve or roll back a production deploy,
+  change an incident's severity or resolve a SEV1. See
+  [JIT elevation](../concepts/jit-access.md).
 - **Active members without a second factor** — follow up with them. There is
   no API to reset someone else's MFA, so the app does not offer one.
 

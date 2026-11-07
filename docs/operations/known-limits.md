@@ -66,8 +66,6 @@ See [infra/minio/README.md](../../infra/minio/README.md).
   from that store alone. Check against the archive's latest `headHash`
   (`verify-audit.ts --head`), as described in
   [Audit verification](audit-verification.md#what-the-hashes-cannot-prove).
-- **JIT elevation does not unlock any route yet** (`requireElevation` is
-  unused).
 - **Deployments are recorded and approved, not executed.** Rollout status is
   simulated.
 - **Incident action items have no reminders.** An overdue step is only

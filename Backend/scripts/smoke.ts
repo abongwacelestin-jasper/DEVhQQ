@@ -1240,6 +1240,59 @@ expect(
     [designerPat.json, designerGrant.json, designerAfter.json, eventAudit.json],
   );
 
+  // JIT: approving a production deploy needs an approved, unexpired grant (Owner exempt).
+  {
+    const opsJit = (await call('POST', '/api/auth/demo', { role: 'operations' })).json
+      .token as string;
+    const prod = { product: 'renewberry', env: 'production', version: 'smoke-jit', sha: 'abc1234' };
+    const first = await call('POST', '/api/deployments', prod, owner);
+    const second = await call('POST', '/api/deployments', prod, owner);
+    const refused = await call('POST', `/api/deployments/${first.json.id}/approve`, {}, opsJit);
+    const grantReq = await call(
+      'POST',
+      '/api/access/grants',
+      { scope: 'production:renewberry', reason: 'smoke: approve a release', durationMinutes: 15 },
+      opsJit,
+    );
+    const mine = await call('GET', '/api/access/grants/mine', undefined, opsJit);
+    const grantOk = await call('POST', `/api/access/grants/${grantReq.json.id}/approve`, {}, owner);
+    const approved = await call('POST', `/api/deployments/${first.json.id}/approve`, {}, opsJit);
+    const used = await call('GET', '/api/audit?action=jit.used', undefined, owner);
+    await call('POST', `/api/access/grants/${grantReq.json.id}/revoke`, {}, owner);
+    const afterRevoke = await call(
+      'POST',
+      `/api/deployments/${second.json.id}/approve`,
+      {},
+      opsJit,
+    );
+    const third = await call('POST', '/api/deployments', prod, opsJit);
+    const ownerApproves = await call(
+      'POST',
+      `/api/deployments/${third.json.id}/approve`,
+      {},
+      owner,
+    );
+    const refusal = refused.json.error as Json | undefined;
+    expect(
+      'JIT: production approve 403 elevation_required without a grant; grant → 200 + jit.used; revoke → 403; Owner exempt',
+      refused.status === 403 &&
+        errCode(refused.json) === 'elevation_required' &&
+        (refusal?.details as Json | undefined)?.scope === 'production:renewberry' &&
+        Array.isArray(mine.json) &&
+        (mine.json as unknown as Json[]).some((g) => g.id === grantReq.json.id) &&
+        grantOk.status === 200 &&
+        approved.status === 200 &&
+        Array.isArray(used.json) &&
+        (used.json as unknown as Json[]).some((e) =>
+          String(e.target).includes(`deploy.approve ${first.json.id}`),
+        ) &&
+        afterRevoke.status === 403 &&
+        errCode(afterRevoke.json) === 'elevation_required' &&
+        ownerApproves.status === 200,
+      [refused.json, grantOk.json, approved.status, afterRevoke.json, ownerApproves.status],
+    );
+  }
+
   // --- 5. TOTP enrollment, encryption at rest, demo hardening ----------------
   const yukiPw = await call('POST', '/api/auth/sign-in', {
     email: 'yuki@techorg.io',

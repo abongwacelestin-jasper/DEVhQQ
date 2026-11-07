@@ -50,3 +50,36 @@ export async function getJson<T>(api: APIRequestContext, path: string): Promise<
   const body = (await res.json()) as T | { items: T };
   return body as T;
 }
+
+export interface ApiGrant {
+  id: string;
+  memberId: string;
+  scope: string;
+  status: 'pending' | 'active' | 'expired' | 'revoked' | 'denied';
+  expiresAt?: number;
+}
+
+/** The signed-in page's own JIT grants (`GET /api/access/grants/mine`). */
+export async function myGrants(api: APIRequestContext): Promise<ApiGrant[]> {
+  const res = await api.get('/api/access/grants/mine');
+  expect(res.status(), await res.text()).toBe(200);
+  return (await res.json()) as ApiGrant[];
+}
+
+/**
+ * A second admin (Owner or Operations) decides a JIT grant through the API — the
+ * two-person rule. A fresh demo session satisfies the step-up the route requires.
+ */
+export async function decideGrantAs(
+  baseURL: string,
+  role: RoleKey,
+  grantId: string,
+  decision: 'approve' | 'revoke',
+): Promise<ApiGrant> {
+  const api = await apiSession(baseURL, role);
+  const res = await api.post(`/api/access/grants/${grantId}/${decision}`);
+  const body = await res.text();
+  expect(res.status(), `${decision} grant: ${body}`).toBe(200);
+  await api.dispose();
+  return JSON.parse(body) as ApiGrant;
+}

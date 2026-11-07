@@ -19,7 +19,18 @@ import { SessionsPanel } from '../components/security/SessionsPanel';
 import { TotpEnrollment } from '../components/security/TotpEnrollment';
 import { BackupCodes } from '../components/security/BackupCodes';
 import { useReauth } from '../contexts/ReauthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
+import {
+  APPROVER_ROLES,
+  decideGrant,
+  durationLabel,
+  grantsChanged,
+  isLive,
+  myGrants,
+  onGrantsChanged,
+  timeLeft,
+} from '../components/jit/jit';
 import { listSignIns } from '../api/auth/endpoints';
 import type { ApiGrant, ApiSignIn } from '../api/types';
 import { securityChecks, securityPolicies } from '../data/security';
@@ -41,25 +52,79 @@ function when(iso: string | number) {
 
 export function SecurityCenter() {
   const { requestReauth } = useReauth();
+  const { member } = useAuth();
   const [policies, setPolicies] = useState(securityPolicies);
   const [grants, setGrants] = useState<ApiGrant[]>([]);
+  /** `all` for Administration viewers (approvers); otherwise only the member's own grants. */
+  const [grantView, setGrantView] = useState<'all' | 'mine'>('all');
+  const [now, setNow] = useState(() => Date.now());
   const [signIns, setSignIns] = useState<ApiSignIn[] | null>(null);
+  const isApprover = !!member && APPROVER_ROLES.includes(member.role);
 
   const loadGrants = useCallback(async () => {
+    const open = (l: ApiGrant[]) => l.filter((g) => isLive(g) || g.status === 'pending');
     try {
-      const list = await api<ApiGrant[]>('/api/access/grants');
-      setGrants(list.filter((g) => g.status === 'active' || g.status === 'pending'));
+      setGrants(open(await api<ApiGrant[]>('/api/access/grants')));
+      setGrantView('all');
     } catch {
-      setGrants([]);
+      // No Administration:view — show the member's own requests instead.
+      try {
+        setGrants(open(await myGrants()));
+      } catch {
+        setGrants([]);
+      }
+      setGrantView('mine');
     }
+    setNow(Date.now());
   }, []);
 
   useEffect(() => {
     void loadGrants();
+    const off = onGrantsChanged(() => void loadGrants());
+    const poll = setInterval(() => void loadGrants(), 30_000);
+    const tick = setInterval(() => setNow(Date.now()), 15_000);
     listSignIns(50)
       .then(setSignIns)
       .catch(() => setSignIns([]));
+    return () => {
+      off();
+      clearInterval(poll);
+      clearInterval(tick);
+    };
   }, [loadGrants]);
+
+  const decide = (g: ApiGrant, decision: 'approve' | 'revoke') => {
+    const who = memberById(g.memberId).name;
+    requestReauth({
+      title:
+        decision === 'approve'
+          ? 'Approve production access'
+          : g.status === 'pending'
+            ? 'Deny production access'
+            : 'Revoke production access',
+      description:
+        decision === 'approve'
+          ? `${who} gets ${g.scope} for ${durationLabel(g.durationMs)}. Your approval is recorded in the audit log.`
+          : `${who} loses ${g.scope} immediately.`,
+      actionLabel:
+        decision === 'approve'
+          ? 'Verify & approve'
+          : g.status === 'pending'
+            ? 'Verify & deny'
+            : 'Verify & revoke',
+      successMessage:
+        decision === 'approve'
+          ? 'Access approved'
+          : g.status === 'pending'
+            ? 'Request denied'
+            : 'Access revoked',
+      onConfirm: async () => {
+        await decideGrant(g.id, decision);
+        grantsChanged();
+        await loadGrants();
+      },
+    });
+  };
   const pass = securityChecks.filter((c) => c.status === 'pass').length;
   const score = Math.round(
     ((pass + securityChecks.filter((c) => c.status === 'warn').length * 0.5) /
@@ -177,64 +242,81 @@ export function SecurityCenter() {
         </Panel>
 
         <div className="space-y-4">
-          <Panel title="Production access" meta={<span>{grants.length} open grants</span>}>
+          <Panel
+            title="Production access"
+            meta={
+              <span>
+                {grantView === 'mine' ? 'Your grants · ' : ''}
+                {grants.filter((g) => g.status === 'pending').length} pending ·{' '}
+                {grants.filter((g) => g.status === 'active').length} active
+              </span>
+            }
+          >
             {grants.length === 0 && (
-              <p className="px-3.5 py-3 text-[12px] text-muted">No active just-in-time grants.</p>
+              <p className="px-3.5 py-3 text-[12px] text-muted">
+                No pending or active just-in-time grants.
+              </p>
             )}
-            <ul className="divide-y divide-line">
-              {grants.map((g) => (
-                <li key={g.id} className="flex items-center gap-2.5 px-3.5 py-2">
-                  <Link to={`/team/${g.memberId}`}>
-                    <Avatar id={g.memberId} size="sm" />
-                  </Link>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12.5px] font-medium text-ink">
-                      {memberById(g.memberId).name}{' '}
-                      <span className="font-normal text-muted">· {g.scope}</span>
-                    </p>
-                    <p className="truncate text-[11.5px] text-muted">
-                      {g.reason}
-                      {g.approvedBy
-                        ? ` · approved by ${memberById(g.approvedBy).name.split(' ')[0]}`
-                        : ' · awaiting approval'}
-                    </p>
-                  </div>
-                  <StatusBadge
-                    tone={g.status === 'pending' ? 'neutral' : 'warn'}
-                    label={
-                      g.status === 'pending'
-                        ? 'Pending'
-                        : g.expiresAt
-                          ? `Until ${when(g.expiresAt)}`
-                          : 'Active'
-                    }
-                  />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-bad hover:text-bad"
-                    onClick={() =>
-                      requestReauth({
-                        title: 'Revoke production access',
-                        description: `${memberById(g.memberId).name} loses this access immediately.`,
-                        actionLabel: 'Verify & revoke',
-                        successMessage: 'Access revoked',
-                        onConfirm: async () => {
-                          await api(`/api/access/grants/${encodeURIComponent(g.id)}/revoke`, {
-                            method: 'POST',
-                          });
-                          await loadGrants();
-                        },
-                      })
-                    }
-                  >
-                    Revoke
-                  </Button>
-                </li>
-              ))}
+            <ul className="divide-y divide-line" aria-label="Just-in-time grants">
+              {grants.map((g) => {
+                const own = g.memberId === member?.id;
+                const canApprove = grantView === 'all' && isApprover && !own;
+                return (
+                  <li key={g.id} className="flex flex-wrap items-center gap-2.5 px-3.5 py-2">
+                    <Link to={`/team/${g.memberId}`}>
+                      <Avatar id={g.memberId} size="sm" />
+                    </Link>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-medium text-ink">
+                        {memberById(g.memberId).name}{' '}
+                        <span className="font-normal text-muted">
+                          · <span className="font-mono">{g.scope}</span> ·{' '}
+                          {durationLabel(g.durationMs)}
+                        </span>
+                      </p>
+                      <p className="truncate text-[11.5px] text-muted">
+                        {g.reason}
+                        {g.approvedBy
+                          ? ` · approved by ${memberById(g.approvedBy).name.split(' ')[0]}`
+                          : own
+                            ? ' · needs another approver (two-person rule)'
+                            : ' · awaiting approval'}
+                      </p>
+                    </div>
+                    <StatusBadge
+                      tone={g.status === 'pending' ? 'neutral' : 'warn'}
+                      label={
+                        g.status === 'pending'
+                          ? 'Pending'
+                          : g.expiresAt
+                            ? `${timeLeft(g.expiresAt, now)} · until ${when(g.expiresAt)}`
+                            : 'Active'
+                      }
+                    />
+                    {grantView === 'all' && (
+                      <span className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-bad hover:text-bad"
+                          onClick={() => decide(g, 'revoke')}
+                        >
+                          {g.status === 'pending' ? 'Deny' : 'Revoke'}
+                        </Button>
+                        {g.status === 'pending' && canApprove && (
+                          <Button size="sm" variant="primary" onClick={() => decide(g, 'approve')}>
+                            Approve
+                          </Button>
+                        )}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
             <p className="border-t border-line px-3.5 py-2 text-[11.5px] text-muted">
-              Grant new time-boxed access from a member’s profile.
+              Members request time-boxed production access when an action needs it. Owners and
+              Operations approve someone else’s request; grants end on their own.
             </p>
           </Panel>
           <ApiTokens />

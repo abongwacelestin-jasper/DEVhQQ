@@ -12,7 +12,14 @@ import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
 import { can, canSeeProduct, permissionMatrix, requireArea, requireStepUp } from '../auth/rbac.ts';
 import { asPrincipal, notify } from '../domain/collab/notify.ts';
-import { approveGrant, listGrants, requestGrant, revokeGrant } from '../auth/jit.ts';
+import {
+  APPROVER_ROLES,
+  approveGrant,
+  grantsOf,
+  listGrants,
+  requestGrant,
+  revokeGrant,
+} from '../auth/jit.ts';
 import { revokeAllFor } from '../auth/sessions.ts';
 import { revokeStandingAccess } from '../security/pats.ts';
 import { audit } from '../audit/auditLog.ts';
@@ -317,6 +324,16 @@ export function registerTeamRoutes(r: Router) {
     () => listGrants(),
   );
 
+  // The requester's own grants (pending, active, ended), so the place where they act can
+  // show what is waiting and how long is left. Never anyone else's.
+  r.add(
+    'GET',
+    '/api/access/grants/mine',
+    { summary: 'My JIT grants', tag: 'team', responses: [401] },
+    authenticate,
+    (ctx) => grantsOf(ctx.principal!.memberId),
+  );
+
   r.add(
     'POST',
     '/api/access/grants',
@@ -326,14 +343,33 @@ export function registerTeamRoutes(r: Router) {
     (ctx) => {
       const body = parse(grantBody, ctx.body);
       const product = body.scope.split(':')[1] as ProductId;
-      if (!canSeeProduct(ctx.principal!, product))
+      const p = ctx.principal!;
+      if (!canSeeProduct(p, product))
         throw new HttpError(403, 'forbidden', 'You are not assigned to this product');
-      return requestGrant(
-        ctx.principal!.memberId,
+      const grant = requestGrant(
+        p.memberId,
         body.scope,
         body.reason,
         body.durationMinutes * 60_000,
+        ctx.requestId,
       );
+      // Tell every approver in scope; they decide on the Security page (two-person rule).
+      const me = db.members.get(p.memberId);
+      for (const m of db.members.values()) {
+        if (m.status !== 'active' || m.id === p.memberId || !APPROVER_ROLES.includes(m.role))
+          continue;
+        if (!canSeeProduct(asPrincipal(m), product)) continue;
+        notify({
+          memberId: m.id,
+          kind: 'approval',
+          title: `${me?.name ?? p.memberId} requested ${grant.scope} access`,
+          body: `${Math.round(grant.durationMs / 60_000)} min · ${grant.reason}`,
+          link: '/security',
+          refId: `jit:${grant.id}`,
+          actor: p.memberId,
+        });
+      }
+      return grant;
     },
   );
 
@@ -344,10 +380,14 @@ export function registerTeamRoutes(r: Router) {
     authenticate,
     requireStepUp(),
     (ctx) =>
-      approveGrant(ctx.params.grantId, {
-        memberId: ctx.principal!.memberId,
-        role: ctx.principal!.role,
-      }),
+      approveGrant(
+        ctx.params.grantId,
+        {
+          memberId: ctx.principal!.memberId,
+          role: ctx.principal!.role,
+        },
+        ctx.requestId,
+      ),
   );
 
   r.add(
@@ -357,6 +397,6 @@ export function registerTeamRoutes(r: Router) {
     authenticate,
     requireArea('Deployment', 'manage'),
     requireStepUp(),
-    (ctx) => revokeGrant(ctx.params.grantId, ctx.principal!.memberId),
+    (ctx) => revokeGrant(ctx.params.grantId, ctx.principal!.memberId, ctx.requestId),
   );
 }

@@ -34,6 +34,7 @@ import type { ApiDeployment } from '../api/types';
 import { products } from '../data/portfolio';
 import { deployMeta, memberById } from '../utils/status';
 import { formatDateTime } from '../utils/date';
+import { ProductionAccessStatus } from '../components/jit/ProductionAccessStatus';
 
 type StepState = 'done' | 'failed' | 'running' | 'pending' | 'skipped';
 
@@ -65,7 +66,7 @@ function lifecycle(d: DeploymentRow): { label: string; state: StepState; note: s
       : d.approvedBy
         ? `Approved by ${memberById(d.approvedBy).name}`
         : d.status === 'awaiting-approval'
-          ? 'Waiting for Deployment: manage + step-up'
+          ? 'Waiting for Deployment: manage, step-up and a production grant'
           : d.status === 'rolled-back'
             ? 'Rejected'
             : '—',
@@ -248,6 +249,16 @@ export function DeploymentDetail() {
       />
 
       {!!(errorHere || rerunError) && <InlineError error={errorHere ?? rerunError} />}
+      {isProd && mayManage && ['awaiting-approval', 'running', 'succeeded'].includes(d.status) && (
+        <ProductionAccessStatus
+          scope={`production:${d.product}`}
+          what={
+            d.status === 'awaiting-approval'
+              ? 'Approving this deploy'
+              : 'Rolling back this production deploy'
+          }
+        />
+      )}
       {d.status === 'awaiting-approval' && !mayApprove && (
         <p className="rounded-md border border-line bg-sunken/50 px-3 py-2 text-[12px] text-muted">
           Waiting for approval. Approving needs Deployment: manage — your role can view this

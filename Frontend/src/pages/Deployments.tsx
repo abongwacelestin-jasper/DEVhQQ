@@ -36,6 +36,7 @@ const policy = [
   'Production requests wait for approval',
   'Approver needs Deployment: manage and is never the requester',
   'Fresh step-up verification at approval time',
+  'Approver holds a just-in-time production grant (Owner exempt)',
   'Every transition is written to the audit log',
 ];
 
