@@ -17,6 +17,7 @@ column. Among them:
 | Request, approve, revoke JIT production access | `POST /api/access/grants`, `…/:grantId/approve`, `…/:grantId/revoke` |
 | Create a backup, run a restore drill, restore | `POST /api/backups`, `POST /api/backups/drill`, `POST /api/backups/:id/restore` |
 | Create a personal access token | `POST /api/tokens` |
+| Change your password (also needs the current password) | `POST /api/auth/password` |
 | Add or replace an authenticator, add or remove a passkey | `POST /api/auth/totp/enroll`, `POST /api/auth/passkeys/options`, `DELETE /api/auth/passkeys/:credentialId` |
 | Connect or remove an integration, add an outbound webhook | `POST /api/integrations/:kind/connect`, `DELETE /api/integrations/:id`, `POST /api/integrations/:id/webhooks` |
 | Start or change an offboarding | `POST/PATCH /api/offboarding/:memberId` |

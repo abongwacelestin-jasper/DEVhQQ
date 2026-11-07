@@ -5,6 +5,7 @@ import { LockIcon, LogOutIcon, RepeatIcon, ShieldCheckIcon, UserIcon } from 'luc
 import { Avatar } from '../ui/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
 import { memberById } from '../../utils/status';
+import { accountEntries } from '../../data/navigation';
 
 /** Account row at the bottom of the sidebar: role, MFA state, switch demo role, lock and sign out. */
 export function ProfileMenu({ collapsed = false }: { collapsed?: boolean }) {
@@ -84,6 +85,17 @@ export function ProfileMenu({ collapsed = false }: { collapsed?: boolean }) {
                 navigate(`/team/${me.id}`);
               }}
             />
+            {accountEntries.map((e) => (
+              <MenuItem
+                key={e.to}
+                icon={e.icon}
+                label={e.label}
+                onClick={() => {
+                  setOpen(false);
+                  navigate(e.to);
+                }}
+              />
+            ))}
             <MenuItem
               icon={LockIcon}
               label="Lock session"

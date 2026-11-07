@@ -20,7 +20,10 @@ import {
 } from '../data/roles';
 import { nowISO } from '../utils/date';
 import { canPerform, canVisit } from '../api/capabilities';
-import { revokeSessionByPrefix } from '../api/auth/endpoints';
+import {
+  revokeSessionByPrefix,
+  signOutOthers as signOutOthersOnServer,
+} from '../api/auth/endpoints';
 import {
   stageOf,
   toSession,
@@ -100,6 +103,8 @@ interface AuthValue {
   updateProfile: (p: Partial<Profile>) => Promise<SignInResult>;
   signOut: (reason?: SessionEndReason) => Promise<void>;
   signOutEverywhere: () => Promise<number>;
+  /** Ends every other session of this member; this one stays signed in. Resolves with the count. */
+  signOutOthers: () => Promise<number>;
   lock: (note?: string) => void;
   /** Re-verifies with the API (POST /api/auth/step-up). Resolves true only on success. */
   unlock: (code: string) => Promise<boolean>;
@@ -163,6 +168,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     log('Signed out everywhere', `${n} session(s)`, true);
     return n;
   }, [signOutAll, log]);
+
+  const signOutOthers = useCallback(async () => {
+    const r = await signOutOthersOnServer();
+    const n = r?.revoked ?? 0;
+    log('Signed out other sessions', `${n} session(s)`, true);
+    await refreshSessions();
+    return n;
+  }, [refreshSessions, log]);
 
   const revokeSession = useCallback(
     async (id: string) => {
@@ -268,6 +281,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateProfile: onboard.updateProfile,
       signOut,
       signOutEverywhere,
+      signOutOthers,
       lock: locking.lock,
       unlock: locking.unlock,
       verifyWithPasskey: locking.verifyWithPasskey,
@@ -312,6 +326,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       onboard.updateProfile,
       signOut,
       signOutEverywhere,
+      signOutOthers,
       trackSession,
       revokeSession,
       log,

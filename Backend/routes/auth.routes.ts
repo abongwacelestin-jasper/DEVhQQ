@@ -57,7 +57,9 @@ import {
   listSessions,
   markVerified,
   revoke,
+  revokeAllExcept,
   revokeAllFor,
+  rotateSession,
   validateSession,
   type SessionRecord,
 } from '../auth/sessions.ts';
@@ -108,6 +110,11 @@ const cookieAge = Math.floor(config.sessionAbsoluteMs / 1000);
 const signInBody = v.object({
   email: v.email(),
   password: v.string({ min: 1, max: 512, trim: false }),
+});
+const changePasswordBody = v.object({
+  currentPassword: v.string({ min: 1, max: 512, trim: false }),
+  // The full policy is applied after parsing so the user gets a concrete reason.
+  newPassword: v.string({ min: 1, max: 400, trim: false }),
 });
 const totpBody = v.object({ code: v.string({ pattern: /^\d{6}$/ }) });
 const backupBody = v.object({
@@ -1200,6 +1207,91 @@ export function registerAuthRoutes(r: Router) {
         requestId: ctx.requestId,
       });
       return { revoked: n };
+    },
+  );
+
+  r.add(
+    'POST',
+    '/api/auth/sign-out-others',
+    {
+      summary: 'Revoke every session for this account except this one',
+      tag: 'auth',
+      responses: [401, 403],
+    },
+    authenticate,
+    requireSession,
+    (ctx) => {
+      const n = revokeAllExcept(ctx.principal!.memberId, ctx.principal!.sessionId);
+      audit.append({
+        actor: ctx.principal!.memberId,
+        action: 'auth.revoked_others',
+        target: `${n} other session(s)`,
+        sensitive: true,
+        requestId: ctx.requestId,
+      });
+      return { revoked: n };
+    },
+  );
+
+  /**
+   * Change password while signed in. Interactive sessions only, behind a fresh
+   * step-up: the current password must still be proven, the new one meets the
+   * shared policy, every other session of the member is revoked and this one
+   * continues on a rotated token.
+   */
+  r.add(
+    'POST',
+    '/api/auth/password',
+    {
+      summary:
+        'Change your password (step-up; current password required; signs out your other sessions)',
+      tag: 'auth',
+      responses: [401, 403, 422, 429],
+    },
+    authLimiter,
+    authenticate,
+    requireSession,
+    requireStepUp(),
+    accountLimiter,
+    async (ctx) => {
+      const body = parse(changePasswordBody, ctx.body);
+      const member = db.members.get(ctx.principal!.memberId)!;
+      const session = sessionOf(ctx);
+      const { ok } = await verifyPassword(body.currentPassword, member.passwordHash);
+      if (!ok) {
+        audit.append({
+          actor: member.id,
+          action: 'auth.password_change_failed',
+          target: 'current password incorrect',
+          sensitive: true,
+          requestId: ctx.requestId,
+        });
+        throw new HttpError(403, 'invalid_current_password', 'Your current password is incorrect');
+      }
+      const problem = passwordProblem(body.newPassword, member.email);
+      if (problem) throw new HttpError(422, 'weak_password', problem);
+      if (body.newPassword === body.currentPassword)
+        throw new HttpError(
+          422,
+          'password_unchanged',
+          'Choose a password different from your current one.',
+        );
+
+      member.passwordHash = await hashPassword(body.newPassword);
+      member.failedLogins = 0;
+      member.lockedUntil = undefined;
+      persistMember(member.id);
+      const revoked = revokeAllExcept(member.id, session.id);
+      // New credential, new token: the current session continues on a rotated id.
+      const { token } = rotateSession(session);
+      audit.append({
+        actor: member.id,
+        action: 'auth.password_changed',
+        target: `${revoked} other session(s) revoked · ${ctx.ip}`,
+        sensitive: true,
+        requestId: ctx.requestId,
+      });
+      return deliver(ctx, token, cookieAge, { ok: true, revokedSessions: revoked });
     },
   );
 }

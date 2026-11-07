@@ -135,7 +135,23 @@ first answers `404` and the second `{"enabled":false,"accounts":[]}`.
   `POST /api/auth/recovery/reset {token, password}` applies the password
   policy, clears any lockout and **revokes every session** of the account.
 
-Password policy (invite, reset): at least 12 characters, upper and lower case,
+## Changing your password
+
+`POST /api/auth/password {currentPassword, newPassword}` changes the password
+of a signed-in member (the **Settings** page, `/settings`).
+
+- Interactive sessions only: a PAT gets `403 session_required`.
+- Needs a fresh step-up (`401 step_up_required`, see [Step-up](../concepts/step-up.md))
+  and is rate limited like the other credential checks (`429`).
+- A wrong current password is `403 invalid_current_password` (audited as
+  `auth.password_change_failed`); the policy below gives `422 weak_password`,
+  and reusing the current password `422 password_unchanged`.
+- On success every **other** session of the member is revoked, the current
+  session continues on a rotated token (new `Set-Cookie`), the change is
+  audited as sensitive (`auth.password_changed`) and the answer is
+  `{"ok": true, "revokedSessions": n}`.
+
+Password policy (invite, reset, change): at least 12 characters, upper and lower case,
 a digit, a symbol, and not the name part of the email (`422 weak_password`).
 
 ## Ending sessions
@@ -144,6 +160,7 @@ a digit, a symbol, and not the name part of the email (`422 weak_password`).
 |---|---|
 | `POST /api/auth/sign-out` | ends this session (partial sessions too), clears the cookie, `204` |
 | `POST /api/auth/sign-out-everywhere` | revokes all of your sessions, `{"revoked": n}` |
+| `POST /api/auth/sign-out-others` | revokes all of your sessions except this one, `{"revoked": n}` |
 | `DELETE /api/auth/sessions/:sessionPrefix` | revokes one of your sessions by its 8-character handle |
 
 ## Status codes you will see
@@ -160,6 +177,7 @@ not allowed".
 | `step_up_required` | sensitive action needs a fresh verification | step-up (passkey or code), retry |
 | `step_up_unavailable`, `session_required` | a PAT was used where a person must be present | use an interactive session |
 | `invalid_credentials` | wrong email/password, or unknown passkey | ask again; do not reveal which |
+| `invalid_current_password` | password change with the wrong current password (`403`) | ask again |
 | `locked` | 5 failures, 15 minutes | wait `details.retryAfterSec` |
 | `risk_blocked` | location risk ≥ 70 | contact an Owner |
 

@@ -149,6 +149,13 @@ export interface OnboardingProfile {
   hoursTo: string;
   skills: string[];
   notify: string[];
+  /** Optional details, edited on Settings and stored by the server. */
+  title?: string;
+  pronouns?: string;
+  bio?: string;
+  /** Working days, e.g. ['Mon', 'Tue']. */
+  days?: string[];
+  emailDelivery?: 'instant' | 'daily' | 'off';
 }
 
 /** GET /api/tokens — personal access tokens; the secret itself is never listed. */

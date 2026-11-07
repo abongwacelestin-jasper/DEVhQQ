@@ -37,6 +37,8 @@ import { Monitors } from './pages/Monitors';
 import { Team } from './pages/Team';
 import { MemberDetail } from './pages/MemberDetail';
 import { SecurityCenter } from './pages/SecurityCenter';
+import { Settings } from './pages/Settings';
+import { Sessions } from './pages/Sessions';
 import { Integrations } from './pages/Integrations';
 import { IntegrationDetail } from './pages/IntegrationDetail';
 import { AuditLog } from './pages/AuditLog';
@@ -201,6 +203,8 @@ export function App() {
                                     <Route path="team" element={<Team />} />
                                     <Route path="team/:memberId" element={<MemberDetail />} />
                                     <Route path="security" element={<SecurityCenter />} />
+                                    <Route path="settings" element={<Settings />} />
+                                    <Route path="sessions" element={<Sessions />} />
                                     <Route path="integrations" element={<Integrations />} />
                                     <Route
                                       path="integrations/:integrationId"

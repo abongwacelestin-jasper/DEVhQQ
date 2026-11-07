@@ -9,6 +9,7 @@ import {
   listSessions,
   markVerified,
   revoke,
+  revokeAllExcept,
   revokeAllFor,
   rotateSession,
   sessionCount,
@@ -203,6 +204,21 @@ describe('auth/sessions — rotation and revocation', () => {
     assert.equal(validateSession(b1.token, req(), '127.0.0.3').session.memberId, b);
     assert.equal(sessionCount(), before - 2);
     assert.equal(revokeAllFor(a), 0);
+  });
+
+  it('revokeAllExcept keeps the named session and ends the member’s others only', () => {
+    const a = member();
+    const b = member();
+    const keep = createSession(a, req(), '127.0.0.1', 'password', 'verified');
+    const other1 = createSession(a, req(), '127.0.0.2', 'password', 'verified');
+    const other2 = createSession(a, req(FIREFOX_WIN), '127.0.0.3', 'passkey', 'verified');
+    const b1 = createSession(b, req(), '127.0.0.4', 'password', 'verified');
+    assert.equal(revokeAllExcept(a, keep.session.id), 2);
+    assert.equal(validateSession(keep.token, req(), '127.0.0.1').session.id, keep.session.id);
+    expectCode(() => validateSession(other1.token, req(), '127.0.0.2'), 'session_revoked');
+    expectCode(() => validateSession(other2.token, req(FIREFOX_WIN), '127.0.0.3'), 'session_revoked');
+    assert.equal(validateSession(b1.token, req(), '127.0.0.4').session.memberId, b);
+    assert.equal(revokeAllExcept(a, keep.session.id), 0);
   });
 
   it('lists only the member’s sessions, newest first, with truncated ids', (t) => {

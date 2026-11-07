@@ -20,38 +20,13 @@ import { ProfileIllustration } from '../../components/illustrations/ProfileIllus
 import { useAuth, type Profile } from '../../contexts/AuthContext';
 import { memberById } from '../../utils/status';
 import { weekDays } from '../../data/nda';
-
-const timezones = [
-  'Africa/Lagos (WAT)',
-  'Europe/London (GMT)',
-  'Europe/Berlin (CET)',
-  'America/New_York (ET)',
-  'Asia/Tokyo (JST)',
-  'Asia/Kolkata (IST)',
-];
-const skillOptions = [
-  'React',
-  'TypeScript',
-  'Node.js',
-  'PostgreSQL',
-  'Figma',
-  'Design systems',
-  'QA automation',
-  'Playwright',
-  'Kubernetes',
-  'Terraform',
-  'Observability',
-  'Roadmapping',
-  'Technical writing',
-  'Accessibility',
-];
-const notifyOptions = [
-  { key: 'assigned', label: 'Tasks assigned to me' },
-  { key: 'review', label: 'Review requests' },
-  { key: 'mentions', label: 'Mentions & comments' },
-  { key: 'deploys', label: 'Deploys on my products' },
-  { key: 'incidents', label: 'Incidents on my products' },
-];
+import {
+  DEFAULT_DAYS,
+  notifyOptions,
+  skillOptions,
+  timezones,
+  type EmailDelivery,
+} from '../../data/profileOptions';
 
 const steps = ['About you', 'Availability', 'Skills & alerts', 'Security'];
 const field =
@@ -74,8 +49,8 @@ export function CompleteProfile() {
   const [title, setTitle] = useState('');
   const [pronouns, setPronouns] = useState('');
   const [bio, setBio] = useState('');
-  const [days, setDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
-  const [email, setEmail] = useState<'instant' | 'daily' | 'off'>('instant');
+  const [days, setDays] = useState<string[]>(DEFAULT_DAYS);
+  const [email, setEmail] = useState<EmailDelivery>('instant');
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -128,26 +103,10 @@ export function CompleteProfile() {
     if (busy) return;
     setBusy(true);
     setError('');
-    const r = await completeProfile(p);
+    // Everything is stored by the server (it used to live in localStorage only).
+    const r = await completeProfile({ ...p, title, pronouns, bio, days, emailDelivery: email });
     setBusy(false);
     if (!r.ok) return setError(r.error ?? 'Your profile could not be saved. Try again.');
-    try {
-      localStorage.setItem(
-        `devhq.profile.${me.id}`,
-        JSON.stringify({ title, pronouns, bio, days, email }),
-      );
-      localStorage.setItem(
-        'devhq.email-prefs',
-        JSON.stringify({
-          mode: email,
-          onAssign: p.notify.includes('assigned'),
-          onUnassign: true,
-          onDue: true,
-        }),
-      );
-    } catch {
-      /* storage unavailable */
-    }
     toast.success(`Welcome, ${p.displayName.split(' ')[0]}`);
     const back = peekReturnTo();
     clearReturnTo();

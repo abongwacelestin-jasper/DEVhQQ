@@ -48,6 +48,13 @@ export interface Member {
     hoursTo: string;
     skills: string[];
     notify: string[];
+    /** Optional details edited on the Settings page. */
+    title?: string;
+    pronouns?: string;
+    bio?: string;
+    /** Working days, e.g. ['Mon', 'Tue']. */
+    days?: string[];
+    emailDelivery?: 'instant' | 'daily' | 'off';
     completedAt: string;
   };
   /** Offboarding summary; the checklist lives in domain/collab. */

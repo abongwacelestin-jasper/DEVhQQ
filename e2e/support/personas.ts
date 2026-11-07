@@ -120,6 +120,8 @@ export const MAIN_ROUTES = [
   '/security',
   '/integrations',
   '/audit',
+  '/settings',
+  '/sessions',
   '/products/renewberry',
   '/products/renewberry/work',
   '/products/renewberry/code',

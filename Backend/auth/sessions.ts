@@ -216,6 +216,21 @@ export function revokeAllFor(memberId: string): number {
   return n;
 }
 
+/**
+ * Revokes every session of a member except `keepId` (the caller's own).
+ * Used after a password change and for "sign out everywhere else".
+ */
+export function revokeAllExcept(memberId: string, keepId: string): number {
+  let n = 0;
+  for (const s of [...sessions.values()]) {
+    if (s.memberId === memberId && s.id !== keepId) {
+      revoke(s.id);
+      n++;
+    }
+  }
+  return n;
+}
+
 /** Public projection — the id is truncated to an 8-char handle and is useless as a credential. */
 function publicView(s: SessionRecord, currentId?: string) {
   return {

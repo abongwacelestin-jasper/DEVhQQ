@@ -67,6 +67,21 @@ export const signOutHere = () => api<void>('/api/auth/sign-out', { method: 'POST
 export const signOutEverywhere = () =>
   api<{ revoked: number }>('/api/auth/sign-out-everywhere', { method: 'POST', ...silent });
 
+/** Ends every session of this member except the current one. */
+export const signOutOthers = () =>
+  api<{ revoked: number }>('/api/auth/sign-out-others', { method: 'POST' });
+
+/**
+ * Change password while signed in. Needs a fresh step-up (the client opens
+ * re-verification on `401 step_up_required` and retries); the server revokes
+ * the member's other sessions and rotates this one's cookie.
+ */
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  api<{ ok: boolean; revokedSessions: number }>('/api/auth/password', {
+    method: 'POST',
+    body: { currentPassword, newPassword },
+  });
+
 export const revokeSessionByPrefix = (prefix: string) =>
   api<void>(`/api/auth/sessions/${encodeURIComponent(prefix)}`, { method: 'DELETE' });
 
