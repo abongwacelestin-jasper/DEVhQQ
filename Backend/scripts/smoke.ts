@@ -2142,6 +2142,59 @@ expect('audit trail needs Administration:view (developer refused)', devAudit.sta
     [oldSession.status, reset.json.revokedSessions, newLogin.status],
   );
 
+  // Change password while signed in (Settings → Security)
+  const tomasA = await passwordSignIn('tomas@techorg.io', 'devhq-demo'); // m6
+  const tomasB = await passwordSignIn('tomas@techorg.io', 'devhq-demo');
+  const changed = 'Smoke-Change-2026!q';
+  const pwWrong = await req(
+    'POST',
+    '/api/auth/password',
+    { currentPassword: 'wrong-password', newPassword: changed },
+    tomasA.token,
+  );
+  const pwWeak = await req(
+    'POST',
+    '/api/auth/password',
+    { currentPassword: 'devhq-demo', newPassword: 'short' },
+    tomasA.token,
+  );
+  const pwOk = await req(
+    'POST',
+    '/api/auth/password',
+    { currentPassword: 'devhq-demo', newPassword: changed },
+    tomasA.token,
+  );
+  const tomasKept = await req('GET', '/api/auth/session', undefined, pwOk.json.token as string);
+  const tomasOther = await req('GET', '/api/auth/session', undefined, tomasB.token);
+  const tomasOld = await passwordSignIn('tomas@techorg.io', 'devhq-demo');
+  const tomasNew = await passwordSignIn('tomas@techorg.io', changed);
+  expect(
+    'auth: change password — current password + policy enforced, other sessions revoked, this one kept',
+    tomasA.status === 200 &&
+      pwWrong.status === 403 &&
+      code(pwWrong) === 'invalid_current_password' &&
+      pwWeak.status === 422 &&
+      code(pwWeak) === 'weak_password' &&
+      pwOk.status === 200 &&
+      (pwOk.json.revokedSessions as number) >= 1 &&
+      tomasKept.status === 200 &&
+      tomasOther.status === 401 &&
+      tomasOld.status === 401 &&
+      tomasNew.status === 200,
+    [pwWrong.status, pwWeak.status, pwOk.json, tomasKept.status, tomasOther.status],
+  );
+  const others = await req('POST', '/api/auth/sign-out-others', undefined, tomasNew.token);
+  const keptAfter = await req('GET', '/api/auth/session', undefined, tomasNew.token);
+  const keptGone = await req('GET', '/api/auth/session', undefined, pwOk.json.token as string);
+  expect(
+    'auth: sign out everywhere else keeps only this session',
+    others.status === 200 &&
+      (others.json.revoked as number) >= 1 &&
+      keptAfter.status === 200 &&
+      keptGone.status === 401,
+    [others.json, keptAfter.status, keptGone.status],
+  );
+
   // Offboarding needs step-up
   const prevTrust = process.env.TRUST_PROXY;
   process.env.TRUST_PROXY = '1';

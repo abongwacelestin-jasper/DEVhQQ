@@ -6,7 +6,7 @@
  *   GET  /api/onboarding/nda      → current agreement text, version and hash
  *   POST /api/onboarding/nda      → sign (version, typed name, timestamp, IP, text hash)
  *   POST /api/onboarding/profile  → complete the profile (NDA first)
- *   PATCH /api/onboarding/profile → partial profile update after onboarding
+ *   PATCH /api/onboarding/profile → partial profile update after onboarding (Settings page)
  */
 
 import type { Router } from '../lib/http.ts';
@@ -22,6 +22,7 @@ import type { NdaSignature } from '../domain/collab/types.ts';
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const notifyKeys = ['assigned', 'review', 'mentions', 'deploys', 'incidents'] as const;
+const emailModes = ['instant', 'daily', 'off'] as const;
 const hhmm = () => v.string({ pattern: /^([01]\d|2[0-3]):[0-5]\d$/ });
 
 const ndaBody = v.object({
@@ -50,8 +51,17 @@ const profileFields = {
   skills: v.array(v.string({ min: 1, max: 40 }), { max: 30 }),
   notify: v.array(v.enumOf(notifyKeys), { max: 5 }),
 };
-const profileBody = v.object(profileFields);
+/** Optional profile details (previously kept only in the browser). */
+const profileExtras = {
+  title: v.optional(v.string({ max: 80 })),
+  pronouns: v.optional(v.string({ max: 30 })),
+  bio: v.optional(v.string({ max: 160 })),
+  days: v.optional(v.array(v.enumOf(days), { max: 7 })),
+  emailDelivery: v.optional(v.enumOf(emailModes)),
+};
+const profileBody = v.object({ ...profileFields, ...profileExtras });
 const profilePatch = v.object({
+  ...profileExtras,
   displayName: v.optional(profileFields.displayName),
   timezone: v.optional(profileFields.timezone),
   hoursFrom: v.optional(profileFields.hoursFrom),
@@ -60,11 +70,29 @@ const profilePatch = v.object({
   notify: v.optional(profileFields.notify),
 });
 
-function checkProfile(p: { hoursFrom: string; hoursTo: string; skills: string[] }) {
+function checkProfile(p: {
+  hoursFrom: string;
+  hoursTo: string;
+  skills: string[];
+  days?: readonly string[];
+}) {
   if (p.hoursFrom >= p.hoursTo)
     throw new HttpError(422, 'validation_failed', 'hoursTo must be later than hoursFrom');
   if (p.skills.length === 0)
     throw new HttpError(422, 'validation_failed', 'skills: pick at least one');
+  if (p.days && p.days.length === 0)
+    throw new HttpError(422, 'validation_failed', 'days: pick at least one working day');
+}
+
+/** Drops undefined keys and de-duplicates list fields. */
+type Defined<T> = { [K in keyof T]?: Exclude<T[K], undefined> };
+function clean<T extends Record<string, unknown>>(p: T): Defined<T> {
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(p)) {
+    if (val === undefined) continue;
+    out[k] = Array.isArray(val) ? [...new Set(val)] : val;
+  }
+  return out as Defined<T>;
 }
 
 function me(memberId: string): Member {
@@ -166,12 +194,7 @@ export function registerOnboardingRoutes(r: Router) {
       checkProfile(body);
       if (needsOnboarding(m) && !ndaCurrent(m))
         throw new HttpError(409, 'nda_required', 'Sign the NDA before completing your profile');
-      m.profile = {
-        ...body,
-        skills: [...new Set(body.skills)],
-        notify: [...new Set(body.notify)],
-        completedAt: new Date().toISOString(),
-      };
+      m.profile = { ...body, ...clean(body), completedAt: new Date().toISOString() };
       saveMember(m.id);
       audit.append({
         actor: m.id,
@@ -192,10 +215,7 @@ export function registerOnboardingRoutes(r: Router) {
       const m = me(ctx.principal!.memberId);
       const patch = parse(profilePatch, ctx.body);
       if (!m.profile) throw new HttpError(409, 'profile_required', 'Complete your profile first');
-      const next = {
-        ...m.profile,
-        ...Object.fromEntries(Object.entries(patch).filter(([, val]) => val !== undefined)),
-      };
+      const next = { ...m.profile, ...clean(patch) };
       checkProfile(next);
       m.profile = next;
       saveMember(m.id);

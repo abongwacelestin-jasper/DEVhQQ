@@ -344,6 +344,23 @@ const RULES: Rule[] = [
     ok: 422,
     needs: 'Repository:manage',
   },
+  // Account self-service: every role, for their own account only.
+  {
+    method: 'POST',
+    path: '/api/auth/password',
+    body: {},
+    allow: DEMO_KEYS,
+    ok: 422,
+    needs: 'any member, own account (session + step-up)',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/onboarding/profile',
+    body: { nope: true },
+    allow: DEMO_KEYS,
+    ok: 422,
+    needs: 'any member, own profile',
+  },
 ];
 
 describe('authz — role × sensitive route matrix', () => {
