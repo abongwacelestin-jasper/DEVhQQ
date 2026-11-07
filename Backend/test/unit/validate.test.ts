@@ -171,21 +171,17 @@ describe('lib/validate — object', () => {
     assert.equal(({} as Record<string, unknown>).admin, undefined);
   });
 
-  // FINDING B-1 (lib/validate.ts:77): `k in shape` walks the prototype chain, so
+  // FINDING B-1 — FIXED on wave4/integration, kept as a regression guard. Was (lib/validate.ts:77): `k in shape` walks the prototype chain, so
   // keys inherited from Object.prototype (__proto__, constructor, toString,
   // hasOwnProperty…) are not reported as unknown. They are dropped rather than
   // assigned, so nothing is smuggled today, but the documented contract
   // "unknown keys are rejected" does not hold. Fix: Object.hasOwn(shape, k).
-  it(
-    'rejects Object.prototype key names as unknown fields',
-    { todo: 'FINDING B-1: validate.object uses `in` instead of Object.hasOwn' },
-    () => {
-      for (const key of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf']) {
-        const body: unknown = JSON.parse(`{"title":"abc","${key}":1}`);
-        rejects(() => parse(schema, body), 'body', key);
-      }
-    },
-  );
+  it('rejects Object.prototype key names as unknown fields', () => {
+    for (const key of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf']) {
+      const body: unknown = JSON.parse(`{"title":"abc","${key}":1}`);
+      rejects(() => parse(schema, body), 'body', key);
+    }
+  });
 
   it('rejects non-objects at the root and when nested', () => {
     for (const bad of [null, undefined, 'x', 1, [], [{ title: 'abc' }]])

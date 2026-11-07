@@ -64,7 +64,7 @@ export class Client {
       method,
       headers: {
         ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-        'X-DevHQ-Client': 'console',
+        'X-DevHQ-Client': 'cli',
         'User-Agent': this.userAgent,
         'X-Forwarded-For': this.ip,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

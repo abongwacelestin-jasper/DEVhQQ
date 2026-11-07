@@ -98,6 +98,7 @@ interface Rule {
 
 const OWNER_OPS: DemoKey[] = ['admin', 'operations'];
 const CONTRIBUTORS: DemoKey[] = ['admin', 'pm', 'developer', 'designer', 'tester'];
+const INFRA_VIEW: DemoKey[] = ['admin', 'developer', 'operations'];
 const ALL_BUT_DESIGNER: DemoKey[] = ['admin', 'pm', 'developer', 'tester', 'operations'];
 
 const RULES: Rule[] = [
@@ -243,6 +244,105 @@ const RULES: Rule[] = [
     allow: OWNER_OPS,
     ok: 200,
     needs: 'Infrastructure:manage + step-up',
+  },
+  // ── Wave 4 routes ──
+  {
+    method: 'GET',
+    path: '/api/monitors',
+    allow: INFRA_VIEW,
+    ok: 200,
+    needs: 'Infrastructure:view',
+  },
+  {
+    method: 'POST',
+    path: '/api/monitors',
+    body: {},
+    allow: OWNER_OPS,
+    ok: 422,
+    needs: 'Infrastructure:manage',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/monitors/nope',
+    body: {},
+    allow: OWNER_OPS,
+    ok: 404,
+    needs: 'Infrastructure:manage',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/monitors/nope',
+    allow: OWNER_OPS,
+    ok: 404,
+    needs: 'Infrastructure:manage',
+  },
+  {
+    method: 'GET',
+    path: '/api/backups/snapshots',
+    allow: OWNER_OPS,
+    ok: 200,
+    needs: 'Infrastructure:manage',
+  },
+  {
+    method: 'POST',
+    path: '/api/backups/nope/restore',
+    body: {},
+    allow: ['admin'],
+    ok: 404,
+    needs: 'Administration:admin + step-up',
+  },
+  {
+    method: 'GET',
+    path: '/api/integrations',
+    allow: OWNER_OPS,
+    ok: 200,
+    needs: 'Administration:view',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/integrations/nope',
+    allow: ['admin'],
+    ok: 404,
+    needs: 'Administration:manage + step-up',
+  },
+  {
+    method: 'GET',
+    path: '/api/integrations/nope/webhooks',
+    allow: OWNER_OPS,
+    ok: 404,
+    needs: 'Administration:view',
+  },
+  {
+    method: 'POST',
+    path: '/api/integrations/nope/webhooks',
+    body: {},
+    allow: ['admin'],
+    ok: 422,
+    needs: 'Administration:manage + step-up',
+  },
+  {
+    method: 'GET',
+    path: '/api/offboarding',
+    allow: OWNER_OPS,
+    ok: 200,
+    needs: 'Administration:view',
+  },
+  { method: 'GET', path: '/api/repos', allow: DEMO_KEYS, ok: 200, needs: 'Repository:view' },
+  {
+    method: 'POST',
+    path: '/api/repos',
+    body: {},
+    allow: ['admin'],
+    ok: 422,
+    needs: 'Repository:manage',
+  },
+  {
+    method: 'POST',
+    path: '/api/security/code-findings',
+    body: {},
+    allow: ['admin'],
+    ok: 422,
+    needs: 'Repository:manage',
   },
 ];
 

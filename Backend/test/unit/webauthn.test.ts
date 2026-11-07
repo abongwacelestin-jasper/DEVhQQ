@@ -1,32 +1,42 @@
 import '../setup.ts';
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { config } from '../../config/env.ts';
-import { issueChallenge, verifyAssertion, verifyRegistration } from '../../auth/webauthn.ts';
+import {
+  CHALLENGE_TTL_MS,
+  isSuspended,
+  issueAssertionChallenge,
+  issueRegistrationChallenge,
+  takeChallenge,
+  verifyAssertion,
+  verifyRegistration,
+  type StoredPasskey,
+} from '../../auth/webauthn.ts';
 import { HttpError, type PasskeyCredential } from '../../types.ts';
 import {
+  FLAG_AT,
   FLAG_UP,
   FLAG_UV,
+  cbor,
+  coseKey,
   createAuthenticator,
   makeAssertion,
   makeRegistration,
+  type Alg,
   type AssertionOverrides,
+  type Ceremony,
   type SoftAuthenticator,
 } from '../helpers/webauthn.ts';
 
 const ORIGIN = config.appOrigin;
 const RP_ID = config.rpId;
-
-function ceremony(kind: 'get' | 'create', memberId?: string) {
-  const c = issueChallenge(kind, memberId);
-  return {
-    challengeId: c.challengeId,
-    challenge: c.publicKey.challenge,
-    rpId: RP_ID,
-    origin: ORIGIN,
-  };
-}
+const MEMBER = {
+  id: 'm4',
+  email: 'kofi@techorg.io',
+  name: 'Kofi',
+  passkeys: [] as PasskeyCredential[],
+};
 
 function stored(auth: SoftAuthenticator, signCount = 0): PasskeyCredential {
   return {
@@ -39,98 +49,181 @@ function stored(auth: SoftAuthenticator, signCount = 0): PasskeyCredential {
   };
 }
 
+function getCeremony(
+  purpose: 'sign-in' | 'mfa' | 'step-up' = 'sign-in',
+  sessionId = 's1',
+): Ceremony {
+  const c =
+    purpose === 'sign-in'
+      ? issueAssertionChallenge('sign-in')
+      : issueAssertionChallenge(purpose, MEMBER, sessionId);
+  return {
+    challengeId: c.challengeId,
+    challenge: c.publicKey.challenge,
+    rpId: RP_ID,
+    origin: ORIGIN,
+  };
+}
+
+function createCeremony(sessionId = 's1', memberId = MEMBER.id): Ceremony {
+  const c = issueRegistrationChallenge({ ...MEMBER, id: memberId }, sessionId);
+  return {
+    challengeId: c.challengeId,
+    challenge: c.publicKey.challenge,
+    rpId: RP_ID,
+    origin: ORIGIN,
+  };
+}
+
+/** Takes the challenge and verifies, like the route does. */
+function assertWith(
+  auth: SoftAuthenticator,
+  cred: PasskeyCredential,
+  ceremony: Ceremony,
+  o: AssertionOverrides = {},
+  owner = MEMBER.id,
+) {
+  const body = makeAssertion(auth, ceremony, o);
+  const challenge = takeChallenge(body.challengeId, 'get');
+  return verifyAssertion(cred, owner, challenge, body);
+}
+
 function rejects(fn: () => unknown, status: number, code: string) {
   assert.throws(fn, (e: unknown) => {
     assert.ok(e instanceof HttpError, `HttpError expected, got ${String(e)}`);
-    assert.equal(e.status, status);
+    assert.equal(e.status, status, e.message);
     assert.equal(e.code, code);
     return true;
   });
 }
 
 describe('auth/webauthn — challenges', () => {
-  it('issues random challenges with the RP and allowed algorithms', () => {
-    const a = issueChallenge('get');
-    const b = issueChallenge('get');
+  it('sign-in challenges are random and reveal no credentials', () => {
+    const a = issueAssertionChallenge('sign-in');
+    const b = issueAssertionChallenge('sign-in');
     assert.notEqual(a.challengeId, b.challengeId);
     assert.notEqual(a.publicKey.challenge, b.publicKey.challenge);
+    assert.equal(Buffer.from(a.publicKey.challenge, 'base64url').length, 32);
     assert.equal(a.publicKey.rpId, RP_ID);
     assert.equal(a.publicKey.userVerification, 'required');
+    assert.deepEqual(a.publicKey.allowCredentials, []);
+  });
+
+  it('mfa/step-up challenges need a member and session and list only unsuspended keys', () => {
+    assert.throws(
+      () => issueAssertionChallenge('mfa'),
+      (e: unknown) => e instanceof HttpError && e.status === 401,
+    );
+    const ok = createAuthenticator();
+    const bad = createAuthenticator();
+    const member = {
+      id: 'm9',
+      passkeys: [
+        stored(ok),
+        { ...stored(bad), suspendedAt: new Date().toISOString() } as StoredPasskey,
+      ],
+    };
+    const c = issueAssertionChallenge('step-up', member, 'sess');
     assert.deepEqual(
-      a.publicKey.pubKeyCredParams.map((p) => p.alg),
-      config.crypto.webauthnAlgorithms,
+      c.publicKey.allowCredentials.map((d) => d.id),
+      [ok.credentialId],
     );
   });
 
-  it('a challenge is single use, even when the first attempt fails', () => {
+  it('registration options carry the RP, user handle, allowed algorithms and exclusions', () => {
+    const existing = createAuthenticator();
+    const c = issueRegistrationChallenge({ ...MEMBER, passkeys: [stored(existing)] }, 's1');
+    assert.equal(c.publicKey.rp.id, RP_ID);
+    assert.equal(c.publicKey.user.id, Buffer.from('m4').toString('base64url'));
+    assert.deepEqual(
+      c.publicKey.pubKeyCredParams.map((p) => p.alg),
+      config.crypto.webauthnAlgorithms,
+    );
+    assert.deepEqual(
+      c.publicKey.excludeCredentials.map((d) => d.id),
+      [existing.credentialId],
+    );
+    assert.equal(c.publicKey.authenticatorSelection.userVerification, 'required');
+  });
+
+  it('a challenge is single use, even when verification fails', () => {
     const auth = createAuthenticator();
-    const c = ceremony('get');
-    // First attempt: wrong origin → rejected, challenge burnt.
+    const c = getCeremony();
     rejects(
-      () =>
-        verifyAssertion(stored(auth), makeAssertion(auth, c, { origin: 'https://evil.example' })),
+      () => assertWith(auth, stored(auth), c, { origin: 'https://evil.example' }),
       400,
       'origin_mismatch',
     );
-    // Second attempt with a perfect assertion on the same challenge → refused.
-    rejects(() => verifyAssertion(stored(auth), makeAssertion(auth, c)), 400, 'challenge_invalid');
+    rejects(() => takeChallenge(c.challengeId, 'get'), 400, 'challenge_invalid');
   });
 
-  it('a successful challenge cannot be replayed', () => {
-    const auth = createAuthenticator();
-    const c = ceremony('get');
-    const body = makeAssertion(auth, c);
-    assert.equal(verifyAssertion(stored(auth), body), 1);
-    rejects(() => verifyAssertion(stored(auth, 1), body), 400, 'challenge_invalid');
+  it('kinds cannot be swapped: create ↔ get', () => {
+    rejects(() => takeChallenge(createCeremony().challengeId, 'get'), 400, 'challenge_invalid');
+    rejects(() => takeChallenge(getCeremony().challengeId, 'create'), 400, 'challenge_invalid');
+    rejects(() => takeChallenge('unknown', 'get'), 400, 'challenge_invalid');
   });
 
-  it('expires after two minutes (fake time)', (t) => {
+  it('expires after CHALLENGE_TTL_MS (fake time)', (t) => {
     t.mock.timers.enable({ apis: ['Date'], now: 1_700_000_000_000 });
     const auth = createAuthenticator();
-    const ok = ceremony('get');
-    t.mock.timers.tick(2 * 60_000);
-    assert.equal(verifyAssertion(stored(auth), makeAssertion(auth, ok)), 1, 'valid at exactly TTL');
-    const late = ceremony('get');
-    t.mock.timers.tick(2 * 60_000 + 1);
-    rejects(
-      () => verifyAssertion(stored(auth), makeAssertion(auth, late)),
-      400,
-      'challenge_invalid',
+    const ok = getCeremony();
+    t.mock.timers.tick(CHALLENGE_TTL_MS);
+    assert.deepEqual(
+      assertWith(auth, stored(auth), ok),
+      { ok: true, signCount: 1 },
+      'valid at TTL',
     );
-  });
-
-  it('a create challenge cannot be used for get, and unknown ids fail', () => {
-    const auth = createAuthenticator();
-    const c = ceremony('create', 'm1');
-    rejects(() => verifyAssertion(stored(auth), makeAssertion(auth, c)), 400, 'challenge_invalid');
-    rejects(
-      () =>
-        verifyAssertion(
-          stored(auth),
-          makeAssertion(auth, { ...ceremony('get'), challengeId: 'nope' }),
-        ),
-      400,
-      'challenge_invalid',
-    );
+    const late = getCeremony();
+    t.mock.timers.tick(CHALLENGE_TTL_MS + 1);
+    rejects(() => takeChallenge(late.challengeId, 'get'), 400, 'challenge_invalid');
   });
 });
 
 describe('auth/webauthn — assertions with real keys', () => {
-  for (const alg of [-7, -257] as const) {
-    it(`verifies a genuine ${alg === -7 ? 'ES256' : 'RS256'} assertion and returns the new counter`, () => {
+  const restoreAlgs = [...config.crypto.webauthnAlgorithms];
+  afterEach(() => {
+    config.crypto.webauthnAlgorithms = [...restoreAlgs];
+  });
+
+  for (const alg of [-7, -257, -8] as Alg[]) {
+    it(`verifies a genuine ${alg === -7 ? 'ES256' : alg === -8 ? 'EdDSA' : 'RS256'} assertion and returns the new counter`, () => {
+      if (!config.crypto.webauthnAlgorithms.includes(alg))
+        config.crypto.webauthnAlgorithms.push(alg);
       const auth = createAuthenticator(alg);
-      assert.equal(
-        verifyAssertion(stored(auth, 4), makeAssertion(auth, ceremony('get'), { signCount: 5 })),
-        5,
-      );
+      assert.deepEqual(assertWith(auth, stored(auth, 4), getCeremony(), { signCount: 5 }), {
+        ok: true,
+        signCount: 5,
+      });
     });
   }
 
-  it('accepts authenticators that never increment (counter 0 → 0)', () => {
+  it('refuses an algorithm that is no longer allowed at use time', () => {
+    const auth = createAuthenticator(-8);
+    rejects(() => assertWith(auth, stored(auth), getCeremony()), 400, 'alg_unsupported');
+  });
+
+  it('accepts authenticators that never increment (0 → 0)', () => {
     const auth = createAuthenticator();
-    assert.equal(
-      verifyAssertion(stored(auth, 0), makeAssertion(auth, ceremony('get'), { signCount: 0 })),
-      0,
+    assert.deepEqual(assertWith(auth, stored(auth, 0), getCeremony(), { signCount: 0 }), {
+      ok: true,
+      signCount: 0,
+    });
+  });
+
+  it('reports (does not throw) a sign-count regression, after the signature check', () => {
+    const auth = createAuthenticator();
+    for (const next of [7, 3, 0])
+      assert.deepEqual(assertWith(auth, stored(auth, 7), getCeremony(), { signCount: next }), {
+        ok: false,
+        reason: 'counter_regressed',
+        signCount: next,
+      });
+    // An unsigned (forged) low counter must never be able to trigger suspension.
+    const attacker = generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey;
+    rejects(
+      () => assertWith(auth, stored(auth, 7), getCeremony(), { signCount: 1, signWith: attacker }),
+      401,
+      'signature_invalid',
     );
   });
 
@@ -153,123 +246,131 @@ describe('auth/webauthn — assertions with real keys', () => {
       401,
       'signature_invalid',
     ],
+    [
+      'user handle of another member',
+      { userHandle: Buffer.from('m1').toString('base64url') },
+      401,
+      'invalid_credentials',
+    ],
   ];
   for (const [name, o, status, code] of cases) {
     it(`rejects: ${name}`, () => {
       const auth = createAuthenticator();
-      rejects(
-        () => verifyAssertion(stored(auth), makeAssertion(auth, ceremony('get'), o)),
-        status,
-        code,
-      );
+      rejects(() => assertWith(auth, stored(auth), getCeremony(), o), status, code);
     });
   }
 
-  it('rejects a counter that does not increase (cloned authenticator)', () => {
+  it('accepts the owner’s user handle', () => {
     const auth = createAuthenticator();
-    for (const next of [7, 3]) {
-      rejects(
-        () =>
-          verifyAssertion(
-            stored(auth, 7),
-            makeAssertion(auth, ceremony('get'), { signCount: next }),
-          ),
-        401,
-        'counter_regressed',
-      );
-    }
+    const r = assertWith(auth, stored(auth), getCeremony(), {
+      userHandle: Buffer.from('m4').toString('base64url'),
+    });
+    assert.equal(r.ok, true);
+  });
+
+  it('a member-bound challenge cannot be answered with another member’s passkey', () => {
+    const auth = createAuthenticator();
     rejects(
-      () =>
-        verifyAssertion(stored(auth, 7), makeAssertion(auth, ceremony('get'), { signCount: 0 })),
+      () => assertWith(auth, stored(auth), getCeremony('mfa'), {}, 'm5'),
       401,
-      'counter_regressed',
+      'invalid_credentials',
     );
   });
 
-  it('rejects a tampered signature, authenticatorData or clientData', () => {
+  it('refuses suspended credentials', () => {
+    const auth = createAuthenticator();
+    const cred = { ...stored(auth), suspendedAt: new Date().toISOString() } as StoredPasskey;
+    assert.equal(isSuspended(cred), true);
+    assert.equal(isSuspended(stored(auth)), false);
+    rejects(() => assertWith(auth, cred, getCeremony()), 401, 'credential_suspended');
+  });
+
+  it('rejects tampered signature, authenticatorData, malformed DER and short data', () => {
     const auth = createAuthenticator();
     const flip = (b64: string, at: number) => {
       const buf = Buffer.from(b64, 'base64url');
       buf[at] ^= 0x01;
       return buf.toString('base64url');
     };
-    const sig = makeAssertion(auth, ceremony('get'));
+    const run = (
+      mut: (b: ReturnType<typeof makeAssertion>) => ReturnType<typeof makeAssertion>,
+    ) => {
+      const body = mut(makeAssertion(auth, getCeremony()));
+      return verifyAssertion(stored(auth), 'm4', takeChallenge(body.challengeId, 'get'), body);
+    };
     rejects(
-      () => verifyAssertion(stored(auth), { ...sig, signature: flip(sig.signature, 20) }),
+      () => run((b) => ({ ...b, signature: flip(b.signature, 20) })),
       401,
       'signature_invalid',
     );
-    // Bump the counter byte: still well-formed, but no longer what was signed.
-    const ad = makeAssertion(auth, ceremony('get'));
     rejects(
-      () =>
-        verifyAssertion(stored(auth), { ...ad, authenticatorData: flip(ad.authenticatorData, 36) }),
+      () => run((b) => ({ ...b, signature: randomBytes(10).toString('base64url') })),
       401,
       'signature_invalid',
     );
-  });
-
-  it('rejects malformed clientDataJSON and short authenticatorData', () => {
-    const auth = createAuthenticator();
-    const a = makeAssertion(auth, ceremony('get'));
     rejects(
-      () =>
-        verifyAssertion(stored(auth), {
-          ...a,
-          clientDataJSON: Buffer.from('{nope').toString('base64url'),
-        }),
+      () => run((b) => ({ ...b, authenticatorData: flip(b.authenticatorData, 36) })),
+      401,
+      'signature_invalid',
+    );
+    rejects(
+      () => run((b) => ({ ...b, clientDataJSON: Buffer.from('{nope').toString('base64url') })),
       400,
       'client_data_invalid',
     );
-    const b = makeAssertion(auth, ceremony('get'));
     rejects(
-      () =>
-        verifyAssertion(stored(auth), {
-          ...b,
-          authenticatorData: Buffer.alloc(36).toString('base64url'),
-        }),
+      () => run((b) => ({ ...b, authenticatorData: Buffer.alloc(36).toString('base64url') })),
       400,
       'auth_data_invalid',
     );
   });
+
+  it('a stored key that does not fit its algorithm is refused', () => {
+    const rsa = createAuthenticator(-257);
+    const cred = { ...stored(rsa), algorithm: -7 };
+    rejects(() => assertWith(rsa, cred, getCeremony()), 400, 'alg_unsupported');
+  });
 });
 
 describe('auth/webauthn — registration', () => {
-  it('stores a credential for the member that requested the challenge', () => {
-    const auth = createAuthenticator();
-    const cred = verifyRegistration(
-      'm4',
-      makeRegistration(auth, ceremony('create', 'm4'), { label: 'Laptop' }),
-    );
-    assert.equal(cred.id, auth.credentialId);
-    assert.equal(cred.publicKey, auth.publicKey);
-    assert.equal(cred.algorithm, -7);
-    assert.equal(cred.label, 'Laptop');
-    // The stored key verifies later assertions.
-    assert.equal(verifyAssertion(cred, makeAssertion(auth, ceremony('get'))), 1);
+  it('stores a credential that later verifies assertions (ES256 and RS256)', () => {
+    for (const alg of [-7, -257] as Alg[]) {
+      const auth = createAuthenticator(alg);
+      const cred = verifyRegistration(
+        'm4',
+        's1',
+        makeRegistration(auth, createCeremony(), { label: 'Laptop' }),
+      );
+      assert.deepEqual(
+        { id: cred.id, publicKey: cred.publicKey, algorithm: cred.algorithm, label: cred.label },
+        { id: auth.credentialId, publicKey: auth.publicKey, algorithm: alg, label: 'Laptop' },
+      );
+      assert.equal(assertWith(auth, cred, getCeremony()).ok, true);
+    }
   });
 
-  it('refuses a challenge issued to another member', () => {
+  it('is bound to the member and the session that asked', () => {
     const auth = createAuthenticator();
     rejects(
-      () => verifyRegistration('m4', makeRegistration(auth, ceremony('create', 'm5'))),
+      () => verifyRegistration('m4', 's1', makeRegistration(auth, createCeremony('s1', 'm5'))),
+      400,
+      'challenge_invalid',
+    );
+    rejects(
+      () => verifyRegistration('m4', 's1', makeRegistration(auth, createCeremony('other'))),
       400,
       'challenge_invalid',
     );
   });
 
-  it('refuses a get challenge, a get ceremony type and unsupported algorithms', () => {
+  it('refuses the wrong ceremony type, missing UV and missing attested data', () => {
     const auth = createAuthenticator();
-    rejects(
-      () => verifyRegistration('m4', makeRegistration(auth, ceremony('get'))),
-      400,
-      'challenge_invalid',
-    );
     rejects(
       () =>
         verifyRegistration(
           'm4',
-          makeRegistration(auth, ceremony('create', 'm4'), { type: 'webauthn.get' }),
+          's1',
+          makeRegistration(auth, createCeremony(), { type: 'webauthn.get' }),
         ),
       400,
       'client_data_invalid',
@@ -278,38 +379,119 @@ describe('auth/webauthn — registration', () => {
       () =>
         verifyRegistration(
           'm4',
-          makeRegistration(auth, ceremony('create', 'm4'), { algorithm: -8 }),
+          's1',
+          makeRegistration(auth, createCeremony(), { flags: FLAG_UP | FLAG_AT }),
         ),
       400,
-      'alg_unsupported',
+      'user_not_verified',
     );
     rejects(
       () =>
         verifyRegistration(
           'm4',
-          makeRegistration(auth, ceremony('create', 'm4'), { flags: FLAG_UP }),
+          's1',
+          makeRegistration(auth, createCeremony(), { flags: FLAG_UP | FLAG_UV }),
         ),
       400,
-      'user_not_verified',
+      'auth_data_invalid',
     );
   });
 
-  // FINDING B-4 (auth/webauthn.ts:119): an unparsable publicKey makes
-  // createPublicKey throw a plain Error, which the router reports as
-  // 500 "internal" (and logs) instead of a 400 the client can act on.
-  it(
-    'refuses a public key that does not parse with a 400, not an unexpected error',
-    { todo: 'FINDING B-4: garbage publicKey escapes as a non-HttpError (500)' },
-    () => {
-      const auth = createAuthenticator();
-      const body = makeRegistration(auth, ceremony('create', 'm4'), {
-        publicKey: Buffer.from('not a key').toString('base64url'),
-      });
-      // Any 400 code is acceptable; what matters is a client error, not a 500.
-      assert.throws(
-        () => verifyRegistration('m4', body),
-        (e: unknown) => e instanceof HttpError && e.status === 400,
+  it('refuses unsupported algorithms and keys that do not fit the declared algorithm', () => {
+    const auth = createAuthenticator();
+    rejects(
+      () =>
+        verifyRegistration('m4', 's1', makeRegistration(auth, createCeremony(), { algorithm: -8 })),
+      400,
+      'alg_unsupported',
+    );
+    const rsa = createAuthenticator(-257);
+    // An RSA SPKI claiming ES256.
+    rejects(
+      () =>
+        verifyRegistration(
+          'm4',
+          's1',
+          makeRegistration(auth, createCeremony(), { publicKey: rsa.publicKey }),
+        ),
+      400,
+      'alg_unsupported',
+    );
+  });
+
+  it('the SPKI must be the same key as the COSE key in authenticatorData', () => {
+    const auth = createAuthenticator();
+    const other = createAuthenticator();
+    rejects(
+      () =>
+        verifyRegistration(
+          'm4',
+          's1',
+          makeRegistration(auth, createCeremony(), { publicKey: other.publicKey }),
+        ),
+      400,
+      'key_mismatch',
+    );
+    rejects(
+      () =>
+        verifyRegistration(
+          'm4',
+          's1',
+          makeRegistration(auth, createCeremony(), { cose: coseKey(auth, -257) }),
+        ),
+      400,
+      'alg_mismatch',
+    );
+  });
+
+  it('the reported credential id must equal the embedded one, with sane length', () => {
+    const auth = createAuthenticator();
+    rejects(
+      () =>
+        verifyRegistration(
+          'm4',
+          's1',
+          makeRegistration(auth, createCeremony(), { embeddedCredentialId: randomBytes(16) }),
+        ),
+      400,
+      'credential_mismatch',
+    );
+    rejects(
+      () =>
+        verifyRegistration(
+          'm4',
+          's1',
+          makeRegistration(auth, createCeremony(), { embeddedCredentialId: randomBytes(8) }),
+        ),
+      400,
+      'auth_data_invalid',
+    );
+  });
+
+  it('malformed CBOR and unparsable public keys are 400s, not 500s (B-4 fixed)', () => {
+    const auth = createAuthenticator();
+    for (const cose of [
+      Buffer.from([0xff]),
+      Buffer.from([0xa1]),
+      cbor(5),
+      Buffer.from([0xc6, 0x01]),
+    ])
+      rejects(
+        () => verifyRegistration('m4', 's1', makeRegistration(auth, createCeremony(), { cose })),
+        400,
+        'auth_data_invalid',
       );
-    },
-  );
+    rejects(
+      () =>
+        verifyRegistration(
+          'm4',
+          's1',
+          makeRegistration(auth, createCeremony(), {
+            publicKey: Buffer.from('not a key').toString('base64url'),
+          }),
+        ),
+      400,
+      'key_invalid',
+    );
+  });
 });

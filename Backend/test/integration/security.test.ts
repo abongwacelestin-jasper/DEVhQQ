@@ -128,10 +128,10 @@ describe('security — response headers and origin guard', () => {
     for (const path of ['/api/health', '/api/does-not-exist']) {
       const res = await app.client().get(path);
       const h = res.headers;
-      assert.match(
-        h.get('content-security-policy') ?? '',
-        /default-src 'self'.*frame-ancestors 'none'/,
-      );
+      // JSON API responses carry a deny-all CSP (nothing in them is rendered).
+      const csp = h.get('content-security-policy') ?? '';
+      assert.match(csp, /default-src 'none'/);
+      assert.match(csp, /frame-ancestors 'none'/);
       assert.equal(h.get('x-content-type-options'), 'nosniff');
       assert.equal(h.get('x-frame-options'), 'DENY');
       assert.equal(h.get('cache-control'), 'no-store');

@@ -284,13 +284,13 @@ describe('auth — passkeys end to end (real ES256)', () => {
     const auth = createAuthenticator(-7);
     const opts = await owner.post<{
       challengeId: string;
-      publicKey: { challenge: string; rpId: string };
+      publicKey: { challenge: string; rp: { id: string } };
     }>('/api/auth/passkeys/options');
-    assert.equal(opts.status, 200);
+    assert.equal(opts.status, 200, opts.text);
     const ceremony = {
       challengeId: opts.json.challengeId,
       challenge: opts.json.publicKey.challenge,
-      rpId: opts.json.publicKey.rpId,
+      rpId: opts.json.publicKey.rp.id,
       origin: 'http://localhost:5173',
     };
     const reg = await owner.post(

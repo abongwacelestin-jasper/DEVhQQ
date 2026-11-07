@@ -50,7 +50,7 @@ describe('system — probes and discovery', () => {
     assert.equal(cfg.status, 200);
     assert.ok(!cfg.text.includes('dev-only-secret'));
     for (const v of Object.values(cfg.json.secrets))
-      assert.match(v, /^(set|not set|dev fallback)$/);
+      assert.match(v, /^(set|not set|dev fallback|\d+ key\(s\))$/, 'presence or a count only');
   });
 
   it('metrics are exposed as JSON and Prometheus text', async () => {

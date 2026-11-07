@@ -144,23 +144,19 @@ describe('tasks — update and workflow rules', () => {
     assert.equal(res.status, 200);
   });
 
-  // FINDING B-6 (routes/tasks.routes.ts:256): the self-close rule only checks
+  // FINDING B-6 — FIXED on wave4/integration, kept as a regression guard. Was (routes/tasks.routes.ts:256): the self-close rule only checks
   // the *current* assignee. An assignee can hand the task to a colleague and
   // close it in the same PATCH ({assignee:'m5', status:'done'}) — nobody else
   // ever looked at it. The rule should apply to the caller being the
   // assignee before or after the patch.
-  it(
-    'the self-close rule cannot be bypassed by reassigning in the same request',
-    { todo: 'FINDING B-6: reassign + done in one PATCH bypasses self_close' },
-    async () => {
-      const { json: t } = await create(as.developer);
-      const res = await as.developer.patch(`/api/tasks/${t.key}`, {
-        assignee: 'm5',
-        status: 'done',
-      });
-      assert.equal(res.status, 403);
-    },
-  );
+  it('the self-close rule cannot be bypassed by reassigning in the same request', async () => {
+    const { json: t } = await create(as.developer);
+    const res = await as.developer.patch(`/api/tasks/${t.key}`, {
+      assignee: 'm5',
+      status: 'done',
+    });
+    assert.equal(res.status, 403);
+  });
 
   it('validates patches and rejects unknown fields', async () => {
     const { json: t } = await create(as.developer);

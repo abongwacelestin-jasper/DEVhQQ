@@ -42,23 +42,19 @@ describe('TOTP second factor over HTTP', () => {
     assert.equal(errorCode(replay), 'mfa_invalid');
   });
 
-  // FINDING B-5 (auth/sessions.ts:99 + routes/auth.routes.ts:434): the TOTP
+  // FINDING B-5 — FIXED on wave4/integration, kept as a regression guard. Was (auth/sessions.ts:99 + routes/auth.routes.ts:434): the TOTP
   // replay counter lives on the *session*, and every password sign-in starts
   // a new session at lastTotpCounter = -1. A code observed once (shoulder
   // surfing, phishing relay) can be replayed in a second session within its
   // 90-second window. RFC 6238 §5.2 requires the verifier to reject a second
   // use of an OTP after a successful validation — the counter must be stored
   // per member.
-  it(
-    'a code accepted in one session is refused in a second session',
-    { todo: 'FINDING B-5: TOTP replay protection is per session, not per member' },
-    async () => {
-      const a = await passwordOnly(app, 'yuki@techorg.io');
-      const b = await passwordOnly(app, 'yuki@techorg.io');
-      const code = nowCode();
-      assert.equal((await a.post('/api/auth/mfa/totp', { code })).status, 200);
-      const second = await b.post('/api/auth/mfa/totp', { code });
-      assert.equal(second.status, 401, 'the same OTP was accepted twice');
-    },
-  );
+  it('a code accepted in one session is refused in a second session', async () => {
+    const a = await passwordOnly(app, 'yuki@techorg.io');
+    const b = await passwordOnly(app, 'yuki@techorg.io');
+    const code = nowCode();
+    assert.equal((await a.post('/api/auth/mfa/totp', { code })).status, 200);
+    const second = await b.post('/api/auth/mfa/totp', { code });
+    assert.equal(second.status, 401, 'the same OTP was accepted twice');
+  });
 });
