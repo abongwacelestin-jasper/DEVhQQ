@@ -142,7 +142,8 @@ export function AccessReview({
                   <>
                     <ServerIcon className="h-3.5 w-3.5 shrink-0 text-warn" />
                     <span className="truncate">
-                      <span className="font-mono">{grant?.scope}</span> · {minutes(grant?.durationMs ?? 0)}{' '}
+                      <span className="font-mono">{grant?.scope}</span> ·{' '}
+                      {minutes(grant?.durationMs ?? 0)}{' '}
                       <span className="text-muted">— {grant?.reason}</span>
                     </span>
                   </>

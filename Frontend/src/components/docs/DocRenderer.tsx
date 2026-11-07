@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckIcon } from 'lucide-react';
+import { CheckIcon, PaperclipIcon } from 'lucide-react';
+import { toast } from 'sonner';
+import { safeHref } from '../messaging/RichText';
+import { fileUrl } from '../work/useFileUpload';
+import { errorMessage, isUnavailable } from '../work/apiState';
 
 /** Renders the lightweight doc markdown. Checkbox lines are interactive when onToggle is provided. */
 export function DocRenderer({
@@ -105,14 +109,31 @@ export function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
 
+/** `[name](/api/files/<fileId>)` — an attachment stored through the STORAGE upload flow. */
+export const ATTACHMENT_HREF = /^\/api\/files\/([A-Za-z0-9_-]{1,128})$/;
+
+const INLINE =
+  /(`[^`]+`|\[[^\]\n]{1,200}\]\([^)\s]{1,2000}\)|\*\*[^*\n]+\*\*|https?:\/\/[^\s<>()]+[^\s<>().,!?;:'"]|\b(?:RB|BL|MA)-\d+\b)/g;
+
+/** Inline markdown → React elements only (never HTML strings). Links are http/https/mailto. */
 function inline(s: string) {
-  return s.split(/(`[^`]+`|\b(?:RB|BL|MA)-\d+\b)/g).map((p, i) => {
+  return s.split(INLINE).map((p, i) => {
+    if (!p) return null;
     if (/^`.+`$/.test(p))
       return (
         <code key={i} className="rounded bg-sunken px-1 font-mono text-[12px] text-ink">
           {p.slice(1, -1)}
         </code>
       );
+    if (/^\*\*.+\*\*$/.test(p)) return <strong key={i}>{p.slice(2, -2)}</strong>;
+    const md = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(p);
+    if (md) {
+      const [, label, href] = md;
+      const file = ATTACHMENT_HREF.exec(href);
+      if (file) return <AttachmentLink key={i} fileId={file[1]} name={label} />;
+      return <SafeLink key={i} href={href} label={label} />;
+    }
+    if (/^https?:\/\//.test(p)) return <SafeLink key={i} href={p} label={p} />;
     if (/^(RB|BL|MA)-\d+$/.test(p))
       return (
         <Link
@@ -125,4 +146,55 @@ function inline(s: string) {
       );
     return <React.Fragment key={i}>{p}</React.Fragment>;
   });
+}
+
+function SafeLink({ href, label }: { href: string; label: string }) {
+  const safe = safeHref(href);
+  if (!safe) return <>{label}</>;
+  return (
+    <a
+      href={safe}
+      target={safe.startsWith('mailto:') ? undefined : '_blank'}
+      rel="noopener noreferrer"
+      className="text-accent underline"
+    >
+      {label}
+    </a>
+  );
+}
+
+/** Resolves a short-lived presigned URL on click, so stored links never go stale. */
+function AttachmentLink({ fileId, name }: { fileId: string; name: string }) {
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    setBusy(true);
+    try {
+      const url = safeHref(new URL(await fileUrl(fileId), window.location.origin).href);
+      if (!url) throw new Error('The storage service returned an unsafe link.');
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.click();
+    } catch (e) {
+      const missing = isUnavailable(e);
+      toast.error(
+        missing ? 'File storage is not configured on this server' : "Couldn't open the attachment",
+        { description: missing ? undefined : errorMessage(e) },
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => void open()}
+      disabled={busy}
+      className="inline-flex items-center gap-1 rounded border border-line bg-white px-1.5 py-px align-baseline text-[12px] font-medium text-accent hover:bg-sunken disabled:opacity-60"
+    >
+      <PaperclipIcon className="h-3 w-3" aria-hidden />
+      {name}
+    </button>
+  );
 }

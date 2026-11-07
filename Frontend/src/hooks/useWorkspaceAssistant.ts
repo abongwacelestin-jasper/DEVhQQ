@@ -60,7 +60,13 @@ const stop = new Set([
 ]);
 let nextId = 1;
 
-/** A local, rule-based workspace assistant: it reads the files in this branch and never sends code anywhere. */
+/**
+ * The IDE's local code helper. It is deterministic analysis of the files open in
+ * this branch (outline, problems, text search) — not a model and not canned
+ * answers. Every slash command performs a real action through the IDE's own
+ * callbacks: `/fix` edits the buffer (undoable), `/tests` and `/run` go through
+ * the code runner. Workspace-wide questions belong to Ask DevHQ (ML service).
+ */
 export function useWorkspaceAssistant({
   repo,
   file,
@@ -170,21 +176,31 @@ export function useWorkspaceAssistant({
 
       if (lower.startsWith('/tests') || lower.startsWith('/test')) {
         setBusy(true);
-        const r = await onRunTests();
-        setBusy(false);
-        say({
-          text: r.failed
-            ? `${r.failed} test${r.failed > 1 ? 's' : ''} failed and ${r.passed} passed. Details are in the Output panel.`
-            : `All ${r.passed} tests passed. Full output is in the Output panel.`,
-        });
+        try {
+          const r = await onRunTests();
+          say({
+            text: r.failed
+              ? `${r.failed} test${r.failed > 1 ? 's' : ''} failed and ${r.passed} passed. Details are in the Output panel.`
+              : `All ${r.passed} tests passed. Full output is in the Output panel.`,
+          });
+        } catch (e) {
+          say({ text: `The test run failed: ${e instanceof Error ? e.message : 'no response'}.` });
+        } finally {
+          setBusy(false);
+        }
         return;
       }
 
       if (lower.startsWith('/run')) {
         setBusy(true);
-        await onRunFile();
-        setBusy(false);
-        say({ text: `Ran ${name} in the sandbox — see the Output panel for the result.` });
+        try {
+          await onRunFile();
+          say({ text: `Ran ${name} in the sandbox — see the Output panel for the result.` });
+        } catch (e) {
+          say({ text: `Couldn’t run ${name}: ${e instanceof Error ? e.message : 'no response'}.` });
+        } finally {
+          setBusy(false);
+        }
         return;
       }
 

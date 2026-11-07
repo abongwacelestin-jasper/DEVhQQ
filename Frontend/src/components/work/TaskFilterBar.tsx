@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { SearchIcon, XIcon } from 'lucide-react';
-import { members } from '../../data/team';
+import { useDirectory } from '../team/useDirectory';
 import { priorityMeta } from '../../utils/status';
 import type { Priority, Task, TaskType } from '../../types/work';
 
@@ -50,6 +50,7 @@ export function TaskFilterBar({
   reset: () => void;
   count: number;
 }) {
+  const { members } = useDirectory();
   const set = <K extends keyof TaskFilters>(k: K, v: TaskFilters[K]) =>
     setFilters((f) => ({ ...f, [k]: v }));
   return (
