@@ -1,151 +1,200 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { GitBranchIcon, RefreshCwIcon } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { GitBranchIcon, XIcon } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Panel } from '../components/ui/Panel';
 import { Segmented } from '../components/ui/Segmented';
 import { ProductMark } from '../components/ui/ProductMark';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { Avatar } from '../components/ui/Avatar';
+import { Person } from '../components/engineering/Person';
+import { DataState, LoadMore, SampleDataBadge } from '../components/engineering/states';
+import { ago, pullHref } from '../components/engineering/format';
+import { usePulls } from '../components/engineering/data/hooks';
+import type { ApiPull } from '../components/engineering/data/types';
 import { useProductFilter } from '../contexts/ProductFilterContext';
 import { useWorkspaceUI } from '../contexts/WorkspaceUIContext';
-import { pullRequests } from '../data/engineering';
-import { members } from '../data/team';
 import { ciMeta, reviewMeta } from '../utils/status';
-import type { PullRequest } from '../types/engineering';
 
 type Filter = 'open' | 'review' | 'changes' | 'ci' | 'merged';
 
-const filters: Record<Filter, (p: PullRequest) => boolean> = {
-  open: (p) => p.review !== 'merged',
-  review: (p) => p.review === 'review-required',
-  changes: (p) => p.review === 'changes-requested',
-  ci: (p) => p.ci === 'failing',
-  merged: (p) => p.review === 'merged',
+const filters: Record<Filter, (p: ApiPull) => boolean> = {
+  open: (p) => p.state === 'open',
+  review: (p) => p.state === 'open' && p.review === 'review-required',
+  changes: (p) => p.state === 'open' && p.review === 'changes-requested',
+  ci: (p) => p.state === 'open' && p.ci === 'failing',
+  merged: (p) => p.state === 'merged',
 };
 
 export function PullRequests() {
   const { matches } = useProductFilter();
   const { openTask } = useWorkspaceUI();
+  const [params, setParams] = useSearchParams();
+  const repo = params.get('repo') ?? undefined;
   const [filter, setFilter] = useState<Filter>('open');
-  const scoped = pullRequests.filter((p) => matches(p.product));
+  const list = usePulls({ repo, state: filter === 'merged' ? 'merged' : 'open' });
+
+  const scoped = useMemo(() => list.items.filter((p) => matches(p.product)), [list.items, matches]);
   const rows = useMemo(() => scoped.filter(filters[filter]), [scoped, filter]);
 
-  const reviewLoad = members
-    .map((m) => ({
-      m,
-      n: scoped.filter((p) => p.review === 'review-required' && p.reviewers.includes(m.id)).length,
-    }))
-    .filter((x) => x.n > 0)
-    .sort((a, b) => b.n - a.n);
+  const reviewLoad = useMemo(() => {
+    const counts = new Map<string, number>();
+    scoped
+      .filter(filters.review)
+      .forEach((p) => p.reviewers.forEach((r) => counts.set(r, (counts.get(r) ?? 0) + 1)));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [scoped]);
+
+  const count = (f: Filter) =>
+    (filter === 'merged') === (f === 'merged') ? scoped.filter(filters[f]).length : undefined;
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Pull requests"
-        description="Synchronized from GitHub. DevHQ links each change to its task; GitHub stays authoritative for reviews and merges."
-        actions={
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-muted">
-            <RefreshCwIcon className="h-3.5 w-3.5" /> GitHub App · synced 2m ago
-          </span>
-        }
+        description="Synchronized from GitHub. DevHQ links each change to its task; GitHub stays authoritative for merges."
+        actions={<SampleDataBadge source={list.source} />}
       />
 
-      <Segmented<Filter>
-        label="Filter pull requests"
-        value={filter}
-        onChange={setFilter}
-        options={[
-          { value: 'open', label: 'All open', count: scoped.filter(filters.open).length },
-          { value: 'review', label: 'Needs review', count: scoped.filter(filters.review).length },
-          {
-            value: 'changes',
-            label: 'Changes requested',
-            count: scoped.filter(filters.changes).length,
-          },
-          { value: 'ci', label: 'CI failing', count: scoped.filter(filters.ci).length },
-          { value: 'merged', label: 'Merged', count: scoped.filter(filters.merged).length },
-        ]}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented<Filter>
+          label="Filter pull requests"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: 'open', label: 'All open', count: count('open') },
+            { value: 'review', label: 'Needs review', count: count('review') },
+            { value: 'changes', label: 'Changes requested', count: count('changes') },
+            { value: 'ci', label: 'CI failing', count: count('ci') },
+            { value: 'merged', label: 'Merged', count: count('merged') },
+          ]}
+        />
+        {repo && (
+          <button
+            onClick={() => {
+              params.delete('repo');
+              setParams(params, { replace: true });
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent-soft px-2 py-1 font-mono text-[11.5px] text-accent-ink"
+            aria-label={`Clear repository filter ${repo}`}
+          >
+            {repo} <XIcon className="h-3 w-3" aria-hidden />
+          </button>
+        )}
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="min-w-0 overflow-hidden rounded-xl border border-line bg-surface">
-          {rows.length === 0 ? (
+          {list.status !== 'ready' ? (
+            <DataState
+              status={list.status}
+              error={list.error}
+              what="Pull requests"
+              github
+              onRetry={list.reload}
+            />
+          ) : rows.length === 0 ? (
             <p className="px-4 py-12 text-center text-sm text-muted">
               No pull requests in this view.
             </p>
           ) : (
-            <ul className="divide-y divide-line">
-              {rows.map((p) => (
-                <li
-                  key={p.number}
-                  className="grid gap-3 px-4 py-3.5 md:grid-cols-[1fr_auto] md:items-center"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <ProductMark product={p.product} size="sm" />
-                      <span className="font-mono text-xs text-subtle">#{p.number}</span>
-                      <Link
-                        to={`/pull-requests/${p.number}`}
-                        className="truncate text-sm font-semibold text-ink hover:underline"
-                      >
-                        {p.title}
-                      </Link>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                      <span className="font-mono">{p.repo}</span>
-                      <span className="flex items-center gap-1 font-mono">
-                        <GitBranchIcon className="h-3 w-3" />
-                        {p.branch}
-                      </span>
-                      {p.taskKey ? (
-                        <button
-                          onClick={() => openTask(p.taskKey ?? null)}
-                          className="rounded bg-accent-soft px-1.5 font-mono font-medium text-accent-ink hover:underline"
-                        >
-                          {p.taskKey}
-                        </button>
-                      ) : (
-                        <span className="rounded bg-warn-soft px-1.5 text-warn">
-                          No linked task
-                        </span>
-                      )}
-                      <span>
-                        <span className="text-ok">+{p.additions}</span>{' '}
-                        <span className="text-bad">−{p.deletions}</span>
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                    <Avatar id={p.author} size="sm" />
-                    <span className="text-line-strong">→</span>
-                    <div className="flex -space-x-1.5">
-                      {p.reviewers.map((r) => (
-                        <Avatar key={r} id={r} size="sm" ring />
-                      ))}
-                    </div>
-                    <StatusBadge {...ciMeta[p.ci]} dot />
-                    <StatusBadge {...reviewMeta[p.review]} />
-                    <span className="w-8 text-right text-xs text-subtle">{p.age}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left text-xs">
+                <caption className="sr-only">Pull requests, {filter} view</caption>
+                <thead className="border-b border-line bg-sunken/40 text-[11px] font-medium text-muted">
+                  <tr>
+                    <th scope="col" className="px-4 py-1.5 font-medium">
+                      Pull request
+                    </th>
+                    <th scope="col" className="px-2 py-1.5 font-medium">
+                      Author
+                    </th>
+                    <th scope="col" className="px-2 py-1.5 font-medium">
+                      CI
+                    </th>
+                    <th scope="col" className="px-2 py-1.5 font-medium">
+                      Review
+                    </th>
+                    <th scope="col" className="px-4 py-1.5 text-right font-medium">
+                      Opened
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {rows.map((p) => (
+                    <tr key={`${p.repoId}#${p.number}`} className="align-top hover:bg-sunken/30">
+                      <td className="px-4 py-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <ProductMark product={p.product} size="sm" />
+                          <span className="font-mono text-subtle">#{p.number}</span>
+                          <Link
+                            to={pullHref(p)}
+                            className="truncate text-sm font-semibold text-ink hover:underline"
+                          >
+                            {p.title}
+                          </Link>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted">
+                          <span className="font-mono">{p.repo}</span>
+                          <span className="flex items-center gap-1 font-mono">
+                            <GitBranchIcon className="h-3 w-3" aria-hidden />
+                            {p.branch}
+                          </span>
+                          {p.taskKey ? (
+                            <button
+                              onClick={() => openTask(p.taskKey ?? null)}
+                              className="rounded bg-accent-soft px-1.5 font-mono font-medium text-accent-ink hover:underline"
+                            >
+                              {p.taskKey}
+                            </button>
+                          ) : (
+                            <span className="rounded bg-warn-soft px-1.5 text-warn">
+                              No linked task
+                            </span>
+                          )}
+                          {p.additions !== undefined && p.deletions !== undefined && (
+                            <span>
+                              <span className="text-ok">+{p.additions}</span>{' '}
+                              <span className="text-bad">−{p.deletions}</span>
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-3">
+                        <Person id={p.author} showName={false} />
+                      </td>
+                      <td className="px-2 py-3">
+                        <StatusBadge {...ciMeta[p.ci]} dot />
+                      </td>
+                      <td className="px-2 py-3">
+                        <StatusBadge {...reviewMeta[p.review]} />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-subtle">
+                        {ago(p.createdAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
+          <LoadMore hasMore={list.hasMore} loading={list.loadingMore} onClick={list.loadMore} />
         </div>
 
         <div className="grid content-start gap-5 md:grid-cols-2 lg:grid-cols-1">
-          <Panel title="Review load" meta={<span>Derived</span>}>
+          <Panel title="Review load" meta={<span>From loaded PRs</span>}>
             <ul className="space-y-3 px-4 py-3.5">
-              {reviewLoad.map(({ m, n }) => (
-                <li key={m.id} className="flex items-center gap-2.5">
-                  <Avatar id={m.id} size="sm" />
-                  <span className="flex-1 truncate text-sm text-ink">{m.name}</span>
+              {reviewLoad.map(([id, n]) => (
+                <li key={id} className="flex items-center gap-2.5 text-sm text-ink">
+                  <span className="min-w-0 flex-1 truncate">
+                    <Person id={id} />
+                  </span>
                   <span className="font-mono text-xs text-muted">{n} waiting</span>
                 </li>
               ))}
               {reviewLoad.length === 0 && (
-                <li className="text-sm text-muted">No reviews waiting.</li>
+                <li className="text-sm text-muted">
+                  {list.status === 'ready' ? 'No reviews waiting.' : '—'}
+                </li>
               )}
             </ul>
           </Panel>

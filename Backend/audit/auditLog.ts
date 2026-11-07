@@ -54,6 +54,12 @@ class AuditLog {
   private entries: AuditEntry[] = [];
   private file = process.env.AUDIT_LOG_FILE ?? './.audit/audit.jsonl';
   private ready = mkdir(dirname(this.file), { recursive: true }).catch(() => undefined);
+  /** Archive sinks (STORAGE: batches entries to the WORM audit bucket). Must not throw. */
+  private sinks: ((entry: AuditEntry) => void)[] = [];
+
+  addSink(sink: (entry: AuditEntry) => void) {
+    this.sinks.push(sink);
+  }
 
   append(input: NewEntry): AuditEntry {
     const prev = this.entries[this.entries.length - 1];
@@ -73,6 +79,13 @@ class AuditLog {
     void this.ready
       .then(() => appendFile(this.file, JSON.stringify(entry) + '\n', { flag: 'a' }))
       .catch((err) => console.error('audit write failed', err));
+    for (const sink of this.sinks) {
+      try {
+        sink(entry);
+      } catch (err) {
+        console.error('audit sink failed', err);
+      }
+    }
     return entry;
   }
 

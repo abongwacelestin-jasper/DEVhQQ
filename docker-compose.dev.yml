@@ -1,0 +1,96 @@
+# DevHQ — development override.
+#
+#   make up-dev
+#   (= docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build)
+#
+# Differences from the prod-like base:
+#   - backend runs from mounted source with `node --watch`, NODE_ENV=development
+#     (demo sign-in enabled, seeds load into an empty database)
+#   - frontend is the Vite dev server with HMR instead of nginx
+#   - edge serves https://localhost with Caddy's internal CA, HSTS max-age=0
+#   - Postgres, MinIO (+ console), models and the backend are published on
+#     127.0.0.1 only, so host tools (psql, mc, curl) can reach them
+#
+# Open https://localhost (through the edge; trust Caddy's root CA once, see
+# README) or http://localhost:5173 (Vite directly, proxies /api to backend).
+
+services:
+  edge:
+    environment:
+      DEVHQ_DOMAIN: localhost
+      FRONTEND_UPSTREAM: frontend:5173
+      HSTS_VALUE: max-age=0
+    ports: !override
+      - "127.0.0.1:${EDGE_HTTP_PORT:-80}:80/tcp"
+      - "127.0.0.1:${EDGE_HTTPS_PORT:-443}:443/tcp"
+      - "127.0.0.1:${EDGE_HTTPS_PORT:-443}:443/udp"
+
+  frontend:
+    build:
+      target: deps
+    image: devhq-frontend-dev:local
+    user: "1000:1000"
+    working_dir: /app/Frontend
+    command: ["node", "node_modules/vite/bin/vite.js", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
+    environment:
+      DEVHQ_API_URL: http://backend:8080
+    # Vite writes its dep-optimizer cache under node_modules/.vite.
+    read_only: false
+    volumes:
+      - ./Frontend:/app/Frontend
+      # Keep the image's Linux node_modules instead of the host's.
+      - /app/Frontend/node_modules
+    ports:
+      - "127.0.0.1:5173:5173"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: "2.00", memory: 1G, pids: 256 }
+
+  backend:
+    command: ["node", "--watch", "--experimental-strip-types", "--disable-warning=ExperimentalWarning", "server.ts"]
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      DEMO_DISABLED: "0"
+      APP_ORIGIN: https://localhost
+      PUBLIC_URL: https://localhost
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      WEBAUTHN_RP_ID: localhost
+    volumes:
+      - ./Backend:/app/Backend:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  migrate:
+    environment:
+      NODE_ENV: development
+
+  models:
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  minio:
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      MINIO_BROWSER: "on"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+
+# Published ports need a non-internal network; in dev the data network is
+# opened up (still bound to 127.0.0.1 only).
+networks:
+  app_net:
+    internal: false
+  edge_net:
+    internal: false

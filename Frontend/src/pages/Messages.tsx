@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeftIcon,
   BellOffIcon,
   FilterIcon,
   HashIcon,
+  Loader2Icon,
   LockIcon,
   PanelRightIcon,
   SearchIcon,
@@ -17,25 +18,37 @@ import { Avatar } from '../components/ui/Avatar';
 import { ChannelList, type ListView } from '../components/messaging/ChannelList';
 import { MessageItem } from '../components/messaging/MessageItem';
 import { Composer } from '../components/messaging/Composer';
-import { ChatRail, type RailTab } from '../components/messaging/ChatRail';
+import { ChatRail, PRESENCE_NOTE, type RailTab } from '../components/messaging/ChatRail';
 import { ChannelSettingsModal } from '../components/messaging/ChannelSettingsModal';
 import { NewChannelModal } from '../components/messaging/NewChannelModal';
+import type { RealtimeStatus } from '../components/messaging/types';
 import { ChatIllustration } from '../components/illustrations/ChatIllustration';
+import { DemoBadge, Unavailable } from '../components/work/Unavailable';
+import { useDirectory } from '../components/team/useDirectory';
 import { useMessaging } from '../contexts/MessagingContext';
-import { useAuth } from '../contexts/AuthContext';
 import { useUrlFilters } from '../hooks/useUrlFilters';
+import { usePresence } from '../hooks/usePresence';
 import { chatBackgroundStyle } from '../utils/chatBackground';
 import { formatDayHeading, startOfDay } from '../utils/date';
-import { members } from '../data/team';
 
 const keys = ['q', 'view', 'product', 'find', 'type', 'from'] as const;
 
 export function Messages() {
   const { channelId } = useParams();
   const navigate = useNavigate();
-  const { visible, messages, markRead } = useMessaging();
-  const { session } = useAuth();
-  const me = session?.memberId ?? 'm1';
+  const {
+    me,
+    visible,
+    timeline: timelineOf,
+    openChannel,
+    loadOlder,
+    markRead,
+    availability,
+    availabilityError,
+    realtime,
+    reload,
+  } = useMessaging();
+  const { memberById } = useDirectory();
   const f = useUrlFilters(keys);
   const v = f.values;
   const [railOpen, setRailOpen] = useState(() => window.innerWidth >= 1280);
@@ -46,20 +59,43 @@ export function Messages() {
   const [findOpen, setFindOpen] = useState(false);
   const [muted, setMuted] = useState<Record<string, boolean>>({});
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const channel = visible.find((c) => c.id === channelId);
+  const loaded = channel ? timelineOf(channel.id) : undefined;
+  const messages = useMemo(() => loaded?.items ?? [], [loaded]);
 
+  // Same-browser presence only (BroadcastChannel); the server exposes none yet.
+  const myName = me ? memberById(me).name : 'Me';
+  const peers = usePresence(
+    { id: me ?? 'anonymous', name: myName },
+    'Messages',
+    channel?.id,
+    false,
+  );
+  const online = useMemo(() => {
+    const ids = new Set(peers.map((p) => p.id.split(':')[0]));
+    if (me) ids.add(me);
+    return ids;
+  }, [peers, me]);
+
+  const channelKey = channel?.id;
   useEffect(() => {
-    if (channel && channel.members.includes(me)) markRead(channel.id);
+    if (!channelKey) return;
+    openChannel(channelKey);
     setThreadId(null);
     setRailTab('about');
-  }, [channel?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelKey, openChannel]);
+
+  const isMember = !!channel && !!me && channel.members.includes(me);
+  useEffect(() => {
+    if (channelKey && isMember) markRead(channelKey);
+  }, [channelKey, isMember, markRead, messages.length]);
 
   const timeline = useMemo(() => {
     if (!channel) return [];
     return messages.filter(
       (m) =>
-        m.channelId === channel.id &&
         !m.threadOf &&
         (!v.find ||
           `${m.text} ${m.code?.content ?? ''} ${m.poll?.question ?? ''} ${m.file?.name ?? ''}`
@@ -75,13 +111,80 @@ export function Messages() {
     );
   }, [messages, channel, v.find, v.from, v.type, me]);
 
-  const lastLen = useRef(0);
+  // ── Scrolling: stick to the bottom for new messages; hold position when older ones load.
+  const anchor = useRef<{ height: number; top: number; first?: string; last?: string } | null>(
+    null,
+  );
+  const stickToBottom = useRef(true);
   useEffect(() => {
-    if (timeline.length > lastLen.current) endRef.current?.scrollIntoView({ block: 'end' });
-    lastLen.current = timeline.length;
-  }, [timeline.length, channel?.id]);
+    stickToBottom.current = true;
+    anchor.current = null;
+  }, [channelKey]);
 
-  const replyCount = (id: string) => messages.filter((m) => m.threadOf === id && !m.deleted).length;
+  const requestOlder = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || !channelKey || !loaded?.nextCursor || loaded.loadingOlder) return;
+    anchor.current = {
+      height: el.scrollHeight,
+      top: el.scrollTop,
+      first: timeline[0]?.id,
+      last: timeline[timeline.length - 1]?.id,
+    };
+    void loadOlder(channelKey);
+  }, [channelKey, loaded?.nextCursor, loaded?.loadingOlder, loadOlder, timeline]);
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (el.scrollTop < 120) requestOlder();
+  }, [requestOlder]);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const a = anchor.current;
+    const first = timeline[0]?.id;
+    const last = timeline[timeline.length - 1]?.id;
+    if (a && first !== a.first && last === a.last) {
+      // An older page was prepended: shift by the added height so the reader's place holds.
+      el.scrollTop = el.scrollHeight - a.height + a.top;
+      anchor.current = null;
+      return;
+    }
+    const mineLast = !!me && timeline[timeline.length - 1]?.author === me;
+    if (stickToBottom.current || mineLast) endRef.current?.scrollIntoView({ block: 'end' });
+  }, [timeline, me]);
+
+  // ── Screen-reader announcement for messages that arrive while the conversation is open.
+  const [announcement, setAnnouncement] = useState('');
+  const seen = useRef<{ channel?: string; ids: Set<string> }>({ ids: new Set() });
+  useEffect(() => {
+    const prev = seen.current;
+    const ids = new Set(timeline.map((m) => m.id));
+    if (prev.channel === channelKey && prev.ids.size) {
+      const newest = timeline[timeline.length - 1];
+      if (
+        newest &&
+        !prev.ids.has(newest.id) &&
+        newest.author !== me &&
+        !newest.delivery &&
+        newest.kind !== 'system'
+      ) {
+        const what = newest.text || newest.poll?.question || newest.file?.name || newest.kind;
+        setAnnouncement(
+          `New message from ${memberById(newest.author).name}: ${what.slice(0, 140)}`,
+        );
+      }
+    }
+    seen.current = { channel: channelKey, ids };
+  }, [timeline, channelKey, me, memberById]);
+
+  const replyCount = (id: string) => {
+    const root = messages.find((m) => m.id === id);
+    const loadedReplies = messages.filter((m) => m.threadOf === id && !m.deleted).length;
+    return Math.max(root?.replyCount ?? 0, loadedReplies);
+  };
   const openThread = (id: string | null) => {
     setThreadId(id);
     if (id) {
@@ -92,6 +195,32 @@ export function Messages() {
 
   const filtering = !!(v.find || v.from || v.type);
   const peer = channel?.kind === 'dm' ? channel.members.find((x) => x !== me) : undefined;
+
+  if (availability !== 'ready') {
+    return (
+      <div className="flex h-[calc(100dvh-8.6rem)] min-h-[460px] items-center justify-center rounded-lg border border-line bg-white lg:h-[calc(100dvh-5.4rem)]">
+        {availability === 'loading' ? (
+          <p role="status" className="flex items-center gap-2 text-[12.5px] text-muted">
+            <Loader2Icon className="h-4 w-4 animate-spin" aria-hidden /> Loading conversations…
+          </p>
+        ) : availability === 'unavailable' ? (
+          <Unavailable
+            title="Messaging isn't available"
+            detail="The collaboration service (channels and messages API) isn't deployed or configured on this server."
+            onRetry={() => void reload()}
+          >
+            <ChatIllustration className="mt-3 h-20 w-auto opacity-70" />
+          </Unavailable>
+        ) : (
+          <Unavailable
+            title="Couldn't load conversations"
+            detail={availabilityError ?? 'The messaging API did not respond.'}
+            onRetry={() => void reload()}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex h-[calc(100dvh-8.6rem)] min-h-[460px] overflow-hidden rounded-lg border border-line bg-white lg:h-[calc(100dvh-5.4rem)]">
@@ -144,12 +273,19 @@ export function Messages() {
                 )}
               </h2>
               <p className="truncate text-[11.5px] text-muted">
-                {peer
-                  ? `${members.find((m) => m.id === peer)?.role} · ${members.find((m) => m.id === peer)?.lastActive === 'Now' ? 'Active now' : `Active ${members.find((m) => m.id === peer)?.lastActive} ago`}`
-                  : channel.topic}
+                {peer ? (
+                  <span title={PRESENCE_NOTE}>
+                    {memberById(peer).role} ·{' '}
+                    {online.has(peer) ? 'Online in this browser' : 'Presence unavailable'}
+                  </span>
+                ) : (
+                  channel.topic
+                )}
               </p>
             </div>
             <div className="flex items-center gap-0.5">
+              {(loaded?.source === 'demo' || channel.source === 'demo') && <DemoBadge />}
+              <RealtimeDot status={realtime} />
               {channel.kind !== 'dm' && (
                 <button
                   onClick={() => {
@@ -175,7 +311,9 @@ export function Messages() {
                 onClick={() => {
                   setMuted((m) => ({ ...m, [channel.id]: !m[channel.id] }));
                   toast(
-                    muted[channel.id] ? 'Notifications on' : 'Muted — mentions still notify you',
+                    muted[channel.id]
+                      ? 'Notifications on'
+                      : 'Muted for this session — mentions still notify you',
                   );
                 }}
               >
@@ -199,7 +337,8 @@ export function Messages() {
               <input
                 value={v.find}
                 onChange={(e) => f.set('find', e.target.value)}
-                placeholder="Find in conversation"
+                placeholder="Find in loaded messages"
+                aria-label="Find in loaded messages"
                 autoFocus
                 className="h-7 min-w-0 flex-1 basis-32 rounded-md border border-line bg-white px-2 text-[12px] outline-none focus:border-accent"
               />
@@ -227,7 +366,7 @@ export function Messages() {
                 <option value="">Anyone</option>
                 {channel.members.map((id) => (
                   <option key={id} value={id}>
-                    {members.find((m) => m.id === id)?.name}
+                    {memberById(id).name}
                   </option>
                 ))}
               </select>
@@ -246,10 +385,62 @@ export function Messages() {
           )}
 
           <div
+            ref={scrollRef}
+            onScroll={onScroll}
+            role="log"
+            aria-label={`Messages in ${channel.kind === 'dm' ? channel.name : `#${channel.name}`}`}
+            aria-busy={loaded?.status === 'loading' || loaded?.loadingOlder || undefined}
             className="min-h-0 flex-1 overflow-y-auto px-2 py-2 scroll-thin"
             style={chatBackgroundStyle(channel.background)}
           >
-            {timeline.length === 0 && (
+            <p className="sr-only" aria-live="polite" aria-atomic="true">
+              {announcement}
+            </p>
+            {loaded?.loadingOlder && (
+              <p
+                role="status"
+                className="flex items-center justify-center gap-1.5 py-2 text-[11.5px] text-muted"
+              >
+                <Loader2Icon className="h-3.5 w-3.5 animate-spin" aria-hidden /> Loading older
+                messages…
+              </p>
+            )}
+            {loaded?.status === 'ready' && loaded.nextCursor && !loaded.loadingOlder && (
+              <div className="flex justify-center py-1">
+                <button
+                  type="button"
+                  onClick={requestOlder}
+                  className="rounded-full border border-line bg-white px-2.5 py-0.5 text-[11.5px] font-medium text-muted hover:text-ink"
+                >
+                  Load older messages
+                </button>
+              </div>
+            )}
+            {loaded?.status === 'ready' &&
+              !loaded.nextCursor &&
+              timeline.length > 0 &&
+              !filtering && (
+                <p className="py-2 text-center text-[11px] text-muted">
+                  Beginning of the conversation
+                </p>
+              )}
+            {loaded?.status === 'error' && (
+              <Unavailable
+                compact
+                title="Couldn't load messages"
+                detail={loaded.error}
+                onRetry={() => openChannel(channel.id)}
+              />
+            )}
+            {(!loaded || loaded.status === 'loading') && (
+              <p
+                role="status"
+                className="flex h-full items-center justify-center gap-2 text-[12.5px] text-muted"
+              >
+                <Loader2Icon className="h-4 w-4 animate-spin" aria-hidden /> Loading messages…
+              </p>
+            )}
+            {loaded?.status === 'ready' && timeline.length === 0 && (
               <div className="flex h-full flex-col items-center justify-center text-center">
                 <ChatIllustration className="h-24 w-auto" />
                 <p className="mt-2 text-[12.5px] text-muted">
@@ -269,7 +460,7 @@ export function Messages() {
                 prev.kind !== 'system' &&
                 new Date(m.at).getTime() - new Date(prev.at).getTime() < 5 * 60_000;
               return (
-                <React.Fragment key={m.id}>
+                <React.Fragment key={m.nonce ?? m.id}>
                   {newDay && (
                     <div className="sticky top-0 z-10 my-2 flex justify-center">
                       <span className="rounded-full border border-line bg-white px-2.5 py-0.5 text-[11px] font-semibold text-ink shadow-sm">
@@ -303,6 +494,7 @@ export function Messages() {
                 onThread={openThread}
                 onSettings={() => setSettings(true)}
                 onClose={() => setRailOpen(false)}
+                online={online}
               />
             </div>
           )}
@@ -335,6 +527,7 @@ export function Messages() {
             onThread={openThread}
             onSettings={() => setSettings(true)}
             onClose={() => setRailOpen(false)}
+            online={online}
           />
         </aside>
       )}
@@ -349,6 +542,31 @@ export function Messages() {
       <NewChannelModal open={newOpen} onClose={() => setNewOpen(false)} />
       {channelId && !channel && <MissingChannel onBack={() => navigate('/messages')} />}
     </div>
+  );
+}
+
+const realtimeCopy: Record<RealtimeStatus, { label: string; dot: string }> = {
+  live: { label: 'Live — new messages arrive instantly', dot: 'bg-ok' },
+  connecting: { label: 'Connecting to live updates…', dot: 'bg-warn' },
+  reconnecting: { label: 'Reconnecting to live updates…', dot: 'bg-warn' },
+  polling: {
+    label: 'Live updates unavailable — refreshing every 15 seconds',
+    dot: 'bg-line-strong',
+  },
+  off: { label: 'Live updates off', dot: 'bg-line-strong' },
+};
+
+function RealtimeDot({ status }: { status: RealtimeStatus }) {
+  const c = realtimeCopy[status];
+  return (
+    <span
+      className="flex h-7 w-6 items-center justify-center"
+      title={c.label}
+      role="img"
+      aria-label={c.label}
+    >
+      <span className={`h-2 w-2 rounded-full ${c.dot}`} aria-hidden />
+    </span>
   );
 }
 

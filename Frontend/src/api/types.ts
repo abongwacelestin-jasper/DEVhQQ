@@ -43,13 +43,38 @@ export interface ApiErrorBody {
   };
 }
 
+/** Where a request appears to come from (server-side offline geo table). */
+export interface ApiGeo {
+  city: string;
+  country: string;
+  countryCode: string;
+  region: string;
+  network: 'residential' | 'office' | 'datacenter' | 'vpn' | 'tor' | 'loopback' | 'unknown';
+}
+
+/** One server session, as `GET /api/auth/session` and `/api/locations/sessions` list them. */
+export interface ApiSessionView {
+  /** First 8 characters of the session id — enough to revoke, never enough to use. */
+  id: string;
+  memberId: string;
+  current: boolean;
+  stage: 'password' | 'verified';
+  method: 'password' | 'passkey';
+  client: string;
+  ip: string;
+  location: ApiGeo;
+  createdAt: string;
+  lastSeenAt: string;
+  stepUpRequired: boolean;
+}
+
 /** GET /api/auth/session */
 export interface SessionResponse {
   member: ApiMember;
   stepUpRequired: boolean;
   elevations: string[];
-  sessions?: unknown[];
-  location?: unknown;
+  sessions?: ApiSessionView[];
+  location?: ApiGeo;
 }
 
 /** GET /api/auth/pending — password step only, before the second factor */
@@ -58,32 +83,105 @@ export interface PendingResponse {
   methods: string[];
 }
 
-/** POST /api/auth/sign-in */
+/**
+ * POST /api/auth/sign-in. Browser sessions are cookie-only: any `token` the
+ * server might still include is ignored, never stored.
+ */
 export interface SignInResponse {
   next?: 'totp' | 'passkey';
   methods?: string[];
   risk?: { reasons: string[] };
-  token?: string;
-  tokenType?: string;
-  expiresIn?: number;
 }
 
 /** POST /api/auth/demo and POST /api/auth/mfa/totp */
 export interface AuthenticatedResponse {
   ok: boolean;
-  member: ApiMember;
-  token?: string;
-  tokenType?: string;
-  expiresIn?: number;
+  member?: ApiMember;
 }
 
 /** POST /api/auth/step-up */
 export interface StepUpResponse {
   ok: boolean;
-  verifiedFor: string;
-  token?: string;
-  tokenType?: string;
-  expiresIn?: number;
+  verifiedFor?: string;
+}
+
+/** POST /api/auth/webauthn/options and /api/auth/passkeys/options (all binary fields base64url). */
+export interface WebAuthnOptions {
+  challengeId: string;
+  publicKey: {
+    challenge: string;
+    rpId: string;
+    rp: { id: string; name: string };
+    timeout: number;
+    userVerification: 'required' | 'preferred' | 'discouraged';
+    pubKeyCredParams: { type: 'public-key'; alg: number }[];
+    attestation: 'none' | 'indirect' | 'direct' | 'enterprise';
+    allowCredentials?: { type: 'public-key'; id: string }[];
+  };
+}
+
+export interface PasskeyRegistrationOptions extends WebAuthnOptions {
+  user: { id: string; name: string; displayName: string };
+  excludeCredentials: { type: 'public-key'; id: string }[];
+}
+
+/** A registered passkey (POST /api/auth/passkeys, GET /api/auth/passkeys). */
+export interface ApiPasskey {
+  id: string;
+  label: string;
+  createdAt: string;
+}
+
+/** GET /api/onboarding — the server is the authority for the NDA and profile stages. */
+export interface OnboardingState {
+  stage: 'nda' | 'profile' | 'ready';
+  nda?: { version: string; signedName: string; signedAt: string } | null;
+  profile?: OnboardingProfile | null;
+}
+
+export interface OnboardingProfile {
+  displayName: string;
+  timezone: string;
+  hoursFrom: string;
+  hoursTo: string;
+  skills: string[];
+  notify: string[];
+}
+
+/** GET /api/tokens — personal access tokens; the secret itself is never listed. */
+export interface ApiAccessToken {
+  id: string;
+  name: string;
+  /** Leading characters of the secret, for recognition only. */
+  prefix: string;
+  scopes: string[];
+  createdAt: string;
+  expiresAt: string;
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+}
+
+/** POST /api/tokens — the only response that ever carries the secret. */
+export interface CreatedAccessToken extends ApiAccessToken {
+  token: string;
+}
+
+/** POST /api/auth/totp/enroll */
+export interface TotpEnrollment {
+  otpauthUri: string;
+  secret: string;
+}
+
+/** GET /api/locations/sign-ins */
+export interface ApiSignIn {
+  id: string;
+  memberId: string;
+  at: string;
+  ip: string;
+  method: 'password' | 'passkey' | 'demo';
+  result: 'success' | 'failed' | 'blocked' | 'challenged';
+  location: ApiGeo;
+  risk: { score: number; reasons: string[] };
 }
 
 /** GET /api/me/capabilities */

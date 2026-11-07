@@ -1,0 +1,3 @@
+# Context for infra/edge/Dockerfile: only the Caddyfile is baked in.
+*
+!Caddyfile

@@ -4,19 +4,17 @@ import { toast } from 'sonner';
 import {
   ArrowLeftIcon,
   BoldIcon,
-  CheckIcon,
   CheckSquareIcon,
   CodeIcon,
   CopyPlusIcon,
   DownloadIcon,
   EyeIcon,
-  GitCompareIcon,
   HeadingIcon,
-  HistoryIcon,
   LinkIcon,
   ListIcon,
   LockIcon,
-  MessageSquareIcon,
+  MessageSquarePlusIcon,
+  PaperclipIcon,
   PencilIcon,
   QuoteIcon,
   StarIcon,
@@ -28,14 +26,26 @@ import { Button } from '../ui/Button';
 import { ProductMark } from '../ui/ProductMark';
 import { Segmented } from '../ui/Segmented';
 import { DocRenderer, slug } from './DocRenderer';
+import { DocHistory } from './DocHistory';
+import { DocComments } from './DocComments';
+import { withContext } from './diff';
+import {
+  useDocCollab,
+  type ApiDocCommentAnchor,
+  type ApiDocDiff,
+  type ApiDocVersionMeta,
+} from './useDocCollab';
+import { errorMessage } from '../work/apiState';
 import { useDocs } from '../../contexts/DocsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useReauth } from '../../contexts/ReauthContext';
 import { useWork } from '../../contexts/WorkContext';
 import { useStarredDocs } from '../../hooks/useStarredDocs';
-import { projects } from '../../data/work';
+import { useDirectory } from '../team/useDirectory';
+import { formatBytes, useFileUpload } from '../work/useFileUpload';
+import { useProductFilter } from '../../contexts/ProductFilterContext';
 import { docKindMeta } from '../../data/docs';
-import { firstName, memberById, taskStatusMeta } from '../../utils/status';
+import { taskStatusMeta } from '../../utils/status';
 import { formatDateTime, relative } from '../../utils/date';
 import type { DocStatus, ProjectDoc } from '../../types/docs';
 
@@ -61,35 +71,38 @@ const tools: {
   { label: 'Code block', icon: CodeIcon, before: '```\n', after: '\n```' },
 ];
 
-/** Line-level diff between two versions — enough to see what a save changed. */
-function diffLines(a: string, b: string) {
-  const A = a.split('\n');
-  const B = b.split('\n');
-  const out: { t: 'same' | 'add' | 'del'; s: string }[] = [];
-  const setB = new Set(B);
-  const setA = new Set(A);
-  A.forEach((l) => out.push({ t: setB.has(l) ? 'same' : 'del', s: l }));
-  B.forEach((l) => !setA.has(l) && out.push({ t: 'add', s: l }));
-  return out.filter((x) => x.t !== 'same' || x.s.trim()).slice(0, 200);
-}
+const MAX_QUOTE = 280;
 
 export function DocView({ doc }: { doc: ProjectDoc }) {
-  const { save, update, restore, comment, resolveComment, remove, create } = useDocs();
+  const { save, update, remove, create, applyServerDoc, refreshDoc } = useDocs();
   const { canDo, session, log } = useAuth();
   const { requestReauth } = useReauth();
   const { tasks } = useWork();
   const { isStarred, toggle } = useStarredDocs();
+  const { memberById } = useDirectory();
+  const { allowedProjects: projects } = useProductFilter();
+  const collab = useDocCollab(doc.id);
+  const attach = useFileUpload('doc-attachment');
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const editing = params.get('edit') === '1';
   const [draft, setDraft] = useState(doc.body);
   const [title, setTitle] = useState(doc.title);
   const [summary, setSummary] = useState('');
+  const [saving, setSaving] = useState(false);
   const [rail, setRail] = useState<RailTab>('outline');
-  const [note, setNote] = useState('');
-  const [compare, setCompare] = useState<string | null>(null);
+  const [compare, setCompare] = useState<{
+    id: string;
+    label: string;
+    summary: string;
+    diff: ApiDocDiff;
+  } | null>(null);
+  const [selection, setSelection] = useState<ApiDocCommentAnchor | null>(null);
+  const [anchor, setAnchor] = useState<ApiDocCommentAnchor | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
-  const me = session?.memberId ?? 'm1';
+  const fileRef = useRef<HTMLInputElement>(null);
+  const readRef = useRef<HTMLDivElement>(null);
+  const me = session?.memberId ?? '';
   const canEdit =
     canDo('doc:create') && (doc.visibility !== 'restricted' || doc.editors.includes(me));
   const project = projects.find((p) => p.id === doc.projectId);
@@ -100,7 +113,21 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
     setDraft(doc.body);
     setTitle(doc.title);
     setCompare(null);
-  }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    setSelection(null);
+    setAnchor(null);
+  }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps -- reset drafts only when switching docs, not on every server refresh
+
+  // Notification links point at `/docs/:id?comment=<id>`: open the comments rail on that thread.
+  const focusComment = params.get('comment');
+  useEffect(() => {
+    if (!focusComment) return;
+    setRail('comments');
+    if (collab.comments.status !== 'ready') return;
+    const target = collab.comments.items.find((c) => c.id === focusComment);
+    const el = document.getElementById(`doc-comment-${target?.parentId ?? focusComment}`);
+    el?.scrollIntoView({ block: 'center' });
+    el?.focus();
+  }, [focusComment, collab.comments.status, collab.comments.items]);
 
   const setEdit = (on: boolean) => {
     const next = new URLSearchParams(params);
@@ -109,12 +136,111 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
     setParams(next, { replace: true });
   };
 
-  const doSave = () => {
-    if (!dirty) return;
-    save(doc.id, draft, title.trim() || doc.title, summary.trim());
-    setSummary('');
+  /**
+   * One server call writes the doc and snapshots it (`POST …/versions`), then the
+   * doc is re-read. When doc-collab isn't deployed, fall back to a plain PATCH.
+   */
+  const doSave = async () => {
+    if (!dirty || saving) return;
+    setSaving(true);
+    const nextTitle = title.trim() || doc.title;
+    try {
+      let result: 'saved' | 'unavailable';
+      try {
+        result = await collab.saveVersion({
+          summary: summary.trim() || 'Edited',
+          title: nextTitle,
+          body: draft,
+        });
+      } catch (e) {
+        toast.error('Saving the doc failed', { description: errorMessage(e) });
+        return; // keep the draft for another try
+      }
+      if (result === 'saved') await refreshDoc(doc.id);
+      else await save(doc.id, draft, nextTitle); // reports its own failure, then rejects
+      setSummary('');
+      setEdit(false);
+      toast.success('Saved', {
+        description:
+          result === 'saved'
+            ? 'A new version was recorded.'
+            : 'Version history is unavailable on this server.',
+      });
+    } catch {
+      /* DocsContext already reported the failure and resynced; keep the draft. */
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openCompare = async (v: ApiDocVersionMeta, label: string) => {
+    const diff = await collab.diff(v.id);
+    if (!diff) return;
+    setCompare({ id: v.id, label, summary: v.summary, diff });
     setEdit(false);
-    toast.success('Saved', { description: `Version ${doc.versions.length + 1} recorded` });
+  };
+
+  const restoreVersion = async (v: ApiDocVersionMeta, label: string) => {
+    const res = await collab.restore(v.id, `Restored ${label}`);
+    if (!res) return;
+    applyServerDoc(res.doc);
+    setDraft(res.doc.body);
+    setTitle(res.doc.title);
+    setCompare(null);
+    toast.success(`Restored ${label}`, {
+      description: `Saved as v${res.version.number}; the previous state is kept in history.`,
+    });
+  };
+
+  /** Remember a selection inside the rendered doc so it can anchor a comment. */
+  const captureSelection = () => {
+    const sel = window.getSelection();
+    const root = readRef.current;
+    if (!sel || sel.isCollapsed || !root || !sel.anchorNode || !root.contains(sel.anchorNode)) {
+      setSelection(null);
+      return;
+    }
+    const quote = sel.toString().replace(/\s+/g, ' ').trim().slice(0, MAX_QUOTE);
+    if (!quote) return setSelection(null);
+    const start = doc.body.indexOf(quote);
+    const heading =
+      start >= 0
+        ? doc.body
+            .slice(0, start)
+            .split('\n')
+            .reverse()
+            .find((l) => l.startsWith('## '))
+            ?.slice(3)
+            .trim()
+            .slice(0, 200)
+        : undefined;
+    setSelection({
+      quote,
+      ...(start >= 0 ? { start, end: start + quote.length } : {}),
+      ...(heading ? { heading } : {}),
+    });
+  };
+
+  const commentOnSelection = () => {
+    if (!selection) return;
+    setAnchor(selection);
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+    setRail('comments');
+  };
+
+  const onAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const done = await attach.upload(file, doc.id);
+    if (!done) return;
+    const el = areaRef.current;
+    const at = el ? el.selectionStart : draft.length;
+    const label = done.name.replace(/[[\]()]/g, '');
+    const md = `[${label}](/api/files/${done.fileId})`;
+    setDraft((d) => `${d.slice(0, at)}${at && d[at - 1] !== '\n' ? ' ' : ''}${md}${d.slice(at)}`);
+    toast.success('Attachment added', { description: `${done.name} · ${formatBytes(done.size)}` });
   };
 
   const insert = (t: (typeof tools)[number]) => {
@@ -138,7 +264,8 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
     if (!canEdit) return;
     const lines = doc.body.split('\n');
     lines[i] = lines[i].replace(/^- \[( |x)\]/, (m) => (m === '- [x]' ? '- [ ]' : '- [x]'));
-    save(doc.id, lines.join('\n'), doc.title, 'Toggled checklist item');
+    // A small edit: plain PATCH (no named version). The server snapshots published docs itself.
+    update(doc.id, { body: lines.join('\n') });
   };
 
   const exportMd = () => {
@@ -182,7 +309,9 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
   const checks = doc.body.split('\n').filter((l) => /^- \[( |x)\]/.test(l));
   const linkedKeys = Array.from(new Set(doc.body.match(/\b(?:RB|BL|MA)-\d+\b/g) ?? []));
   const linked = linkedKeys.map((k) => ({ key: k, task: tasks.find((t) => t.key === k) }));
-  const compareVersion = doc.versions.find((v) => v.id === compare);
+  const versionCount =
+    collab.versions.status === 'ready' ? collab.versions.items.length : undefined;
+  const commentCount = collab.comments.status === 'ready' ? collab.openCount : undefined;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col xl:flex-row">
@@ -219,19 +348,13 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
             <option value="in-review">In review</option>
             <option value="published">Published</option>
           </select>
+          {/* The docs API sets visibility at creation and does not accept changes to it. */}
           <select
             value={doc.visibility}
-            disabled={!canEdit}
-            onChange={(e) => {
-              update(doc.id, { visibility: e.target.value as ProjectDoc['visibility'] });
-              log(
-                'Changed doc visibility',
-                `${doc.title} → ${e.target.value}`,
-                e.target.value === 'workspace',
-              );
-            }}
+            disabled
+            title="Visibility is set when the doc is created"
             aria-label="Visibility"
-            className="h-6 rounded border border-line bg-white px-1 text-[11px] text-ink"
+            className="h-6 rounded border border-line bg-white px-1 text-[11px] text-ink disabled:opacity-80"
           >
             <option value="project">Project members</option>
             <option value="workspace">Whole workspace</option>
@@ -343,10 +466,41 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
                   <t.icon className="h-3.5 w-3.5" />
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={attach.state.status === 'uploading'}
+                title="Attach file"
+                aria-label="Attach file"
+                className="rounded p-1.5 text-muted hover:bg-white hover:text-ink disabled:opacity-50"
+              >
+                <PaperclipIcon className="h-3.5 w-3.5" />
+              </button>
+              <input ref={fileRef} type="file" className="hidden" onChange={onAttach} />
               <span className="ml-auto pr-2 text-[11px] text-muted">
                 {draft.split(/\s+/).filter(Boolean).length} words · ⌘S to save
               </span>
             </div>
+            {attach.state.status !== 'idle' && attach.state.status !== 'done' && (
+              <p
+                role={attach.state.status === 'uploading' ? 'status' : 'alert'}
+                className={`mb-1.5 flex items-center gap-2 rounded-md px-2 py-1 text-[11.5px] ${attach.state.status === 'uploading' ? 'bg-sunken text-ink' : 'bg-bad-soft text-bad'}`}
+              >
+                <PaperclipIcon className="h-3 w-3 shrink-0" aria-hidden />
+                <span className="flex-1">
+                  {attach.state.status === 'uploading'
+                    ? `Uploading ${attach.state.name} · ${attach.state.progress}%`
+                    : attach.state.message}
+                </span>
+                <button
+                  type="button"
+                  onClick={attach.state.status === 'uploading' ? attach.cancel : attach.reset}
+                  className="font-medium underline"
+                >
+                  {attach.state.status === 'uploading' ? 'Cancel' : 'Dismiss'}
+                </button>
+              </p>
+            )}
             <div className="grid gap-3 xl:grid-cols-2">
               <textarea
                 ref={areaRef}
@@ -355,7 +509,7 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
                 onKeyDown={(e) => {
                   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
                     e.preventDefault();
-                    doSave();
+                    void doSave();
                   }
                 }}
                 aria-label="Doc content"
@@ -387,43 +541,84 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
               >
                 Cancel
               </Button>
-              <Button variant="primary" disabled={!dirty} onClick={doSave}>
-                Save version
+              <Button variant="primary" disabled={!dirty || saving} onClick={() => void doSave()}>
+                {saving ? 'Saving…' : 'Save version'}
               </Button>
             </div>
           </div>
-        ) : compareVersion ? (
+        ) : compare ? (
           <div className="px-4 py-3 lg:px-6">
-            <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[12.5px] text-ink">
-                <b>{compareVersion.id}</b> ({compareVersion.summary}) → current
+                <b className="font-mono">{compare.label}</b> ({compare.summary || 'Edited'}) →
+                current
+                <span className="ml-2 tabular-nums text-ok">+{compare.diff.added}</span>
+                <span className="ml-1 tabular-nums text-bad">−{compare.diff.removed}</span>
+                {compare.diff.titleChanged && (
+                  <span className="ml-2 text-[11.5px] text-warn">· title changed</span>
+                )}
               </p>
               <button
+                type="button"
                 onClick={() => setCompare(null)}
                 className="text-[12px] font-medium text-accent hover:underline"
               >
                 Close compare
               </button>
             </div>
-            <pre className="overflow-x-auto rounded-md border border-line font-mono text-[12px] leading-[18px]">
-              {diffLines(compareVersion.body, doc.body).map((l, i) => (
-                <div
-                  key={i}
-                  className={`px-3 ${l.t === 'add' ? 'bg-ok-soft text-ok' : l.t === 'del' ? 'bg-bad-soft text-bad line-through' : 'text-muted'}`}
-                >
-                  {l.t === 'add' ? '+ ' : l.t === 'del' ? '- ' : '  '}
-                  {l.s}
-                </div>
-              ))}
-            </pre>
+            {compare.diff.added + compare.diff.removed === 0 ? (
+              <p className="rounded-md border border-line px-3 py-4 text-center text-[12px] text-muted">
+                No differences — this version matches the current doc.
+              </p>
+            ) : (
+              <pre
+                aria-label={`Changes from ${compare.label} to the current doc`}
+                className="overflow-x-auto rounded-md border border-line font-mono text-[12px] leading-[18px]"
+              >
+                {withContext(compare.diff.ops).map((l, i) =>
+                  l.op === 'gap' ? (
+                    <div key={i} className="bg-sunken/60 px-3 text-[11px] text-muted">
+                      ⋯ {l.n} unchanged {l.n === 1 ? 'line' : 'lines'}
+                    </div>
+                  ) : (
+                    <div
+                      key={i}
+                      className={`px-3 ${l.op === 'add' ? 'bg-ok-soft text-ok' : l.op === 'remove' ? 'bg-bad-soft text-bad line-through' : 'text-muted'}`}
+                    >
+                      <span aria-hidden>
+                        {l.op === 'add' ? '+ ' : l.op === 'remove' ? '- ' : '  '}
+                      </span>
+                      <span className="sr-only">
+                        {l.op === 'add' ? 'Added: ' : l.op === 'remove' ? 'Removed: ' : ''}
+                      </span>
+                      {l.line || ' '}
+                    </div>
+                  ),
+                )}
+              </pre>
+            )}
           </div>
         ) : (
-          <div className="px-4 py-3 lg:px-6">
-            <DocRenderer body={doc.body} onToggle={canEdit ? toggleLine : undefined} />
+          <div className="relative px-4 py-3 lg:px-6">
+            {selection && collab.comments.status === 'ready' && (
+              <div className="sticky top-2 z-10 mb-2 flex justify-end">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={<MessageSquarePlusIcon className="h-3.5 w-3.5" />}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={commentOnSelection}
+                >
+                  Comment on selection
+                </Button>
+              </div>
+            )}
+            <div ref={readRef} onMouseUp={captureSelection} onKeyUp={captureSelection}>
+              <DocRenderer body={doc.body} onToggle={canEdit ? toggleLine : undefined} />
+            </div>
             <p className="mt-6 border-t border-line pt-2 text-[11.5px] text-muted">
-              Created by {memberById(doc.createdBy).name} ·{' '}
-              {formatDateTime(new Date(doc.createdAt))} · last edited by{' '}
-              {memberById(doc.updatedBy).name} {relative(new Date(doc.updatedAt))}
+              Last edited by {memberById(doc.updatedBy).name} {relative(new Date(doc.updatedAt))} ·{' '}
+              {formatDateTime(new Date(doc.updatedAt))}
             </p>
           </div>
         )}
@@ -438,12 +633,8 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
             options={[
               { value: 'outline', label: 'Outline' },
               { value: 'linked', label: 'Tasks', count: linked.length },
-              { value: 'versions', label: 'History', count: doc.versions.length },
-              {
-                value: 'comments',
-                label: 'Comments',
-                count: doc.comments.filter((c) => !c.resolved).length,
-              },
+              { value: 'versions', label: 'History', count: versionCount },
+              { value: 'comments', label: 'Comments', count: commentCount },
             ]}
           />
         </div>
@@ -516,8 +707,8 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
                       {task.title}
                     </span>
                     <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted">
-                      <Avatar id={task.assignee} size="xs" /> {firstName(task.assignee)} · due{' '}
-                      {task.due}
+                      <Avatar id={task.assignee} size="xs" />{' '}
+                      {memberById(task.assignee).name.split(' ')[0]} · due {task.due}
                     </span>
                   </Link>
                 ) : (
@@ -530,97 +721,33 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
           </ul>
         )}
         {rail === 'versions' && (
-          <ol className="divide-y divide-line">
-            {doc.versions.map((ver, i) => (
-              <li key={ver.id + ver.at} className="flex items-start gap-2 px-3 py-2">
-                <HistoryIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12.5px] font-medium text-ink">{ver.summary}</p>
-                  <p className="text-[11px] text-muted">
-                    {memberById(ver.by).name} · {formatDateTime(new Date(ver.at))}
-                  </p>
-                  {i > 0 && ver.body && (
-                    <span className="mt-1 flex gap-3">
-                      <button
-                        onClick={() => {
-                          setCompare(ver.id);
-                          setEdit(false);
-                        }}
-                        className="inline-flex items-center gap-1 text-[11.5px] font-medium text-accent hover:underline"
-                      >
-                        <GitCompareIcon className="h-3 w-3" /> Compare
-                      </button>
-                      {canEdit && (
-                        <button
-                          onClick={() => {
-                            restore(doc.id, ver.id);
-                            setCompare(null);
-                            toast.success(`Restored ${ver.id}`);
-                          }}
-                          className="text-[11.5px] font-medium text-accent hover:underline"
-                        >
-                          Restore
-                        </button>
-                      )}
-                    </span>
-                  )}
-                </div>
-                {i === 0 && <span className="text-[10.5px] font-semibold text-ok">Current</span>}
-              </li>
-            ))}
-          </ol>
+          <DocHistory
+            status={collab.versions.status}
+            versions={collab.versions.items}
+            demo={collab.versions.demo}
+            error={collab.versions.error}
+            canEdit={canEdit}
+            comparing={compare?.id}
+            memberById={memberById}
+            onCompare={(v, label) => void openCompare(v, label)}
+            onRestore={(v, label) => void restoreVersion(v, label)}
+            onRetry={() => void collab.loadVersions()}
+          />
         )}
         {rail === 'comments' && (
-          <div className="p-3">
-            <ul className="space-y-2">
-              {doc.comments.length === 0 && (
-                <li className="py-4 text-center text-[12px] text-muted">
-                  <MessageSquareIcon className="mx-auto mb-1 h-4 w-4" />
-                  No comments yet.
-                </li>
-              )}
-              {doc.comments.map((c) => (
-                <li
-                  key={c.id}
-                  className={`rounded-md border border-line p-2 ${c.resolved ? 'opacity-60' : ''}`}
-                >
-                  <p className="flex items-center gap-1.5 text-[11.5px] text-muted">
-                    <Avatar id={c.by} size="xs" />{' '}
-                    <b className="font-semibold text-ink">{firstName(c.by)}</b> ·{' '}
-                    {relative(new Date(c.at))}
-                  </p>
-                  <p className="mt-1 text-[12.5px] text-ink">{c.text}</p>
-                  <button
-                    onClick={() => resolveComment(doc.id, c.id)}
-                    className="mt-1 inline-flex items-center gap-1 text-[11.5px] font-medium text-accent"
-                  >
-                    <CheckIcon className="h-3 w-3" />
-                    {c.resolved ? 'Reopen' : 'Resolve'}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (note.trim()) {
-                  comment(doc.id, note.trim());
-                  setNote('');
-                }
-              }}
-              className="mt-2 flex gap-1.5"
-            >
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Add a comment"
-                className="h-8 min-w-0 flex-1 rounded-md border border-line px-2 text-[12.5px] outline-none focus:border-accent"
-              />
-              <Button size="md" variant="primary" type="submit" disabled={!note.trim()}>
-                Post
-              </Button>
-            </form>
-          </div>
+          <DocComments
+            status={collab.comments.status}
+            comments={collab.comments.items}
+            demo={collab.comments.demo}
+            error={collab.comments.error}
+            body={doc.body}
+            pendingAnchor={anchor}
+            onClearAnchor={() => setAnchor(null)}
+            memberById={memberById}
+            onAdd={collab.addComment}
+            onResolve={(id, resolved) => void collab.setResolved(id, resolved)}
+            onRetry={() => void collab.loadComments()}
+          />
         )}
       </aside>
     </div>

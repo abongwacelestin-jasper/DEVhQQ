@@ -1,3 +1,9 @@
+/**
+ * Legacy fixtures. No F-ENG page reads these any more (repositories and pull
+ * requests come from the GitHub-backed API). They remain only for files owned
+ * by other lanes: CommandMenu, TaskCard, useNavEntries and TaskDetail.
+ * Delete once those move to the API.
+ */
 import type { PullRequest, Repository, Trace } from '../types/engineering';
 
 export const pullRequests: PullRequest[] = [
@@ -226,128 +232,4 @@ export const traces: Trace[] = [
       { kind: 'production', label: 'Production', value: 'Not released', tone: 'neutral' },
     ],
   },
-];
-
-export const commits = [
-  {
-    sha: 'a41f9c2',
-    repo: 'renewberry/api',
-    message: 'fix(billing): retry failed webhooks',
-    author: 'm4',
-    ago: '3h',
-    ci: 'passing' as const,
-    signed: true,
-  },
-  {
-    sha: 'e90d315',
-    repo: 'renewberry/api',
-    message: 'feat(auth): password reset',
-    author: 'm5',
-    ago: '5h',
-    ci: 'passing' as const,
-    signed: true,
-  },
-  {
-    sha: '9be2c40',
-    repo: 'renewberry/api',
-    message: 'chore: release 2.3.1',
-    author: 'm4',
-    ago: '2d',
-    ci: 'passing' as const,
-    signed: true,
-  },
-  {
-    sha: 'b71e0aa',
-    repo: 'renewberry/api',
-    message: 'refactor(invoices): extract retry policy',
-    author: 'm4',
-    ago: '2d',
-    ci: 'passing' as const,
-    signed: false,
-  },
-  {
-    sha: 'c03e8b1',
-    repo: 'renewberry/web',
-    message: 'feat(account): payment method card',
-    author: 'm9',
-    ago: '6h',
-    ci: 'passing' as const,
-    signed: true,
-  },
-  {
-    sha: '7c20be1',
-    repo: 'blog/platform',
-    message: 'feat(editor): toolbar',
-    author: 'm6',
-    ago: '12m',
-    ci: 'passing' as const,
-    signed: true,
-  },
-  {
-    sha: '3d19a0f',
-    repo: 'blog/platform',
-    message: 'fix(seo): canonical urls',
-    author: 'm8',
-    ago: '1d',
-    ci: 'passing' as const,
-    signed: true,
-  },
-  {
-    sha: '51b8a07',
-    repo: 'mirror-acture/app',
-    message: 'chore: bump deps',
-    author: 'm11',
-    ago: '2h',
-    ci: 'failing' as const,
-    signed: true,
-  },
-  {
-    sha: '0f77d1a',
-    repo: 'mirror-acture/app',
-    message: 'feat(mirror): share sheet',
-    author: 'm5',
-    ago: '6d',
-    ci: 'passing' as const,
-    signed: false,
-  },
-];
-
-export const branchProtection: Record<string, { label: string; ok: boolean }[]> = {
-  'renewberry/api': [
-    { label: 'Require 1 approving review', ok: true },
-    { label: 'Require status checks to pass', ok: true },
-    { label: 'Require signed commits', ok: true },
-    { label: 'Block force pushes to main', ok: true },
-  ],
-
-  'renewberry/web': [
-    { label: 'Require 1 approving review', ok: true },
-    { label: 'Require status checks to pass', ok: true },
-    { label: 'Require signed commits', ok: false },
-    { label: 'Block force pushes to main', ok: true },
-  ],
-
-  'blog/platform': [
-    { label: 'Require 1 approving review', ok: true },
-    { label: 'Require status checks to pass', ok: true },
-    { label: 'Require signed commits', ok: true },
-    { label: 'Block force pushes to main', ok: true },
-  ],
-
-  'mirror-acture/app': [
-    { label: 'Require 1 approving review', ok: false },
-    { label: 'Require status checks to pass', ok: true },
-    { label: 'Require signed commits', ok: false },
-    { label: 'Block force pushes to main', ok: true },
-  ],
-};
-
-export const deployFrequency = [
-  { day: 'Mon', ok: 3, failed: 0 },
-  { day: 'Tue', ok: 4, failed: 1 },
-  { day: 'Wed', ok: 3, failed: 0 },
-  { day: 'Thu', ok: 5, failed: 0 },
-  { day: 'Fri', ok: 2, failed: 0 },
-  { day: 'Sat', ok: 0, failed: 0 },
-  { day: 'Sun', ok: 1, failed: 0 },
 ];

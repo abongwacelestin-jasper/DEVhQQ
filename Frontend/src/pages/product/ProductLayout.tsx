@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router-dom';
 import { CodeIcon, PlusIcon, SirenIcon } from 'lucide-react';
 import { PageHero } from '../../components/ui/PageHero';
@@ -13,12 +13,13 @@ import { useDateRange } from '../../contexts/DateRangeContext';
 import { useIncidents } from '../../contexts/IncidentContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
 import { useUrlFilters } from '../../hooks/useUrlFilters';
+import { useDeployments } from '../../hooks/useDeployments';
+import { lanesFromDeployments } from '../../components/delivery/environments';
+import { deriveHealth, productUptime } from '../../components/operations/productHealth';
+import { useMonitors, usePulls } from '../../components/engineering/data/hooks';
 import { products } from '../../data/portfolio';
-import { pullRequests } from '../../data/engineering';
-import { deployments, environments } from '../../data/operations';
 import { members } from '../../data/team';
 import { healthMeta, memberById, priorityMeta, taskStatusMeta } from '../../utils/status';
-import { parseWhen } from '../../utils/date';
 import type { ProductTabContext } from '../../hooks/useProductTab';
 
 const keys = ['q', 'person', 'priority', 'status'] as const;
@@ -70,6 +71,9 @@ export function ProductLayout() {
   const { canSeeProduct, canDo } = useAuth();
   const { inRange } = useDateRange();
   const { openCreateTask } = useWorkspaceUI();
+  const { deployments } = useDeployments();
+  const monitors = useMonitors();
+  const pulls = usePulls({ state: 'open' });
   const f = useUrlFilters(keys);
   const apply = useCallback(
     (vals: Record<string, string>) =>
@@ -78,20 +82,38 @@ export function ProductLayout() {
   );
 
   const product = products.find((p) => p.id === productId);
-  if (!product || !canSeeProduct(product.id))
+  const live = useMemo(
+    () =>
+      product
+        ? deriveHealth({
+            product: product.id,
+            incidents,
+            deployments,
+            monitors: monitors.items,
+            overdueTasks: tasks.filter(
+              (t) => t.product === product.id && t.status !== 'done' && t.overdue,
+            ).length,
+          })
+        : null,
+    [product, incidents, deployments, monitors.items, tasks],
+  );
+  if (!product || !live || !canSeeProduct(product.id))
     return <NotFound what="Product" backTo="/" backLabel="Back to overview" />;
 
   const tab = pathname.split('/')[3] ?? '';
-  const h = healthMeta[product.health];
+  const h = healthMeta[live.health];
   const own = tasks.filter((t) => t.product === product.id);
   const open = own.filter((t) => t.status !== 'done');
-  const reviews = pullRequests.filter(
-    (p) => p.product === product.id && p.review === 'review-required',
-  ).length;
+  // Reviews come from the GitHub-backed PR API; "—" when it isn't connected.
+  const reviews =
+    pulls.status === 'ready'
+      ? pulls.items.filter((p) => p.product === product.id && p.review === 'review-required').length
+      : null;
   const deploys = deployments.filter(
-    (d) => d.product === product.id && inRange(parseWhen(d.ago)),
+    (d) => d.product === product.id && inRange(new Date(d.createdAt)),
   ).length;
-  const lanes = environments.filter((e) => e.product === product.id);
+  const lanes = lanesFromDeployments(deployments, product.id);
+  const uptime = monitors.status === 'ready' ? productUptime(monitors.items, product.id) : null;
   const openIncidents = incidents.filter(
     (i) => i.product === product.id && i.status !== 'resolved',
   ).length;
@@ -122,13 +144,7 @@ export function ProductLayout() {
       </nav>
 
       <PageHero
-        tint={
-          product.health === 'healthy'
-            ? 'accent'
-            : product.health === 'degraded'
-              ? 'bad'
-              : 'neutral'
-        }
+        tint={live.health === 'healthy' ? 'accent' : live.health === 'degraded' ? 'bad' : 'neutral'}
         illustration={<ProductMark product={product.id} size="xl" />}
         eyebrow={
           <>
@@ -162,7 +178,7 @@ export function ProductLayout() {
             </span>
           </>
         }
-        description={product.healthReasons.join(' · ')}
+        description={live.reasons.join(' · ')}
         actions={
           <>
             {canDo('task:create') && (
@@ -201,15 +217,15 @@ export function ProductLayout() {
           },
           {
             label: 'Reviews waiting',
-            value: reviews,
+            value: reviews ?? '—',
             tone: reviews ? 'warn' : undefined,
             to: `/products/${product.id}/code`,
           },
           { label: 'Deploys in range', value: deploys, to: `/products/${product.id}/deployments` },
           {
-            label: 'Uptime 30d',
-            value: `${product.uptime}%`,
-            tone: product.uptime < 99.5 ? 'warn' : 'ok',
+            label: 'Monitor uptime',
+            value: uptime === null ? '—' : `${uptime}%`,
+            tone: uptime === null ? undefined : uptime < 99.5 ? 'warn' : 'ok',
           },
         ]}
       />

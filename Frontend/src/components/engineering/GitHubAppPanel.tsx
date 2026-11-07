@@ -1,110 +1,51 @@
 import { useState } from 'react';
-import { toast } from 'sonner';
-import {
-  CheckCircle2Icon,
-  GitBranchIcon,
-  PauseCircleIcon,
-  PlayCircleIcon,
-  RefreshCwIcon,
-  SendIcon,
-  Settings2Icon,
-  XCircleIcon,
-} from 'lucide-react';
-import { Button } from '../ui/Button';
+import { ExternalLinkIcon, GitBranchIcon, PlusIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useReauth } from '../../contexts/ReauthContext';
-import type { GitHubInstallation } from '../../hooks/useGitHubApp';
-
-interface Delivery {
-  id: string;
-  event: string;
-  status: number;
-  ms: number;
-  at: string;
-}
+import { githubPermissions } from '../../hooks/useGitHubApp';
+import { fetchInstallUrl } from './data/hooks';
+import type { ResourceState } from './data/useApi';
+import type { ApiGitHubApp } from './data/types';
+import { GuardedButton, InlineError, SampleDataBadge } from './states';
+import { Skeleton } from '../ui/Skeleton';
+import { formatDay } from '../../utils/date';
 
 interface GitHubAppPanelProps {
-  installation: GitHubInstallation;
+  app: ResourceState<ApiGitHubApp>;
   repoCount: number;
-  onConfigure: () => void;
-  onChange: (inst: GitHubInstallation) => void;
+  onLink: () => void;
 }
 
-const seed: Delivery[] = [
-  { id: 'd1', event: 'push', status: 200, ms: 84, at: '2m ago' },
-  { id: 'd2', event: 'pull_request.opened', status: 200, ms: 112, at: '9m ago' },
-  { id: 'd3', event: 'check_run.completed', status: 200, ms: 96, at: '14m ago' },
-  { id: 'd4', event: 'push', status: 502, ms: 3012, at: '41m ago' },
-  { id: 'd5', event: 'release.published', status: 200, ms: 140, at: '2h ago' },
-];
+const MANAGE_REASON = 'Needs Repository: manage — ask an Owner';
 
-/** Installation status, permissions at a glance, webhook delivery log and suspend control. */
-export function GitHubAppPanel({
-  installation,
-  repoCount,
-  onConfigure,
-  onChange,
-}: GitHubAppPanelProps) {
-  const { log, canDo } = useAuth();
-  const { requestReauth } = useReauth();
-  const [deliveries, setDeliveries] = useState<Delivery[]>(seed);
-  const [syncing, setSyncing] = useState(false);
-  const admin = canDo('workspace:delete') || canDo('member:invite');
-  const writes = Object.entries(installation.permissions)
+/**
+ * Installation status as the server reports it (`GET /api/github/app`).
+ * Permissions, repository selection and suspension are managed on GitHub,
+ * so this panel links there instead of pretending to change them.
+ */
+export function GitHubAppPanel({ app, repoCount, onLink }: GitHubAppPanelProps) {
+  const { canDo } = useAuth();
+  const allowed = canDo('github:configure');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<Error | null>(null);
+
+  if (app.status === 'loading') return <Skeleton className="h-[120px] w-full" />;
+  // Unconfigured/unavailable is rendered by the page's Connect GitHub state.
+  if (app.status !== 'ready' || !app.data) return null;
+
+  const inst = app.data;
+  const perms = inst.permissions ?? {};
+  const writes = Object.entries(perms)
     .filter(([, v]) => v === 'write')
     .map(([k]) => k.replace('_', ' '));
-  const okRate = Math.round(
-    (deliveries.filter((d) => d.status < 300).length / deliveries.length) * 100,
-  );
 
-  const ping = () => {
-    const d: Delivery = {
-      id: `d${Date.now()}`,
-      event: 'ping',
-      status: installation.webhook && !installation.suspended ? 200 : 410,
-      ms: 60 + Math.round(Math.random() * 80),
-      at: 'just now',
-    };
-    setDeliveries((l) => [d, ...l].slice(0, 8));
-    if (d.status === 200)
-      toast.success('Ping delivered', { description: `HMAC signature verified · ${d.ms}ms` });
-    else
-      toast.error('Ping failed', {
-        description: installation.suspended ? 'The app is suspended.' : 'Webhooks are disabled.',
-      });
+  const manage = async () => {
+    setBusy(true);
+    setErr(null);
+    const url = await fetchInstallUrl();
+    setBusy(false);
+    if (url && /^https:\/\//.test(url)) window.open(url, '_blank', 'noopener,noreferrer');
+    else setErr(new Error('The server did not return a GitHub install link.'));
   };
-
-  const redeliver = (d: Delivery) => {
-    setDeliveries((l) =>
-      l.map((x) => (x.id === d.id ? { ...x, status: 200, ms: 101, at: 'just now' } : x)),
-    );
-    toast.success(`Redelivered ${d.event}`);
-  };
-
-  const sync = () => {
-    setSyncing(true);
-    setTimeout(() => {
-      setSyncing(false);
-      toast.success('Sync complete', { description: `${repoCount} repositories up to date` });
-    }, 900);
-  };
-
-  const toggleSuspend = () =>
-    requestReauth({
-      title: installation.suspended ? 'Resume GitHub App' : 'Suspend GitHub App',
-      description: installation.suspended
-        ? 'Syncing and webhooks resume immediately.'
-        : 'DevHQ stops reading from GitHub until resumed. Nothing is deleted.',
-      actionLabel: installation.suspended ? 'Verify & resume' : 'Verify & suspend',
-      onConfirm: () => {
-        onChange({ ...installation, suspended: !installation.suspended });
-        log(
-          installation.suspended ? 'Resumed GitHub App' : 'Suspended GitHub App',
-          installation.org,
-          true,
-        );
-      },
-    });
 
   return (
     <section
@@ -114,22 +55,36 @@ export function GitHubAppPanel({
       <div className="border-b border-line p-4 lg:border-b-0 lg:border-r">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-ink text-white">
-            <GitBranchIcon className="h-5 w-5" />
+            <GitBranchIcon className="h-5 w-5" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-ink">
               DevHQ GitHub App
               <span
-                className={`rounded px-1.5 py-px text-[11px] font-semibold ${installation.suspended ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'}`}
+                className={`rounded px-1.5 py-px text-[11px] font-semibold ${
+                  !inst.installed
+                    ? 'bg-sunken text-muted'
+                    : inst.suspended
+                      ? 'bg-warn-soft text-warn'
+                      : 'bg-ok-soft text-ok'
+                }`}
               >
-                {installation.suspended ? 'Suspended' : 'Active'}
+                {!inst.installed ? 'Not installed' : inst.suspended ? 'Suspended' : 'Active'}
               </span>
+              <SampleDataBadge source={inst.source} />
             </h2>
             <p className="text-[12px] text-muted">
-              Installed on <b className="text-ink">{installation.org}</b> ·{' '}
-              {installation.access === 'all'
-                ? 'all repositories'
-                : `${repoCount} selected repositories`}
+              {inst.installed ? (
+                <>
+                  Installed on <b className="text-ink">{inst.account ?? '—'}</b> ·{' '}
+                  {inst.repositorySelection === 'all'
+                    ? 'all repositories'
+                    : `${repoCount} linked repositor${repoCount === 1 ? 'y' : 'ies'}`}
+                  {inst.installedAt && ` · since ${formatDay(new Date(inst.installedAt))}`}
+                </>
+              ) : (
+                'The app is configured on this server but not installed on an organisation.'
+              )}
             </p>
           </div>
         </div>
@@ -141,102 +96,67 @@ export function GitHubAppPanel({
             </dd>
           </div>
           <div>
-            <dt className="text-muted">Webhooks</dt>
+            <dt className="text-muted">Webhook events</dt>
             <dd className="font-medium text-ink">
-              {installation.webhook ? 'Signed (HMAC-SHA256)' : 'Off · polling every 15 min'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted">Admin rights</dt>
-            <dd className="font-medium text-ink">Never requested</dd>
-          </div>
-          <div>
-            <dt className="text-muted">Delivery success</dt>
-            <dd className={`font-medium ${okRate < 90 ? 'text-warn' : 'text-ok'}`}>
-              {okRate}% · last {deliveries.length}
+              {inst.events?.length ? `${inst.events.length} subscribed` : '—'}
             </dd>
           </div>
         </dl>
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {admin && (
-            <Button
-              size="sm"
-              variant="primary"
-              icon={<Settings2Icon className="h-3.5 w-3.5" />}
-              onClick={onConfigure}
-            >
-              Configure
-            </Button>
-          )}
-          <Button
+          <GuardedButton
+            allowed={allowed}
+            reason={MANAGE_REASON}
             size="sm"
-            icon={<RefreshCwIcon className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />}
-            disabled={syncing || installation.suspended}
-            onClick={sync}
+            variant="primary"
+            icon={<PlusIcon className="h-3.5 w-3.5" />}
+            onClick={onLink}
+            disabled={!inst.installed}
           >
-            {syncing ? 'Syncing…' : 'Sync now'}
-          </Button>
-          {admin && (
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={
-                installation.suspended ? (
-                  <PlayCircleIcon className="h-3.5 w-3.5" />
-                ) : (
-                  <PauseCircleIcon className="h-3.5 w-3.5" />
-                )
-              }
-              onClick={toggleSuspend}
-            >
-              {installation.suspended ? 'Resume' : 'Suspend'}
-            </Button>
-          )}
+            Link repository
+          </GuardedButton>
+          <GuardedButton
+            allowed={allowed}
+            reason={MANAGE_REASON}
+            size="sm"
+            icon={<ExternalLinkIcon className="h-3.5 w-3.5" />}
+            onClick={manage}
+            disabled={busy}
+          >
+            {inst.installed ? 'Manage on GitHub' : 'Install on GitHub'}
+          </GuardedButton>
         </div>
+        <InlineError error={err} />
       </div>
       <div className="min-w-0">
-        <div className="flex items-center justify-between border-b border-line px-4 py-2">
-          <h3 className="text-[12.5px] font-semibold text-ink">Recent webhook deliveries</h3>
-          <button
-            onClick={ping}
-            className="inline-flex items-center gap-1 text-[12px] font-medium text-accent hover:underline"
-          >
-            <SendIcon className="h-3 w-3" /> Send test ping
-          </button>
-        </div>
-        <ul className="divide-y divide-line">
-          {deliveries.map((d) => (
-            <li
-              key={d.id}
-              className="grid grid-cols-[16px_minmax(0,1fr)_48px_60px_72px] items-center gap-2 px-4 py-1.5 text-[12px]"
-            >
-              {d.status < 300 ? (
-                <CheckCircle2Icon className="h-3.5 w-3.5 text-ok" />
-              ) : (
-                <XCircleIcon className="h-3.5 w-3.5 text-bad" />
-              )}
-              <span className="truncate font-mono text-ink">{d.event}</span>
-              <span
-                className={`font-mono tabular-nums ${d.status < 300 ? 'text-muted' : 'text-bad'}`}
-              >
-                {d.status}
-              </span>
-              <span className="text-right tabular-nums text-muted">{d.ms}ms</span>
-              <span className="text-right text-muted">
-                {d.status >= 300 ? (
-                  <button
-                    onClick={() => redeliver(d)}
-                    className="font-medium text-accent hover:underline"
+        <h3 className="border-b border-line px-4 py-2 text-[12.5px] font-semibold text-ink">
+          Granted permissions
+        </h3>
+        <table className="w-full text-[12px]">
+          <caption className="sr-only">GitHub App permissions as granted on GitHub</caption>
+          <thead className="sr-only">
+            <tr>
+              <th scope="col">Permission</th>
+              <th scope="col">Access</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {githubPermissions.map((p) => {
+              const level = perms[p.id] ?? 'none';
+              return (
+                <tr key={p.id}>
+                  <th scope="row" className="px-4 py-1.5 text-left font-normal text-ink">
+                    {p.label}
+                  </th>
+                  <td
+                    className={`px-4 py-1.5 text-right font-mono ${level === 'write' ? 'text-warn' : level === 'read' ? 'text-ink' : 'text-muted'}`}
                   >
-                    Redeliver
-                  </button>
-                ) : (
-                  d.at
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
+                    {inst.permissions ? level : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   );

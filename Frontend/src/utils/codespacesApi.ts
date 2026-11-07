@@ -10,6 +10,7 @@
  * (auth) and falling back to the local sandbox (everything else).
  */
 import { CodespacesError, type Codespace, type GitHubCodespaceState } from '../types/codespaces';
+import { api, ApiError, isSameOrigin } from '../api/client';
 
 export interface CodespacesTransport {
   kind: 'simulated' | 'backend';
@@ -30,45 +31,54 @@ const TIMEOUT_MS = 12_000;
 // Backend transport
 // ---------------------------------------------------------------------------
 
+function toCodespacesError(e: unknown): CodespacesError {
+  if (e instanceof DOMException && e.name === 'AbortError')
+    return new CodespacesError(0, 'timeout', 'The DevHQ API took too long to answer');
+  if (!(e instanceof ApiError))
+    return new CodespacesError(0, 'network', 'Could not reach the DevHQ API');
+  const kind =
+    e.status === 0
+      ? 'network'
+      : e.status === 401 || e.code === 'github_auth'
+        ? 'auth'
+        : e.status === 429 || e.code === 'rate_limited'
+          ? 'rate_limited'
+          : e.status === 403
+            ? 'forbidden'
+            : e.status === 404
+              ? 'not_found'
+              : 'upstream';
+  return new CodespacesError(e.status, kind, e.message);
+}
+
+/**
+ * Talks to the DevHQ API through the shared client (same transport, error type,
+ * session handling and step-up retry as the rest of the app). The session
+ * cookie is same-origin only, so a configured base URL on another origin is
+ * refused rather than sent credentials.
+ */
 export function backendTransport(baseUrl: string): CodespacesTransport {
   const base = baseUrl.replace(/\/$/, '');
-  async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-    let res: Response;
-    try {
-      res = await fetch(`${base}${path}`, {
-        method,
-        credentials: 'include',
-        headers: body ? { 'content-type': 'application/json' } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: ctrl.signal,
-      });
-    } catch (e) {
+  const prefix =
+    base && isSameOrigin(base)
+      ? new URL(base, window.location.href).pathname.replace(/\/$/, '')
+      : null;
+  async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+    if (prefix === null)
       throw new CodespacesError(
         0,
-        (e as Error).name === 'AbortError' ? 'timeout' : 'network',
-        'Could not reach the DevHQ API',
+        'forbidden',
+        `Refusing to send DevHQ credentials to ${base || 'an empty URL'}: codespaces must be served from this origin.`,
       );
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      return await api<T>(`${prefix}${path}`, { method, body, signal: ctrl.signal });
+    } catch (e) {
+      throw toCodespacesError(e);
     } finally {
       clearTimeout(timer);
     }
-    const data = await res.json().catch(() => null);
-    if (!res.ok) {
-      const code = (data as { error?: { code?: string; message?: string } } | null)?.error;
-      const kind =
-        res.status === 401 || code?.code === 'github_auth'
-          ? 'auth'
-          : res.status === 429 || code?.code === 'rate_limited'
-            ? 'rate_limited'
-            : res.status === 403
-              ? 'forbidden'
-              : res.status === 404
-                ? 'not_found'
-                : 'upstream';
-      throw new CodespacesError(res.status, kind, code?.message ?? `HTTP ${res.status}`);
-    }
-    return data as T;
   }
   return {
     kind: 'backend',

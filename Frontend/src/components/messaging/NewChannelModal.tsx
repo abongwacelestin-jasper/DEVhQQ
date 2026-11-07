@@ -11,18 +11,20 @@ import { useMessaging } from '../../contexts/MessagingContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProductFilter } from '../../contexts/ProductFilterContext';
 import { defaultPermissions } from '../../data/messaging';
-import { members } from '../../data/team';
+import { useDirectory } from '../team/useDirectory';
+import { errorMessage } from '../work/apiState';
 import type { ChannelKind } from '../../types/messaging';
 import type { ProductId } from '../../types/portfolio';
 
 type Mode = 'dm' | 'channel';
 
 export function NewChannelModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { createChannel, visible } = useMessaging();
-  const { session, canDo } = useAuth();
+  const { createChannel, visible, me } = useMessaging();
+  const { canDo } = useAuth();
+  const { members } = useDirectory();
+  const [busy, setBusy] = useState(false);
   const { allowedProducts } = useProductFilter();
   const navigate = useNavigate();
-  const me = session?.memberId ?? 'm1';
   const canCreate = canDo('channel:create');
   const [mode, setMode] = useState<Mode>('dm');
   const [name, setName] = useState('');
@@ -54,7 +56,19 @@ export function NewChannelModal({ open, onClose }: { open: boolean; onClose: () 
       l.includes(id) ? l.filter((x) => x !== id) : mode === 'dm' ? [id] : [...l, id],
     );
 
-  const create = () => {
+  const create = async () => {
+    if (!me || busy) return;
+    try {
+      setBusy(true);
+      await createInner(me);
+    } catch (e) {
+      toast.error("Couldn't create the conversation", { description: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createInner = async (me: string) => {
     if (mode === 'dm') {
       const peer = picked[0];
       if (!peer) return;
@@ -69,8 +83,9 @@ export function NewChannelModal({ open, onClose }: { open: boolean; onClose: () 
         navigate(`/messages/${existing.id}`);
         return onClose();
       }
-      const peerM = members.find((m) => m.id === peer)!;
-      const ch = createChannel({
+      const peerM = members.find((m) => m.id === peer);
+      if (!peerM) return;
+      const ch = await createChannel({
         name: peerM.name,
         kind: 'dm',
         topic: '',
@@ -90,7 +105,7 @@ export function NewChannelModal({ open, onClose }: { open: boolean; onClose: () 
       .replace(/^-|-$/g, '');
     if (!slug) return toast.error('Give the channel a name');
     if (visible.some((c) => c.name === slug)) return toast.error(`#${slug} already exists`);
-    const ch = createChannel({
+    const ch = await createChannel({
       name: slug,
       kind,
       topic: topic.trim(),

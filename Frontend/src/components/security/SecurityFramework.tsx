@@ -1,18 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
-import { ChevronRightIcon, FingerprintIcon, Trash2Icon } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { ChevronRightIcon } from 'lucide-react';
 import { securityPillars } from '../../data/securityFramework';
-import { memberById } from '../../utils/status';
-import {
-  describeWebAuthnError,
-  listPasskeys,
-  passkeySupported,
-  registerPasskey,
-  removePasskey,
-} from '../../utils/webauthn';
-import type { ControlStatus, StoredPasskey } from '../../types/securityFramework';
+import { PasskeyManager } from './PasskeyManager';
+import type { ControlStatus } from '../../types/securityFramework';
 
 const statusMeta: Record<ControlStatus, { label: string; cls: string; weight: number }> = {
   enforced: { label: 'Enforced', cls: 'bg-ok-soft text-ok', weight: 1 },
@@ -22,33 +13,11 @@ const statusMeta: Record<ControlStatus, { label: string; cls: string; weight: nu
 
 /** Defense-in-depth coverage across the six pillars, with drill-down to each control. */
 export function SecurityFramework() {
-  const { session, log } = useAuth();
   const [open, setOpen] = useState<string | null>('identity');
-  const [passkeys, setPasskeys] = useState<StoredPasskey[]>(listPasskeys);
-  const [busy, setBusy] = useState(false);
-
   const all = securityPillars.flatMap((p) => p.controls);
   const coverage = Math.round(
     (all.reduce((n, c) => n + statusMeta[c.status].weight, 0) / all.length) * 100,
   );
-
-  const addPasskey = async () => {
-    if (!session) return;
-    const m = memberById(session.memberId);
-    setBusy(true);
-    try {
-      const pk = await registerPasskey({ id: m.id, name: m.name, email: m.email });
-      setPasskeys(listPasskeys());
-      log('Registered passkey', pk.label, true);
-      toast.success('Passkey registered', {
-        description: 'Use it to sign in and approve sensitive actions.',
-      });
-    } catch (e) {
-      toast.error('Couldn’t register passkey', { description: describeWebAuthnError(e) });
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <section
@@ -126,44 +95,7 @@ export function SecurityFramework() {
                           )}
                         </p>
                         <p className="text-[11.5px] leading-relaxed text-muted">{c.detail}</p>
-                        {c.action === 'register-passkey' && (
-                          <div className="mt-1.5 space-y-1">
-                            {passkeys.map((pk) => (
-                              <p
-                                key={pk.id}
-                                className="flex items-center gap-1.5 text-[11.5px] text-ink"
-                              >
-                                <FingerprintIcon className="h-3.5 w-3.5 text-ok" /> {pk.label}
-                                <span className="text-subtle">
-                                  · added {new Date(pk.createdAt).toLocaleDateString()}
-                                </span>
-                                <button
-                                  onClick={() => {
-                                    removePasskey(pk.id);
-                                    setPasskeys(listPasskeys());
-                                    log('Removed passkey', pk.label, true);
-                                  }}
-                                  aria-label={`Remove ${pk.label}`}
-                                  className="rounded p-0.5 text-subtle hover:text-bad"
-                                >
-                                  <Trash2Icon className="h-3 w-3" />
-                                </button>
-                              </p>
-                            ))}
-                            <button
-                              onClick={addPasskey}
-                              disabled={busy || !passkeySupported()}
-                              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-white px-2.5 text-[12px] font-medium text-ink transition-colors duration-150 hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <FingerprintIcon className="h-3.5 w-3.5" />{' '}
-                              {busy
-                                ? 'Waiting for authenticator…'
-                                : passkeySupported()
-                                  ? 'Register a passkey on this device'
-                                  : 'Passkeys not supported here'}
-                            </button>
-                          </div>
-                        )}
+                        {c.action === 'register-passkey' && <PasskeyManager />}
                       </div>
                       <code
                         className="hidden truncate self-start pt-0.5 font-mono text-[11px] text-subtle md:block"

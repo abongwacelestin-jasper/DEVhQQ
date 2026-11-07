@@ -30,6 +30,7 @@
     "audit",
     "auth",
     "config",
+    "db",
     "lib",
     "middleware",
     "resilience",
@@ -72,18 +73,24 @@
     "format": "prettier --write \"**/*.ts\"",
     "format:check": "prettier --check \"**/*.ts\"",
     "smoke": "node --experimental-strip-types scripts/smoke.ts",
+    "smoke:pg": "node --experimental-strip-types db/smoke-pg.ts",
+    "migrate": "node --experimental-strip-types db/migrate.ts",
     "test": "npm run smoke",
     "test:smoke": "npm run smoke",
     "validate": "npm run typecheck && npm run lint",
-    "precommit": "npm run validate"
+    "precommit": "npm run validate",
+    "bootstrap-owner": "node --experimental-strip-types scripts/bootstrap-owner.ts"
   },
-  "dependencies": {},
+  "dependencies": {
+    "pg": "8.23.1"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.5.0",
-    "eslint": "^9.0.0",
+    "@types/pg": "8.23.1",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "prettier": "^3.0.0"
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.5.0"
   }
 }

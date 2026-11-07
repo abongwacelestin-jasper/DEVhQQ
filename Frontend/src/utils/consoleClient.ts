@@ -1,9 +1,11 @@
 import { handleMock, mockLatency } from './consoleMockApi';
+import { isSameOrigin, readBody } from '../api/client';
 import type { ConnectionMode, ConsoleResponse } from '../types/console';
 
 export interface PerformOptions {
   mode: ConnectionMode;
   baseUrl: string;
+  /** Explicit bearer / personal access token typed into the console. Callers keep it in memory only. */
   token?: string | null;
   method: string;
   url: string;
@@ -14,9 +16,15 @@ export interface PerformOptions {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const byteSize = (s: string) => new Blob([s]).size;
 
-/** Sends a request to the live server or the in-browser preview server. Never throws. */
+/**
+ * Sends a request to the live server or the in-browser preview server. Never throws.
+ *
+ * Live mode is an explicit-credential client: it authenticates with the bearer
+ * token the person supplies, never with the browser's session cookie when the
+ * target is another origin (`credentials: 'omit'`).
+ */
 export async function performRequest(o: PerformOptions): Promise<ConsoleResponse> {
-  const headers: Record<string, string> = { 'X-Return-Token': '1', ...(o.headers ?? {}) };
+  const headers: Record<string, string> = { ...(o.headers ?? {}) };
   if (o.token && !Object.keys(headers).some((k) => k.toLowerCase() === 'authorization'))
     headers.Authorization = `Bearer ${o.token}`;
   if (o.body) headers['Content-Type'] ??= 'application/json';
@@ -85,19 +93,20 @@ async function liveRequest(
   headers: Record<string, string>,
 ): Promise<ConsoleResponse> {
   const t0 = performance.now();
+  const target = o.baseUrl.replace(/\/$/, '') + o.url;
+  const sameOrigin = isSameOrigin(target);
   try {
-    const res = await fetch(o.baseUrl.replace(/\/$/, '') + o.url, {
+    const res = await fetch(target, {
       method: o.method,
-      headers,
+      // Ask the API for a body token (console clients use bearer auth, not the cookie).
+      headers: { 'X-DevHQ-Client': 'console', ...headers },
       body: o.body || undefined,
+      // Never let the session cookie ride along to a different origin.
+      credentials: sameOrigin ? 'same-origin' : 'omit',
+      mode: sameOrigin ? 'same-origin' : 'cors',
+      referrerPolicy: 'no-referrer',
     });
-    const text = await res.text();
-    let body: unknown = null;
-    try {
-      body = text ? JSON.parse(text) : null;
-    } catch {
-      body = null;
-    }
+    const { text, body } = await readBody(res);
     return {
       status: res.status,
       ms: performance.now() - t0,

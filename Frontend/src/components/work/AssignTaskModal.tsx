@@ -4,7 +4,7 @@ import { Modal, Field, inputClass } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Avatar } from '../ui/Avatar';
 import { useWork } from '../../contexts/WorkContext';
-import { members } from '../../data/team';
+import { useDirectory } from '../team/useDirectory';
 import type { Task } from '../../types/work';
 
 interface Props {
@@ -15,6 +15,7 @@ interface Props {
 
 export function AssignTaskModal({ task, onClose, field = 'assignee' }: Props) {
   const { tasks, updateTask } = useWork();
+  const { members } = useDirectory();
   const [selected, setSelected] = useState('');
   const [note, setNote] = useState('');
 

@@ -18,7 +18,7 @@ import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { Segmented } from '../ui/Segmented';
 import { useWork } from '../../contexts/WorkContext';
-import { currentUserId } from '../../data/team';
+import { useAuth } from '../../contexts/AuthContext';
 import { firstName } from '../../utils/status';
 import { formatDateTime, relative } from '../../utils/date';
 import { describeEvent, formatMinutes } from '../../utils/taskEvents';
@@ -52,6 +52,7 @@ interface Row {
 
 export function TaskTimeline({ taskKey }: { taskKey: string }) {
   const { events, comments, timeLogs, addComment } = useWork();
+  const { session } = useAuth();
   const [tab, setTab] = useState<Tab>('all');
   const [draft, setDraft] = useState('');
 
@@ -172,7 +173,7 @@ export function TaskTimeline({ taskKey }: { taskKey: string }) {
         )}
       </ol>
       <form onSubmit={post} className="flex items-end gap-2 border-t border-line p-2.5">
-        <Avatar id={currentUserId} size="sm" />
+        {session && <Avatar id={session.memberId} size="sm" />}
         <label className="min-w-0 flex-1">
           <span className="sr-only">Write a comment</span>
           <textarea

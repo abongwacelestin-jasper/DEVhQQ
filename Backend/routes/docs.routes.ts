@@ -114,6 +114,7 @@ export function registerDocRoutes(r: Router) {
       d.updatedBy = ctx.principal!.memberId;
       d.updatedAt = new Date().toISOString();
       if (!d.editors.includes(d.updatedBy)) d.editors.push(d.updatedBy);
+      db.docs.save(d.id);
       audit.append({
         actor: d.updatedBy,
         action: 'doc.updated',

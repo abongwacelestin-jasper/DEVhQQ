@@ -6,22 +6,27 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Avatar } from '../../components/ui/Avatar';
 import { EnvironmentPipeline } from '../../components/delivery/EnvironmentPipeline';
-import { TraceChain } from '../../components/work/TraceChain';
+import { lanesFromDeployments } from '../../components/delivery/environments';
 import { DeliveryReliabilityCards } from '../../components/analytics/DeliveryReliabilityCards';
 import { useWork } from '../../contexts/WorkContext';
 import { useIncidents } from '../../contexts/IncidentContext';
 import { useProductTab, textMatch } from '../../hooks/useProductTab';
+import { useDeployments } from '../../hooks/useDeployments';
 import { projects } from '../../data/work';
-import { traces } from '../../data/engineering';
-import { environments } from '../../data/operations';
 import { releases } from '../../data/portfolio';
-import { firstName, projectStatusMeta } from '../../utils/status';
+import { deployMeta, firstName, memberById, projectStatusMeta } from '../../utils/status';
+import { formatDateTime } from '../../utils/date';
 import type { ProductId } from '../../types/portfolio';
 
 export function ProductOverview() {
   const { product, filters } = useProductTab();
   const { tasks } = useWork();
   const { incidents } = useIncidents();
+  const { deployments, loading: deploysLoading } = useDeployments();
+  const lanes = lanesFromDeployments(deployments, product.id);
+  const latestProd = deployments
+    .filter((d) => d.product === product.id && d.env === 'production')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const match = useCallback((p: ProductId) => p === product.id, [product.id]);
 
   const own = tasks.filter((t) => t.product === product.id);
@@ -31,20 +36,19 @@ export function ProductOverview() {
       textMatch(filters.q, p.name, p.objective) &&
       (!filters.person || p.lead === filters.person),
   );
-  const trace = traces.find((tr) => own.some((t) => t.key === tr.taskKey));
-  const traceTask = trace ? own.find((t) => t.key === trace.taskKey) : undefined;
   const incident = incidents.find((i) => i.product === product.id && i.status !== 'resolved');
   const next = releases.filter((r) => r.product === product.id)[0];
 
   return (
     <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-w-0 space-y-3.5">
-        <Panel
-          title="Environments"
-          meta={<span>{environments.find((e) => e.product === product.id)?.provider}</span>}
-        >
+        <Panel title="Environments" meta={<span>{lanes[0]?.provider ?? ''}</span>}>
           <div className="p-2.5">
-            <EnvironmentPipeline lanes={environments.filter((e) => e.product === product.id)} />
+            {deploysLoading && deployments.length === 0 ? (
+              <p className="px-1 py-2 text-[12px] text-muted">Loading environments…</p>
+            ) : (
+              <EnvironmentPipeline lanes={lanes} />
+            )}
           </div>
         </Panel>
 
@@ -101,26 +105,49 @@ export function ProductOverview() {
         </Panel>
 
         <Panel
-          title="Latest release trace"
+          title="Latest production release"
           meta={
-            traceTask ? (
+            latestProd ? (
               <Link
-                to={`/tasks/${traceTask.key}`}
+                to={`/deployments/${latestProd.id}`}
                 className="font-mono text-accent hover:underline"
               >
-                {traceTask.key}
+                {latestProd.id}
               </Link>
             ) : undefined
           }
         >
-          {trace ? (
-            <div className="px-3.5 pb-2.5 pt-3">
-              <TraceChain steps={trace.steps} />
-              <p className="mt-2 text-[12px] text-muted">{trace.note}</p>
-            </div>
+          {latestProd ? (
+            <dl className="grid gap-x-4 gap-y-1 px-3.5 py-2.5 text-[12px] sm:grid-cols-2">
+              <div className="flex gap-1.5">
+                <dt className="text-muted">Release</dt>
+                <dd className="font-mono text-ink">
+                  {latestProd.sha} · {latestProd.version}
+                </dd>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <dt className="text-muted">Status</dt>
+                <dd>
+                  <StatusBadge {...deployMeta[latestProd.status]} dot />
+                </dd>
+              </div>
+              <div className="flex gap-1.5">
+                <dt className="text-muted">Requested</dt>
+                <dd className="text-ink">
+                  {memberById(latestProd.requestedBy).name} ·{' '}
+                  {formatDateTime(new Date(latestProd.createdAt))}
+                </dd>
+              </div>
+              <div className="flex gap-1.5">
+                <dt className="text-muted">Approved</dt>
+                <dd className="text-ink">
+                  {latestProd.approvedBy ? memberById(latestProd.approvedBy).name : '—'}
+                </dd>
+              </div>
+            </dl>
           ) : (
             <p className="px-3.5 py-4 text-[12.5px] text-muted">
-              No linked release yet — link a pull request to a task to trace it to production.
+              No production deployment recorded for {product.name} yet.
             </p>
           )}
         </Panel>

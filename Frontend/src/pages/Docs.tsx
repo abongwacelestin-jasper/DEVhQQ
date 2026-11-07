@@ -25,7 +25,7 @@ const emptyHints: Record<DocsView, string> = {
   all: 'No docs in this scope yet. Start from a template above.',
   recent: 'Nothing changed in the last 7 days.',
   starred: 'Star a doc to pin it here.',
-  review: 'No docs waiting on review or open comments.',
+  review: 'No docs waiting on review.',
   mine: 'You haven’t edited any docs in this scope.',
 };
 
@@ -42,7 +42,7 @@ export function Docs() {
   const view = (v.view as DocsView) || 'all';
   const [newOpen, setNewOpen] = useState(false);
   const [templateKind, setTemplateKind] = useState<DocKind>('spec');
-  const me = session?.memberId ?? 'm1';
+  const me = session?.memberId ?? '';
   const canCreate = canDo('doc:create');
 
   // Access rules first (role + visibility), then the global product/project scope.
@@ -65,7 +65,7 @@ export function Docs() {
     all: searched,
     recent: searched.filter((d) => new Date(d.updatedAt).getTime() >= weekAgo),
     starred: searched.filter((d) => starred.includes(d.id)),
-    review: searched.filter((d) => d.status === 'in-review' || d.comments.some((c) => !c.resolved)),
+    review: searched.filter((d) => d.status === 'in-review'),
     mine: searched.filter((d) => d.editors.includes(me)),
   };
   const counts = Object.fromEntries(

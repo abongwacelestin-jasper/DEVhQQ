@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { toast } from 'sonner';
 import {
   FingerprintIcon,
   LaptopIcon,
@@ -16,10 +15,10 @@ import { IdleClock } from './IdleClock';
 import { Avatar } from '../ui/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProductFilter } from '../../contexts/ProductFilterContext';
-import { demoMfaCode } from '../../data/roles';
+import { useDemoConfig } from '../../api/auth/useDemoConfig';
 import { illustrations } from '../../data/illustrations';
 import { memberById } from '../../utils/status';
-import { describeWebAuthnError, listPasskeys, verifyPasskey } from '../../utils/webauthn';
+import { passkeySupported } from '../../utils/webauthn';
 
 const ease = [0.23, 1, 0.32, 1] as const;
 
@@ -34,16 +33,20 @@ function formatElapsed(ms: number) {
 
 /** Full-screen lock after inactivity — page content is hidden until identity is re-verified. */
 export function LockScreen() {
-  const { session, role, unlock, signOut, idleMinutes, sessions } = useAuth();
+  const { session, role, unlock, verifyWithPasskey, signOut, idleMinutes, sessions, member } =
+    useAuth();
+  const demo = useDemoConfig();
+  const statusId = useId();
   const { scopeLabel } = useProductFilter();
   const navigate = useNavigate();
   const [code, setCode] = useState('');
   const [invalid, setInvalid] = useState(false);
+  const [passkeyError, setPasskeyError] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [busy, setBusy] = useState(false);
   const [lockedAt] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
-  const hasPasskey = listPasskeys().length > 0;
+  const hasPasskey = passkeySupported() && (member?.passkeys ?? 0) > 0;
   const idleSince = lockedAt - idleMinutes * 60_000;
 
   useEffect(() => {
@@ -51,27 +54,28 @@ export function LockScreen() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    if (code.length !== 6) return;
-    let cancelled = false;
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy || attempts >= 5) return;
+    if (code.length !== 6) {
+      setInvalid(true);
+      return;
+    }
     setBusy(true);
-    void (async () => {
-      const ok = await unlock(code);
-      if (cancelled) return;
-      if (!ok) {
-        setInvalid(true);
-        setAttempts((n) => n + 1);
-        setCode('');
-      }
-      setBusy(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [code, unlock]);
+    setPasskeyError('');
+    // The server checks the code (POST /api/auth/step-up); the browser cannot unlock itself.
+    const ok = await unlock(code);
+    if (!ok) {
+      setInvalid(true);
+      setAttempts((n) => n + 1);
+      setCode('');
+    }
+    setBusy(false);
+  };
 
   if (!session || !role) return null;
-  const me = memberById(session.memberId);
+  const known = memberById(session.memberId);
+  const me = { id: session.memberId, name: member?.name ?? known.name };
   const record = sessions.find((r) => r.id === session.id);
   const clock = new Date(now);
   const tooMany = attempts >= 5;
@@ -79,19 +83,16 @@ export function LockScreen() {
   const severity =
     lockedMs > 30 * 60_000 ? 'Long absence' : lockedMs > 10 * 60_000 ? 'Away' : 'Recently idle';
 
-  const usePasskey = async () => {
+  const unlockWithPasskey = async () => {
     setBusy(true);
-    try {
-      if (await verifyPasskey()) await unlock(demoMfaCode);
-    } catch (e) {
-      toast.error('Passkey check failed', { description: describeWebAuthnError(e) });
-    } finally {
-      setBusy(false);
-    }
+    setPasskeyError('');
+    const r = await verifyWithPasskey();
+    if (!r.ok) setPasskeyError(r.error ?? 'Passkey verification failed.');
+    setBusy(false);
   };
 
   const leave = () => {
-    signOut();
+    void signOut();
     navigate('/sign-in', { replace: true });
   };
 
@@ -188,7 +189,7 @@ export function LockScreen() {
           <p className="mt-4 text-[12px] text-muted">
             Enter your authenticator code to continue. Your work is safe.
           </p>
-          <div className="mt-2.5">
+          <form className="mt-2.5" onSubmit={submit} aria-describedby={statusId} noValidate>
             <CodeInput
               value={code}
               onChange={(v) => {
@@ -198,8 +199,20 @@ export function LockScreen() {
               invalid={invalid}
               autoFocus={!tooMany}
             />
-          </div>
-          <p className="mt-2 min-h-[18px] text-center text-[11.5px]" role="status">
+            <button
+              type="submit"
+              disabled={busy || tooMany}
+              className="mt-2.5 flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-ink text-[12.5px] font-semibold text-white transition-colors duration-150 hover:bg-ink/90 disabled:opacity-60"
+            >
+              <ShieldCheckIcon className="h-4 w-4" /> Unlock
+            </button>
+          </form>
+          <p
+            id={statusId}
+            className="mt-2 min-h-[18px] text-center text-[11.5px]"
+            role="status"
+            aria-live="polite"
+          >
             {busy ? (
               <span className="inline-flex items-center gap-1 text-muted">
                 <LoaderCircleIcon className="h-3.5 w-3.5 animate-spin" /> Verifying…
@@ -208,18 +221,25 @@ export function LockScreen() {
               <span className="font-medium text-bad">
                 Too many attempts — sign out and sign in again.
               </span>
+            ) : passkeyError ? (
+              <span className="font-medium text-bad">{passkeyError}</span>
             ) : invalid ? (
-              <span className="font-medium text-bad">Code didn’t match · {5 - attempts} left</span>
-            ) : (
-              <span className="text-muted">
-                Demo code <code className="font-mono font-semibold text-ink">{demoMfaCode}</code>
+              <span className="font-medium text-bad">
+                {code.length && code.length < 6
+                  ? 'Enter all 6 digits.'
+                  : `Code didn’t match · ${5 - attempts} left`}
               </span>
-            )}
+            ) : demo.enabled && demo.mfaCode ? (
+              <span className="text-muted">
+                Demo environment · code{' '}
+                <code className="font-mono font-semibold text-ink">{demo.mfaCode}</code>
+              </span>
+            ) : null}
           </p>
 
           {hasPasskey && (
             <button
-              onClick={usePasskey}
+              onClick={() => void unlockWithPasskey()}
               disabled={busy}
               className="mt-2.5 flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-line-strong text-[12.5px] font-medium text-ink transition-colors duration-150 hover:bg-sunken/60 disabled:opacity-60"
             >

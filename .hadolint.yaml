@@ -1,0 +1,10 @@
+# hadolint configuration (CI: .github/workflows/ci.yml, local: make lint-infra)
+failure-threshold: warning
+ignored:
+  # apk packages are not version-pinned: base images are pinned by digest and
+  # Alpine drops superseded package versions from its index, so pinning would
+  # break rebuilds without adding reproducibility.
+  - DL3018
+trustedRegistries:
+  - docker.io
+  - cgr.dev
