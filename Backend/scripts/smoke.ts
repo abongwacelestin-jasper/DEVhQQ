@@ -2200,6 +2200,13 @@ expect(
   );
 
   // Change password while signed in (Settings → Security)
+  // Every smoke block shares one IP, and by here the run has spent the per-IP
+  // auth budget (60, refilling 1/s) on earlier blocks. Start this block with a
+  // fresh limiter so it tests password changes, not the limiter (tested above).
+  {
+    const rl = await import('../security/rateLimit.ts');
+    rl.setRateLimitStore(new rl.MemoryRateLimitStore());
+  }
   const tomasA = await passwordSignIn('tomas@techorg.io', 'devhq-demo'); // m6
   const tomasB = await passwordSignIn('tomas@techorg.io', 'devhq-demo');
   const changed = 'Smoke-Change-2026!q';
@@ -2238,7 +2245,7 @@ expect(
       tomasOther.status === 401 &&
       tomasOld.status === 401 &&
       tomasNew.status === 200,
-    [pwWrong.status, pwWeak.status, pwOk.json, tomasKept.status, tomasOther.status],
+    [tomasA.status, pwWrong.status, pwWeak.status, pwOk.status, tomasKept.status, tomasOther.status, tomasOld.status, tomasNew.status],
   );
   const others = await req('POST', '/api/auth/sign-out-others', undefined, tomasNew.token);
   const keptAfter = await req('GET', '/api/auth/session', undefined, tomasNew.token);
