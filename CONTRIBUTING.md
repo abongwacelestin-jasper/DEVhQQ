@@ -1,250 +1,139 @@
 # Contributing to DevHQ
 
-Thanks for taking the time to contribute. This document describes how we work,
-what we expect from a pull request, and the security rules that are
-non-negotiable in this repository.
-
----
-
-## Table of Contents
-
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Repository Layout](#repository-layout)
-- [Development Workflow](#development-workflow)
-- [Commit Convention](#commit-convention)
-- [Coding Standards](#coding-standards)
-- [Testing](#testing)
-- [Security Requirements](#security-requirements)
-- [Pull Request Checklist](#pull-request-checklist)
-- [Release Process](#release-process)
-- [Getting Help](#getting-help)
-
----
+How we work on this repository: setup, the rules every change follows, what a
+pull request must contain, and how it is verified. Read the
+[docs](docs/index.md) for how the system works.
 
 ## Code of Conduct
 
-This project adheres to the [Contributor Covenant](./CODE_OF_CONDUCT.md). By
-participating you are expected to uphold it. Report unacceptable behaviour to
-**conduct@devhq.com**.
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
 
-## Getting Started
+## Setup
 
-### Prerequisites
-
-| Tool    | Version   | Notes                                  |
-| ------- | --------- | -------------------------------------- |
-| Node.js | >= 22.6.0 | Required for native TypeScript support |
-| npm     | >= 10.0.0 | Workspaces support                     |
-| Python  | >= 3.10.0 | Only for the `Models` workspace        |
-| Git     | >= 2.40   | Signed commits recommended             |
-
-### Install
+| Tool | Version | Notes |
+|---|---|---|
+| Node.js | ≥ 22.6 | the API runs TypeScript with `--experimental-strip-types` |
+| npm | ≥ 10 | workspaces |
+| Git | recent | |
 
 ```bash
-git clone https://github.com/devhq/devhq.git
-cd devhq
-
-# Single install for all workspaces (hoisted)
-npm install
+npm install              # root workspaces: Backend, Frontend, Models
+npm run hooks:install    # optional: Husky + lint-staged pre-commit hook
 ```
 
-Copy the environment template and fill in local-only values:
+`.npmrc` sets `ignore-scripts=true`: dependency install scripts never run, so
+hooks are not installed automatically. Keep that setting.
 
-```bash
-cp .env.example .env
+Run the API and the web app as described in
+[Local development](docs/getting-started/local-development.md). No `.env` file
+is needed for development; the API has safe development defaults and does not
+read `.env` itself. Never commit real secrets (`.env` and `.env.*` are
+git-ignored).
+
+## Repository layout
+
+```text
+Backend/    the API (Node, strip-only TypeScript, no runtime dependencies) — see Backend/README.md
+Frontend/   the web app (Vite + React) — see Frontend/README.md
+Models/     placeholder for the Python ML service (Wave 4)
+docs/       documentation, generators and the docs linter — see docs/index.md
+docs/agents/  internal coordination for the delivery lanes (BOARD, WAVE4)
+.github/    CI, security scans, Dependabot
 ```
 
-> `.env` is git-ignored. Never commit it, and never paste real credentials into
-> an issue, pull request, or chat.
+## Scripts
 
-### Run
+From the root (all workspaces) or inside a package:
 
-```bash
-npm run dev            # all workspaces
-npm run dev:backend    # API only
-npm run dev:frontend   # web app only
-```
+| Command | Backend | Frontend | docs |
+|---|---|---|---|
+| typecheck | `npm run typecheck` | `npm run typecheck` | — |
+| lint (0 warnings) | `npm run lint` | `npm run lint` | — |
+| tests | `npm run smoke` (`npm test`) | `npm test` (runs typecheck) | `npm run check` |
+| build | — (no build step) | `npm run build` | `npm run gen` |
+| format | `npm run format:check` | `npm run format:check` | — |
 
-## Repository Layout
+Root shortcuts: `npm run typecheck`, `npm run lint`, `npm test`,
+`npm run dev:backend`, `npm run dev:frontend`.
 
-```
-.
-├── Backend/     Node.js + TypeScript API (no build step)
-├── Frontend/    React + Vite + Tailwind web client
-├── Models/      ML models and training scripts
-├── docs/        Architecture and design notes
-└── .github/     CI, security scans, Dependabot
-```
+## Hard rules
 
-Each workspace is an independent npm package. Cross-workspace imports must go
-through the published package name (`@devhq/backend`), never a relative path
-that escapes the workspace root.
+From `docs/agents/BOARD.md` and `docs/agents/WAVE4.md`. A pull request that
+breaks one is not merged.
 
-## Development Workflow
+1. **Never weaken a check to go green.** No skipped or deleted assertions, no
+   `echo … && exit 0` standing in for a test, no relaxing an existing smoke
+   check.
+2. **No `any`, no `@ts-ignore`.** An `eslint-disable` needs a one-line
+   justification next to it.
+3. **Every state change is audited** with `audit.append(…)`, including the
+   request id.
+4. **Out of scope is `404`**, never `403`: a resource in a product the caller
+   is not assigned to must look like it does not exist.
+5. **Validate every input** against an allow-list schema (`Backend/lib/validate.ts`).
+6. **Strip-only TypeScript in the backend**: no `enum`, `namespace`,
+   parameter properties or decorators; import with `.ts`; `import type` for
+   types ([ADR 0002](docs/architecture/adr/0002-strip-only-typescript.md)).
+7. **No new runtime dependency in the backend** without an ADR.
+8. **No secrets in source**, tests, fixtures, comments or commit messages.
+9. **Stay inside your ownership.** During a wave, each lane edits only its
+   listed files; shared hotspots (`Backend/server.ts`, `Backend/types.ts`,
+   `Frontend/src/App.tsx`, `Backend/scripts/smoke.ts`) take additive, minimal
+   edits only.
+10. **"Done" means it runs and is tested twice**, on fresh processes, with the
+    second run not reusing the first run's state. A flake is a failure.
 
-1. **Open an issue first** for anything larger than a typo or a one-line fix.
-   This avoids duplicated effort and lets us agree on the approach.
-2. **Fork and branch** from `main`:
+Security requirements in more detail are in [SECURITY.md](SECURITY.md).
 
-   ```bash
-   git switch -c feat/short-description
-   ```
+## Commits
 
-   Branch prefixes: `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `test/`,
-   `security/`, `perf/`.
+Conventional Commits, one logical change per commit:
 
-3. **Keep commits small and focused.** One logical change per commit.
-4. **Rebase, don't merge.** `git rebase origin/main` before opening a PR.
-5. **Open the PR** against `main` and fill in the template completely.
-
-### Pre-commit hooks
-
-Dependency lifecycle scripts are disabled via `.npmrc` (`ignore-scripts=true`),
-so hooks are **not** installed automatically. Enable them once per clone:
-
-```bash
-npm run hooks:install
-```
-
-Husky then runs `lint-staged` on commit, which applies ESLint and Prettier to
-staged files. If a hook fails, fix the reported issue — do not use
-`--no-verify`.
-
-## Commit Convention
-
-We follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
+```text
 <type>(<scope>): <subject>
-
-[optional body]
-
-[optional footer]
 ```
 
-- **type**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`,
-  `ci`, `chore`, `revert`, `security`
-- **scope**: workspace or area — `backend`, `frontend`, `models`, `deps`, `ci`
-- **subject**: imperative mood, lowercase, no trailing period, <= 72 chars
+- **type**: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`, `build`,
+  `perf`, `security`
+- **scope**: `backend`, `frontend`, `models`, `docs`, `deps`, `ci`
+- **subject**: imperative, lower case, no trailing period, ≤ 72 characters
 
-Examples:
+During a delivery wave, lanes commit as `wave4(<LANE>): <subject>`, e.g.
+`wave4(DOCS): add generated API reference`.
 
-```
-feat(backend): add per-tenant rate limiting
-fix(frontend): prevent stale auth state after logout
-security(deps): bump vite to 5.4.20 for CVE-2025-30208
-```
+## Tests
 
-Breaking changes must include a `BREAKING CHANGE:` footer and a `!` after the
-type, e.g. `feat(backend)!: drop Node 20 support`.
+- **Backend:** `npm run smoke` boots the app in-process and walks the critical
+  paths (health, the console page and its CSP nonce, OpenAPI, every demo
+  sign-in, password + MFA, product scoping and `404`, task writes and
+  activity, unknown-field rejection, the query runner, no user enumeration,
+  the audit chain). Two-person deploy, step-up and token rotation are covered
+  by the supervisor gate described in `docs/agents/BOARD.md`, not by smoke. New routes add a labelled block with a happy path and at least
+  one refusal (`403` wrong role, `404` other product, `422` bad body).
+- **Frontend:** `typecheck`, `lint` and `build` must pass.
+- **Docs:** `cd docs && npm run check` — the generated pages must be current
+  and every link and file path must exist.
+- Tests must not depend on the network or on another run's state.
 
-## Coding Standards
+## Pull request checklist
 
-Formatting and linting are enforced by tooling, not by review comments:
-
-```bash
-npm run format        # write formatting
-npm run format:check  # verify (CI)
-npm run lint          # ESLint, zero warnings allowed
-npm run typecheck     # tsc --noEmit
-```
-
-Conventions:
-
-- TypeScript everywhere; `strict` mode is on. Avoid `any` — use `unknown` and
-  narrow.
-- Prefer named exports over default exports.
-- No `console.log` in library code; use the logger abstraction.
-- No commented-out code, no `TODO` without an issue reference.
-- Files are UTF-8, LF line endings, 2-space indent (4 for Python).
-- Keep functions small and pure where practical; isolate I/O at the edges.
-
-### TypeScript
-
-The backend runs TypeScript directly via Node's type stripping, so:
-
-- Only **erasable** syntax is allowed in `Backend/` (no `enum`, no `namespace`,
-  no parameter properties, no decorators).
-- Use `import type { X } from '...'` for type-only imports.
-
-## Testing
-
-```bash
-npm test                      # all workspaces
-npm run test:backend          # single workspace
-npm run test:coverage         # coverage report
-```
-
-- Every bug fix ships with a regression test.
-- Every new endpoint ships with at least one happy-path and one failure test.
-- Tests must not depend on network access or wall-clock time; inject clocks and
-  HTTP clients.
-
-## Security Requirements
-
-Security is a first-class requirement in DevHQ. The following are mandatory and
-will block a pull request:
-
-1. **No secrets in source.** No keys, tokens, passwords, private keys, or
-   connection strings — not in code, tests, fixtures, comments, or commit
-   messages. Use environment variables (see `.env.example`).
-2. **No new dependency without justification.** Explain in the PR why the
-   dependency is needed, its maintenance status, and its licence. GPL-3.0 and
-   AGPL-3.0 are not permitted.
-3. **Validate all external input** at the trust boundary (HTTP handler, CLI
-   argument, file read). Never trust client-supplied IDs, sizes, or paths.
-4. **No dynamic code execution.** `eval`, `new Function`, and `vm` are banned by
-   lint rule. If you believe you need one, open an issue first.
-5. **No path traversal.** Resolve and verify user-supplied paths stay inside the
-   intended directory.
-6. **No raw SQL string concatenation.** Use parameterised queries.
-7. **Escape output** rendered into HTML; never use `dangerouslySetInnerHTML`
-   with untrusted content.
-8. **Least privilege.** New endpoints must declare authentication and
-   authorisation explicitly; deny by default.
-9. **Log safely.** Never log tokens, passwords, full request bodies, or PII.
-10. **Report vulnerabilities privately** per [SECURITY.md](./SECURITY.md) — not
-    in a public issue.
-
-CI enforces: `npm audit --audit-level=high`, CodeQL, Gitleaks, Trivy, and
-dependency review. A red security check is never overridden by a maintainer
-without a documented, time-boxed exception.
-
-## Pull Request Checklist
-
-- [ ] Linked issue (or a clear explanation of the change)
-- [ ] Scope limited to one logical change
-- [ ] `npm run lint` passes with zero warnings
-- [ ] `npm run typecheck` passes
-- [ ] `npm run test` passes
-- [ ] `npm run format:check` passes
-- [ ] Tests added or updated for behaviour changes
+- [ ] One logical change; files touched are listed
+- [ ] `Backend`: `npm run typecheck && npm run lint && npm run smoke` — 0 / 0 / all pass
+- [ ] `Frontend`: `npm run typecheck && npm run lint && npm run build` — 0 / 0 / exit 0
+- [ ] Ran the checks twice on fresh processes
+- [ ] New routes: registered with summary and tag, guarded, validated, audited, scoped, smoke-tested
+- [ ] `cd docs && npm run gen && npm run check` passes; docs updated for changed behaviour or configuration
 - [ ] `CHANGELOG.md` updated under `[Unreleased]`
-- [ ] No secrets, debug output, or commented-out code
-- [ ] No new dependency, or a justification is included
-- [ ] Documentation updated when behaviour or configuration changes
+- [ ] No secrets, debug output, `any`, `@ts-ignore`, or unexplained `eslint-disable`
+- [ ] No new dependency, or a justification (and an ADR for the backend)
 
-A maintainer will review within 3 business days. Reviews may request changes;
-please respond or close the PR rather than letting it go stale.
+Handoff format for lane work:
+`status | branch | files | what changed | verification commands + results | known gaps | requests for coordinator`.
 
-## Release Process
+## Reporting security issues
 
-1. Update `CHANGELOG.md` and bump `version` in the root and affected workspace
-   `package.json` files.
-2. Run the full validation suite locally.
-3. Tag: `git tag -a v1.x.y -m "v1.x.y"` and push the tag.
-4. CI publishes the GitHub release notes from the changelog.
-5. Post-release: verify the deployment and rotate any credentials touched by the
-   release.
-
-## Getting Help
-
-- **Questions / ideas**: open a GitHub Discussion.
-- **Bugs**: open an issue with reproduction steps.
-- **Security**: email **security@devhq.com** (never a public issue).
-
----
+Privately, as described in [SECURITY.md](SECURITY.md) — never in a public
+issue.
 
 By contributing you agree that your contributions are licensed under the
-[MIT License](./LICENSE).
+[MIT License](LICENSE).
