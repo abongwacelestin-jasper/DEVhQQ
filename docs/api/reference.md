@@ -268,10 +268,10 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/offboarding` | All offboardings (Administration:view) | session | Administration ≥ view | 401 403 429 | [offboarding.routes.ts:133](../../Backend/routes/offboarding.routes.ts#L133) |
-| `GET` | `/api/offboarding/:memberId` | A member’s current offboarding (self or Administration:view) | session | — | 401 404 | [offboarding.routes.ts:144](../../Backend/routes/offboarding.routes.ts#L144) |
-| `POST` | `/api/offboarding/:memberId` | Start offboarding (self-resignation, or Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:163](../../Backend/routes/offboarding.routes.ts#L163) |
-| `PATCH` | `/api/offboarding/:memberId` | Update the offboarding checklist or status (Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:221](../../Backend/routes/offboarding.routes.ts#L221) |
+| `GET` | `/api/offboarding` | Offboardings: all for Administration:view, otherwise only your own | session | — | 401 403 429 | [offboarding.routes.ts:133](../../Backend/routes/offboarding.routes.ts#L133) |
+| `GET` | `/api/offboarding/:memberId` | A member’s current offboarding (self or Administration:view) | session | — | 401 404 | [offboarding.routes.ts:149](../../Backend/routes/offboarding.routes.ts#L149) |
+| `POST` | `/api/offboarding/:memberId` | Start offboarding (self-resignation, or Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:168](../../Backend/routes/offboarding.routes.ts#L168) |
+| `PATCH` | `/api/offboarding/:memberId` | Update the offboarding checklist or status (Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:226](../../Backend/routes/offboarding.routes.ts#L226) |
 
 ## github
 
