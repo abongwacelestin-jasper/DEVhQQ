@@ -146,6 +146,11 @@ export function registeredCollections(): string[] {
   return [...registry.keys()];
 }
 
+/** Looks up a registered collection by name (used by backups to snapshot and restore every collection). */
+export function getCollection(name: string): Collection<unknown> | undefined {
+  return registry.get(name);
+}
+
 /** Hydrates every registered collection. Returns rows loaded per collection. */
 export async function hydrateAll(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
