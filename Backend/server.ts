@@ -47,6 +47,13 @@ import { registerOnboardingRoutes } from './routes/onboarding.routes.ts';
 import { registerRecoveryRoutes } from './routes/recovery.routes.ts';
 import { registerOffboardingRoutes } from './routes/offboarding.routes.ts';
 import { registerDocCollabRoutes } from './routes/doc-collab.routes.ts';
+import { registerGithubRoutes } from './routes/github.routes.ts';
+import { registerRepoRoutes } from './routes/repos.routes.ts';
+import { registerPullRoutes } from './routes/pulls.routes.ts';
+import { registerCiRoutes } from './routes/ci.routes.ts';
+import { registerMonitorRoutes } from './routes/monitors.routes.ts';
+import { registerIntegrationRoutes } from './routes/integrations.routes.ts';
+import { registerWebhookRoutes } from './routes/webhooks.routes.ts';
 
 export async function buildApp() {
   // Postgres when DATABASE_URL is set (migrate → driver → hydrate → seed-if-empty), else in-memory.
@@ -73,6 +80,13 @@ export async function buildApp() {
   registerRecoveryRoutes(router);
   registerOffboardingRoutes(router);
   registerDocCollabRoutes(router);
+  registerGithubRoutes(router);
+  registerRepoRoutes(router);
+  registerPullRoutes(router);
+  registerCiRoutes(router);
+  registerMonitorRoutes(router);
+  registerIntegrationRoutes(router);
+  registerWebhookRoutes(router);
   return router;
 }
 
