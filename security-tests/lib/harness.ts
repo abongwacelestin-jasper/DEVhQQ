@@ -11,6 +11,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -190,6 +191,69 @@ export interface Check {
   /** Extra env the server needs for this check. */
   env?: Record<string, string>;
   run: (base: string, server: Server) => Promise<Finding>;
+}
+
+/** RFC 6238 TOTP (SHA-1, 6 digits, 30 s) so checks can complete real enrollments. */
+export function totp(base32Secret: string, now = Date.now(), drift = 0): string {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0;
+  let value = 0;
+  const bytes: number[] = [];
+  for (const ch of base32Secret.replace(/=+$/, '').toUpperCase()) {
+    value = (value << 5) | A.indexOf(ch);
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  const counter = Math.floor(now / 30_000) + drift;
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64BE(BigInt(counter));
+  const mac = createHmac('sha1', Buffer.from(bytes)).update(buf).digest();
+  const o = mac[mac.length - 1] & 0x0f;
+  const bin =
+    ((mac[o] & 0x7f) << 24) | (mac[o + 1] << 16) | (mac[o + 2] << 8) | mac[o + 3];
+  return String(bin % 1_000_000).padStart(6, '0');
+}
+
+/** CLI-style (body-token) request helpers: no Origin, X-DevHQ-Client: cli. */
+export const CLI = { 'x-devhq-client': 'cli' } as const;
+
+/**
+ * Creates a real, factor-less, non-seeded member through the Owner invite →
+ * accept-invite flow and returns its credentials. Uses a fresh Owner demo
+ * session, which is strongly verified (satisfies step-up) at sign-in.
+ */
+export async function inviteMember(
+  base: string,
+  email: string,
+  role = 'Developer',
+  products = ['renewberry'],
+): Promise<{ email: string; password: string }> {
+  const owner = await signInDemo(base, 'admin');
+  const inv = await req(base, 'POST', '/api/team/invites', {
+    token: owner,
+    headers: CLI,
+    body: { email, role, products },
+  });
+  const link: string | undefined = inv.json?.inviteLink;
+  const tok = link ? new URL(link, 'http://x').searchParams.get('token') : null;
+  if (!tok) throw new Error(`invite failed: ${inv.status} ${inv.text}`);
+  const password = 'Cyber-Probe-Passw0rd!';
+  const acc = await req(base, 'POST', '/api/auth/accept-invite', {
+    headers: CLI,
+    body: { token: tok, password },
+  });
+  if (acc.status !== 200) throw new Error(`accept-invite failed: ${acc.status} ${acc.text}`);
+  return { email, password };
+}
+
+/** Password step only: returns the partial (pre-MFA) bearer token. */
+export async function passwordStep(base: string, email: string, password: string): Promise<string> {
+  const r = await req(base, 'POST', '/api/auth/sign-in', { headers: CLI, body: { email, password } });
+  if (!r.json?.token) throw new Error(`password step failed: ${r.status} ${r.text}`);
+  return r.json.token as string;
 }
 
 /** Simple statistics helper for timing analysis (median + percentile). */

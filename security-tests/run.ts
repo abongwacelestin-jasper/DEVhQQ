@@ -39,6 +39,17 @@ import { check as bodySize } from './checks/dos-body-size.ts';
 import { check as csp } from './checks/csp-and-clickjacking.ts';
 import { check as ssrfCodespaces } from './checks/ssrf-codespaces.ts';
 import { check as ssrfMonitors } from './checks/ssrf-monitors-webhooks.ts';
+// Phase 2 — merged branch attack surface.
+import { check as mfaEnroll } from './checks/mfa-enrollment.ts';
+import { check as patAuthority } from './checks/pat-authority.ts';
+import { check as fileUpload } from './checks/file-upload-policy.ts';
+import { check as ghWebhook } from './checks/github-webhook.ts';
+import { check as mlHmac } from './checks/ml-hmac.ts';
+import { check as ssrfGuard } from './checks/ssrf-guard-unit.ts';
+import { check as streamXchannel } from './checks/stream-cross-channel.ts';
+import { check as restoreAuthz } from './checks/backup-restore-authz.ts';
+import { check as assistant } from './checks/assistant-prompt-injection.ts';
+import { check as envFailOpen } from './checks/env-failopen.ts';
 
 const CHECKS: Check[] = [
   enumeration,
@@ -59,6 +70,17 @@ const CHECKS: Check[] = [
   csp,
   ssrfCodespaces,
   ssrfMonitors,
+  // Phase 2
+  mfaEnroll,
+  patAuthority,
+  fileUpload,
+  ghWebhook,
+  mlHmac,
+  ssrfGuard,
+  streamXchannel,
+  restoreAuthz,
+  assistant,
+  envFailOpen,
 ];
 
 interface Row {
