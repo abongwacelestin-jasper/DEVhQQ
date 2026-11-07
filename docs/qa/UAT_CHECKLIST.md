@@ -18,6 +18,8 @@ Mark each item ✅ pass · ❌ fail (note what you saw) · ➖ not applicable.
 - [ ] A7. Account menu → **Sign out** goes to sign-in. Going back or reloading does not re-enter the app
 - [ ] A8. Security → sign out everywhere: a second browser signed in as the same person is signed out too
 - [ ] A9. A demo button signs in each of the six roles and lands on that role's home
+- [ ] A10. On the 6-digit screen, **Lost your authenticator? Use a backup code** accepts one of the codes shown at onboarding (or generated under Security → Backup codes) once, and refuses it the second time (QA-026)
+- [ ] A11. As a Developer, open `/audit`: the no-access page appears; **Request access** shows "Request sent" and the Owner gets a notification linking to that member (QA-010)
 
 ## B. New member enrolment (Owner + a second browser)
 

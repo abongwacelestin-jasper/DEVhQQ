@@ -7,7 +7,7 @@
 import { test, expect, uid } from '../support/fixtures';
 import { completeStepUp, enterCode, signInViaApi } from '../support/auth';
 import { apiSession, requestProductionDeploy } from '../support/api';
-import { personas } from '../support/personas';
+import { DEMO_MFA_CODE, DEMO_PASSWORD, personas } from '../support/personas';
 
 test.describe('@wave4 F-SEC identity in the browser', () => {
   test('demo sign-in survives a reload and keeps no token in web storage', async ({ page }) => {
@@ -62,12 +62,18 @@ test.describe('@wave4 F-SEC identity in the browser', () => {
     const b = await browser.newContext({ baseURL });
     const pa = await a.newPage();
     const pb = await b.newPage();
-    await signInViaApi(pa, 'admin');
-    await signInViaApi(pb, 'admin');
+    // A member no other journey uses: ending *every* session of a shared persona would
+    // sign out tests running in parallel.
+    for (const p of [pa, pb]) {
+      const pw = await p.request.post('/api/auth/sign-in', { data: { email: 'lena@techorg.io', password: DEMO_PASSWORD } });
+      expect(pw.status()).toBe(200);
+      expect((await p.request.post('/api/auth/mfa/totp', { data: { code: DEMO_MFA_CODE } })).status()).toBe(200);
+    }
+    expect((await pb.request.get('/api/auth/session')).status()).toBe(200);
     const res = await pa.request.post('/api/auth/sign-out-everywhere');
     expect(res.status()).toBeLessThan(300);
     expect((await pb.request.get('/api/auth/session')).status()).toBe(401);
-    await pb.reload();
+    await pb.goto('/my-work');
     await expect(pb).toHaveURL(/\/sign-in$/);
     // And the UI offers it: Security → sessions.
     const pc = await (await browser.newContext({ baseURL })).newPage();

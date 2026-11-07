@@ -13,13 +13,29 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHmac } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const BACKEND_DIR = fileURLToPath(new URL('../../Backend/', import.meta.url));
 
-let nextPort = 8100 + Math.floor(Math.random() * 400);
+/**
+ * A loopback port the OS confirms is free right now. Guessing ports let a check talk to some
+ * other process already listening there (e.g. a stray dev server) and report its behaviour.
+ */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.unref();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+      srv.close(() => (port ? resolve(port) : reject(new Error('no free port'))));
+    });
+  });
+}
 
 export interface Server {
   base: string;
@@ -34,7 +50,7 @@ export interface ServerOpts {
 }
 
 export async function spawnServer(opts: ServerOpts = {}): Promise<Server> {
-  const port = nextPort++;
+  const port = await freePort();
   const dir = mkdtempSync(join(tmpdir(), 'devhq-cyber-'));
   const child: ChildProcess = spawn(
     process.execPath,
@@ -84,7 +100,9 @@ export async function spawnServer(opts: ServerOpts = {}): Promise<Server> {
     }
     try {
       const r = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(500) });
-      if (r.ok) return { base, port, stop, log: () => buf };
+      // Only our own child counts: a server that is refusing to boot must not be
+      // mistaken for whatever else answers on the port.
+      if (r.ok && child.exitCode === null) return { base, port, stop, log: () => buf };
     } catch {
       /* not up yet */
     }
