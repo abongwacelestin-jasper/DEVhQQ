@@ -29,7 +29,8 @@
 #   ANTHROPIC_API_KEY (optional)          assistant in the models service
 #   RESEND_API_KEY   (optional)           mail via Resend; with it, MAIL_FROM is required
 #   MAIL_FROM        (with Resend)        e.g. "DevHQ <no-reply@mail.example.com>"
-#   BRAND_*          (optional, env only) BRAND_NAME, BRAND_LEGAL_NAME, BRAND_LOGO_URL,
+#   BRAND_*          (optional, env only; see infra/brand/devhq.brand.env)
+#                                         BRAND_NAME, BRAND_LEGAL_NAME, BRAND_LOGO_URL,
 #                                         BRAND_PRIMARY_COLOR, BRAND_ACCENT_COLOR,
 #                                         BRAND_SUPPORT_EMAIL, BRAND_POSTAL_ADDRESS,
 #                                         BRAND_WEBSITE_URL, MAIL_REPLY_TO
@@ -371,6 +372,8 @@ jq -n --arg akid "$R2_MODELS_ACCESS_KEY_ID" --arg sak "$R2_MODELS_SECRET_ACCESS_
 # (logged, not sent). With one, production refuses to boot unless MAIL_FROM is set.
 if [ -n "${RESEND_API_KEY:-}" ]; then
   log "Resend mail + brand (backend and worker)"
+  # The frontend serves the brand logo, so it defaults to the app's own domain.
+  BRAND_LOGO_URL="${BRAND_LOGO_URL:-https://${DEVHQ_DOMAIN}/brand/devhq-email-logo.png}"
   MAIL_JSON="$(jq -n --arg k "$RESEND_API_KEY" --arg from "$MAIL_FROM" --arg app "https://${DEVHQ_DOMAIN}" '{
     MAIL_TRANSPORT: "resend", RESEND_API_KEY: $k, MAIL_FROM: $from, APP_URL: $app
   }')"

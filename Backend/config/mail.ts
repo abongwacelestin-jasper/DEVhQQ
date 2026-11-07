@@ -208,7 +208,7 @@ export function loadMailConfig(
     logoUrl,
     logoWidth: positiveInt('BRAND_LOGO_WIDTH', env.BRAND_LOGO_WIDTH, 120, 560),
     primaryColor: normalizeColor('BRAND_PRIMARY_COLOR', env.BRAND_PRIMARY_COLOR || '#4f46e5'),
-    accentColor: normalizeColor('BRAND_ACCENT_COLOR', env.BRAND_ACCENT_COLOR || '#0e7490'),
+    accentColor: normalizeColor('BRAND_ACCENT_COLOR', env.BRAND_ACCENT_COLOR || '#3730a3'),
     supportEmail,
     postalAddress,
     websiteUrl,

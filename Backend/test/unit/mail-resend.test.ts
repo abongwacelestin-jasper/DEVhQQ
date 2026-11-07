@@ -322,5 +322,8 @@ describe('config/mail — fail closed', () => {
     assert.equal(c.brand.appUrl, 'http://localhost:5173');
     assert.match(c.from, /^DevHQ <no-reply@devhq\.local>$/);
     assert.equal(c.brand.supportEmail, 'support@devhq.local');
+    // The platform's own palette (docs/operations/brand.md).
+    assert.equal(c.brand.primaryColor, '#4f46e5');
+    assert.equal(c.brand.accentColor, '#3730a3');
   });
 });
