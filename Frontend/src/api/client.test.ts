@@ -87,7 +87,14 @@ describe('api() — error mapping', () => {
     client.setAuthHandlers({ stepUp }); // merged, not replaced
   });
 
-  it.each(['unauthenticated', 'session_revoked', 'session_expired', 'mfa_required'])(
+  it.each([
+    'unauthenticated',
+    'invalid_token',
+    'session_revoked',
+    'session_expired',
+    'session_context_changed',
+    'account_inactive',
+  ])(
     '401 %s ends the session: sign-out handler fires',
     async (code) => {
       mockFetch().reply(401, apiError(code, 'Session ended', undefined, 'req-9'));
@@ -105,6 +112,17 @@ describe('api() — error mapping', () => {
       expect(stepUp).not.toHaveBeenCalled();
     },
   );
+
+  it('401 mfa_required (password-only session mid sign-in) does not sign the user out', async () => {
+    mockFetch().reply(401, apiError('mfa_required', 'Complete MFA to continue'));
+    const e = await caught(client.api('/api/tasks'));
+    expect(e).toBeInstanceOf(client.ApiError);
+    const err = e as InstanceType<ClientModule['ApiError']>;
+    expect(err).toMatchObject({ status: 401, code: 'mfa_required' });
+    expect(err.isSessionEnded).toBe(false);
+    expect(signedOut).not.toHaveBeenCalled();
+    expect(stepUp).not.toHaveBeenCalled();
+  });
 
   it('401 step_up_required opens re-verification, then retries the request once verified', async () => {
     stepUp.mockResolvedValueOnce(true);

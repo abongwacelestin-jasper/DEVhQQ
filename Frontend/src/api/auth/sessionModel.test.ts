@@ -14,6 +14,7 @@ const identity = (over: Partial<Identity> = {}): Identity => ({
   verified: true,
   method: 'password',
   mfaMethods: ['totp'],
+  enrollRequired: false,
   serverSessionId: 'abcd1234',
   signedInAt: '2026-11-07T08:00:00Z',
   trustedDevice: false,

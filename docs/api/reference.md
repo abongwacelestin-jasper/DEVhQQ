@@ -77,7 +77,7 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 | `DELETE` | `/api/auth/sessions/:sessionPrefix` | Revoke one of your other sessions | session | interactive session | 401 403 404 | [auth.routes.ts:1037](../../Backend/routes/auth.routes.ts#L1037) |
 | `POST` | `/api/auth/sign-out` | End this session | partial (password only) | — | 401 403 429 | [auth.routes.ts:1057](../../Backend/routes/auth.routes.ts#L1057) |
 | `POST` | `/api/auth/sign-out-everywhere` | Revoke all sessions for this account | session | interactive session | 401 403 429 | [auth.routes.ts:1074](../../Backend/routes/auth.routes.ts#L1074) |
-| `GET` | `/api/me/capabilities` | Effective permissions for the signed-in member | session | — | 401 403 429 | [team.routes.ts:120](../../Backend/routes/team.routes.ts#L120) |
+| `GET` | `/api/me/capabilities` | Effective permissions for the signed-in member | session | — | 401 403 429 | [team.routes.ts:121](../../Backend/routes/team.routes.ts#L121) |
 | `POST` | `/api/auth/recovery/request` | Request a password reset link (always 202, no enumeration) | public | — | 202 422 429 | [recovery.routes.ts:57](../../Backend/routes/recovery.routes.ts#L57) |
 | `POST` | `/api/auth/recovery/reset` | Set a new password from a reset link (signs out every session) | public | — | 400 410 422 429 | [recovery.routes.ts:117](../../Backend/routes/recovery.routes.ts#L117) |
 
@@ -119,19 +119,19 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/team` | Members who share a product with the caller | session | Organization ≥ view | 401 403 429 | [team.routes.ts:78](../../Backend/routes/team.routes.ts#L78) |
-| `GET` | `/api/team/roles` | Role × area permission matrix | session | — | 401 403 429 | [team.routes.ts:107](../../Backend/routes/team.routes.ts#L107) |
-| `POST` | `/api/team/invites` | Invite a member to the workspace | session | Organization ≥ admin · step-up | 401 403 409 422 | [team.routes.ts:154](../../Backend/routes/team.routes.ts#L154) |
-| `PATCH` | `/api/team/:memberId` | Change role, products or status | session | Organization ≥ admin · step-up | 401 403 429 | [team.routes.ts:210](../../Backend/routes/team.routes.ts#L210) |
+| `GET` | `/api/team` | Members who share a product with the caller | session | Organization ≥ view | 401 403 429 | [team.routes.ts:79](../../Backend/routes/team.routes.ts#L79) |
+| `GET` | `/api/team/roles` | Role × area permission matrix | session | — | 401 403 429 | [team.routes.ts:108](../../Backend/routes/team.routes.ts#L108) |
+| `POST` | `/api/team/invites` | Invite a member to the workspace | session | Organization ≥ admin · step-up | 401 403 409 422 | [team.routes.ts:155](../../Backend/routes/team.routes.ts#L155) |
+| `PATCH` | `/api/team/:memberId` | Change role, products or status | session | Organization ≥ admin · step-up | 401 403 429 | [team.routes.ts:211](../../Backend/routes/team.routes.ts#L211) |
 
 ## access
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/access/grants` | All JIT grants | session | Administration ≥ view | 401 403 429 | [team.routes.ts:250](../../Backend/routes/team.routes.ts#L250) |
-| `POST` | `/api/access/grants` | Request time-boxed production access | session | step-up | 401 403 429 | [team.routes.ts:259](../../Backend/routes/team.routes.ts#L259) |
-| `POST` | `/api/access/grants/:grantId/approve` | Approve a JIT grant (two-person rule) | session | step-up | 401 403 429 | [team.routes.ts:279](../../Backend/routes/team.routes.ts#L279) |
-| `POST` | `/api/access/grants/:grantId/revoke` | Revoke or deny a JIT grant | session | Deployment ≥ manage · step-up | 401 403 429 | [team.routes.ts:292](../../Backend/routes/team.routes.ts#L292) |
+| `GET` | `/api/access/grants` | All JIT grants | session | Administration ≥ view | 401 403 429 | [team.routes.ts:254](../../Backend/routes/team.routes.ts#L254) |
+| `POST` | `/api/access/grants` | Request time-boxed production access | session | step-up | 401 403 429 | [team.routes.ts:263](../../Backend/routes/team.routes.ts#L263) |
+| `POST` | `/api/access/grants/:grantId/approve` | Approve a JIT grant (two-person rule) | session | step-up | 401 403 429 | [team.routes.ts:283](../../Backend/routes/team.routes.ts#L283) |
+| `POST` | `/api/access/grants/:grantId/revoke` | Revoke or deny a JIT grant | session | Deployment ≥ manage · step-up | 401 403 429 | [team.routes.ts:296](../../Backend/routes/team.routes.ts#L296) |
 
 ## docs
 

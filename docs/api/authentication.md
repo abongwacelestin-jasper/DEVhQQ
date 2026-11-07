@@ -65,7 +65,8 @@ $ curl -s -c new -b new -X POST http://localhost:8080/api/auth/mfa/enroll/confir
 
 The secret is sealed with `DATA_ENCRYPTION_KEY` before it is stored. Enrolment
 is refused (`409 factor_exists`) for anyone who already has a factor. The web
-app does not offer this step yet; see
+app's Verify screen runs this flow (`Frontend/src/pages/auth/Verify.tsx` with
+`components/security/TotpEnrollment.tsx`); see also
 [Deployment and first run](../operations/deployment.md#first-run-production-setup).
 
 ## Managing factors (signed in)

@@ -37,8 +37,7 @@ labelled demo data.
 
 Before going live, read [Known limits](operations/known-limits.md): one backend
 replica, synthetic ML models until there is real history, demo mode off on
-anything internet-facing, a KMS key for MinIO encryption, and the first-factor
-enrolment step that the web app does not offer yet.
+anything internet-facing, and a KMS key for MinIO encryption.
 
 ## Map of the docs
 

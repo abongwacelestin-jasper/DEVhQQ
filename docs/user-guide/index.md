@@ -22,9 +22,9 @@ Administration — invitations, roles, access review, offboarding — is in
 2. Enter the 6-digit code from your authenticator on the **Verify** screen
    (`/verify`). Demo accounts use `246810`.
 3. **First sign-in only:** if you have no authenticator yet (a new invite),
-   you enrol one. The web app's Verify screen does not offer this step yet;
-   an admin can walk you through the API steps in
-   [Deployment and first run](../operations/deployment.md#first-run-production-setup).
+   you enrol one right there: the Verify screen shows **Set up your
+   authenticator to finish signing in** with a QR code and the setup key. Scan
+   it, enter the 6-digit code, and sign-in continues as normal.
 4. Every role except the Owner then goes through two onboarding screens once:
    **NDA** (`/onboarding/nda`) and **Complete profile**
    (`/onboarding/profile`). The server records them

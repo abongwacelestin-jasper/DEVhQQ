@@ -53,9 +53,6 @@ See [infra/minio/README.md](../../infra/minio/README.md).
 
 ## Other limits
 
-- **First-factor enrolment is API-only.** The web app's Verify screen cannot
-  enrol a first authenticator yet; see
-  [Deployment and first run](deployment.md#first-run-production-setup).
 - **Console and audit routes are open to every signed-in member.**
   `GET /api/audit`, `/api/_logs`, `/api/_metrics`, `/api/_config`,
   `/api/security/posture` and the query runner's `audit` collection have no

@@ -97,26 +97,11 @@ the partial session may enrol a first authenticator:
 - `POST /api/auth/mfa/enroll/confirm {"code":"123456"}` → the session is
   verified and rotated.
 
-> [!WARNING]
-> The web app's **Verify** screen does not yet offer this enrolment step
-> (`Frontend/src/pages/auth/Verify.tsx` has no call to `/api/auth/mfa/enroll`).
-> Until it does, enrol through the API, then sign in to the web app normally
-> with the authenticator code. Through the edge, with a cookie jar:
->
-> ```bash
-> B=https://devhq.example
-> curl -s -c jar -b jar -X POST $B/api/auth/sign-in -H 'content-type: application/json' \
->   -d '{"email":"you@your-org.example","password":"…"}'
-> curl -s -c jar -b jar -X POST $B/api/auth/mfa/enroll -H 'content-type: application/json'
-> #  → add "secret" to your authenticator app, then:
-> curl -s -c jar -b jar -X POST $B/api/auth/mfa/enroll/confirm -H 'content-type: application/json' \
->   -d '{"code":"<6 digits>"}'
-> rm jar
-> ```
->
-> This exact sequence (sign-in → `enrollRequired` → enrol → confirm) was run
-> against a local backend for an invited member; the demo MFA code was refused
-> for that member, as it should be.
+> [!NOTE]
+> The web app's **Verify** screen runs this step: after the password it shows
+> **Set up your authenticator to finish signing in** with a QR code and setup
+> key. The API calls above are what it uses, so the same flow also works from a
+> script (keep a cookie jar, as with every browser-style request).
 
 **6. Add a passkey** (recommended) from the Security Center, then invite
 everyone else from **Team & roles**. See [Admin tasks](../user-guide/admin-tasks.md).

@@ -64,7 +64,7 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `ML_TRAIN_THREADS` |  |  | `devhq_models/training/pipeline.py` |  |  |
 | `MODEL_DIR` |  |  | `devhq_models/config.py` |  |  |
 | `MODEL_SIGNING_KEY` |  |  | `devhq_models/config.py` | yes |  |
-| `NODE_ENV` | `config/env.ts`<br>`db/boot.ts`<br>`db/pool.ts`<br>`domain/collab/limits.ts`<br>`store/db.ts` |  | `devhq_models/config.py` |  | yes |
+| `NODE_ENV` | `config/env.ts`<br>`db/boot.ts`<br>`db/pool.ts`<br>`domain/collab/limits.ts` |  | `devhq_models/config.py` |  | yes |
 | `OMP_NUM_THREADS` |  |  | `devhq_models/cli.py` |  |  |
 | `OPENBLAS_NUM_THREADS` |  |  | `devhq_models/cli.py` |  |  |
 | `PORT` | `config/env.ts` |  | `devhq_models/cli.py` |  | yes |
