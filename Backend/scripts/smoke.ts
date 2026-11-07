@@ -1726,7 +1726,11 @@ const auditAdmin = (await call('POST', '/api/auth/demo', { role: 'admin' })).jso
 const audit = await call('GET', '/api/audit/verify', undefined, auditAdmin);
 expect('audit chain intact', audit.json.ok === true, audit.json);
 const devAudit = await call('GET', '/api/audit?limit=1', undefined, dev);
-expect('audit trail needs Administration:view (developer refused)', devAudit.status === 403, devAudit.json);
+expect(
+  'audit trail needs Administration:view (developer refused)',
+  devAudit.status === 403,
+  devAudit.json,
+);
 
 // ───────────────────────── B-COLLAB (wave 4) ─────────────────────────
 // Messaging + realtime isolation, mentions → notifications, onboarding stages,
@@ -2480,6 +2484,125 @@ if (!process.env.DATABASE_URL) {
     'enroll: once a factor exists, sign-in asks for it and enrollment is refused (409)',
     again.json.next === 'totp' && again.json.enrollRequired === false && reenroll.status === 409,
     { again: again.json, reenroll: reenroll.json },
+  );
+  if (prevTrust === undefined) delete process.env.TRUST_PROXY;
+  else process.env.TRUST_PROXY = prevTrust;
+}
+
+// ── Incident recovery steps (action items) ──
+// Own client IP (and so its own auth rate-limit bucket), like the enrollment block.
+{
+  const prevTrust = process.env.TRUST_PROXY;
+  process.env.TRUST_PROXY = '1';
+  const call = async (method: string, path: string, body?: unknown, token?: string) => {
+    const res = await fetch(base + path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-DevHQ-Client': 'cli',
+        'User-Agent': 'devhq-smoke',
+        'X-Forwarded-For': '198.51.100.88',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await res.text();
+    return { status: res.status, json: text ? (JSON.parse(text) as Record<string, unknown>) : {} };
+  };
+  const tokenOf = async (role: string) =>
+    String((await call('POST', '/api/auth/demo', { role })).json.token);
+  const ops = await tokenOf('operations');
+  const dev = await tokenOf('developer');
+  const admin = await tokenOf('admin');
+  const inc = await call(
+    'POST',
+    '/api/incidents',
+    { product: 'blog', title: 'Smoke: blog feed is stale', severity: 'SEV3' },
+    ops,
+  );
+  const incId = String(inc.json.id);
+  const path = `/api/incidents/${incId}/actions`;
+  const created = await call(
+    'POST',
+    path,
+    { title: 'Purge the feed cache', owner: 'm6', due: '2026-11-08', kind: 'mitigation' },
+    ops,
+  );
+  const actId = String(created.json.id);
+  expect(
+    'actions: Operations adds a mitigation step with an owner and due date',
+    inc.status === 201 &&
+      created.status === 201 &&
+      created.json.status === 'open' &&
+      created.json.owner === 'm6' &&
+      created.json.doneAt === null,
+    created.json,
+  );
+  const done = await call('PATCH', `${path}/${actId}`, { status: 'done' }, ops);
+  const detail = await call('GET', `/api/incidents/${incId}`, undefined, ops);
+  const notes = (detail.json.timeline as { note: string }[]).map((t) => t.note);
+  expect(
+    'actions: completing a step stamps doneAt and writes the incident timeline',
+    done.status === 200 &&
+      typeof done.json.doneAt === 'string' &&
+      notes.some((n) => n.startsWith('Action added')) &&
+      notes.some((n) => n.startsWith('Action completed')),
+    { done: done.json, notes },
+  );
+  const audited = await call(
+    'GET',
+    '/api/audit?action=incident.action_&limit=50',
+    undefined,
+    admin,
+  );
+  expect(
+    'actions: every write is audited with the request id',
+    Array.isArray(audited.json) &&
+      (audited.json as unknown as { target: string; requestId?: string }[]).filter(
+        (e) => e.target.includes(actId) && e.requestId,
+      ).length === 2,
+    audited.json,
+  );
+  const outOfScope = await call('GET', path, undefined, dev);
+  const outOfScopeWrite = await call('POST', path, { title: 'Not mine' }, dev);
+  expect(
+    'actions: an incident in another product is 404 (read and write)',
+    outOfScope.status === 404 && outOfScopeWrite.status === 404,
+    { read: outOfScope.status, write: outOfScopeWrite.status },
+  );
+  const rb = await call(
+    'POST',
+    '/api/incidents',
+    { product: 'renewberry', title: 'Smoke: checkout latency', severity: 'SEV3' },
+    ops,
+  );
+  const devWrite = await call(
+    'POST',
+    `/api/incidents/${String(rb.json.id)}/actions`,
+    { title: 'Developer tries' },
+    dev,
+  );
+  expect(
+    'actions: Developer (Infrastructure view) is refused with 403',
+    devWrite.status === 403,
+    devWrite.json,
+  );
+  const badBody = await call('POST', path, { title: 'x', due: '2026-02-30', role: 'Owner' }, ops);
+  const badOwner = await call('POST', path, { title: 'Wrong owner', owner: 'm4' }, ops);
+  expect(
+    'actions: bad bodies and out-of-product owners are 422',
+    badBody.status === 422 && badOwner.status === 422 && badOwner.json.error !== undefined,
+    { badBody: badBody.json, badOwner: badOwner.json },
+  );
+  const removed = await call('DELETE', `${path}/${actId}`, undefined, ops);
+  const list = await call('GET', '/api/incidents?product=blog', undefined, ops);
+  const row = (list.json as unknown as { id: string; openActions: number }[]).find(
+    (i) => i.id === incId,
+  );
+  expect(
+    'actions: Operations deletes a step; the incident list counts open actions',
+    removed.status === 204 && row?.openActions === 0,
+    { removed: removed.status, row },
   );
   if (prevTrust === undefined) delete process.env.TRUST_PROXY;
   else process.env.TRUST_PROXY = prevTrust;

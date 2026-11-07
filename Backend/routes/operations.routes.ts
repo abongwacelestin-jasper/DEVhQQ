@@ -15,6 +15,7 @@ import { audit } from '../audit/auditLog.ts';
 import { publish } from '../lib/events.ts';
 import { randomToken } from '../security/crypto.ts';
 import { db } from '../store/db.ts';
+import { openActionCounts } from '../domain/incidents/actions.ts';
 import { HttpError, type Deployment, type Incident } from '../types.ts';
 
 const products = ['renewberry', 'blog', 'mirror'] as const;
@@ -173,6 +174,7 @@ export function registerOperationsRoutes(r: Router) {
     authenticate,
     (ctx) => {
       const q = ctx.query;
+      const openActions = openActionCounts();
       return [...db.incidents.values()]
         .filter(
           (i) =>
@@ -181,7 +183,8 @@ export function registerOperationsRoutes(r: Router) {
             (!q.get('status') || i.status === q.get('status')) &&
             (!q.get('severity') || i.severity === q.get('severity')),
         )
-        .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+        .map((i) => ({ ...i, openActions: openActions.get(i.id) ?? 0 }));
     },
   );
 

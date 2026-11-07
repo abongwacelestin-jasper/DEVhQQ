@@ -357,6 +357,25 @@ export interface ApiIncident {
   startedAt: string;
   resolvedAt?: string;
   timeline: { at: string; by: string; note: string }[];
+  /** Not-done recovery steps and follow-ups (list endpoint only). */
+  openActions?: number;
+}
+
+/** GET /api/incidents/:id/actions — a recovery step or follow-up action item. */
+export interface ApiIncidentAction {
+  id: string;
+  incidentId: string;
+  title: string;
+  detail: string | null;
+  owner: string;
+  /** `YYYY-MM-DD`, or null. */
+  due: string | null;
+  status: 'open' | 'in-progress' | 'done';
+  kind: 'mitigation' | 'follow-up';
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  doneAt: string | null;
 }
 
 /** GET /api/team/roles — role × area permission matrix, owned by the server. */

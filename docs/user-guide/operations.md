@@ -15,6 +15,20 @@ all three products).
    every change is a timeline entry and an audit entry. SEV1 declarations are
    audited as sensitive. Mean time to recover is at
    `GET /api/incidents/_stats`.
+   The **Recovery** panel on the incident page holds the incident's action
+   items, in two lists: **Mitigation** (steps to stop the impact now) and
+   **Follow-ups** (work after the incident). Add a step with a title, an owner
+   (an active member of the incident's product), an optional due date and the
+   kind. Tick a step to mark it done (untick to reopen), change its owner from
+   the owner menu, or delete it. A step past its due date and not done is
+   marked **Overdue**. Adding, completing, reopening, reassigning, editing and
+   deleting each add an "Action …" timeline entry and an `incident.action_*`
+   audit entry, and the new owner gets an assignment notification. Adding and
+   updating need Infrastructure ≥ `contribute`; deleting needs `manage`. The
+   incident list returns `openActions`, the number of steps not done. API:
+   `GET|POST /api/incidents/:id/actions`,
+   `PATCH|DELETE /api/incidents/:id/actions/:actionId`. The rollback button for
+   a correlated deploy stays in the same panel.
 2. **Deployments** (`/deployments`) — request deploys (staging starts
    `running`; production waits for approval). You can approve production
    deploys requested by **someone else** after re-verifying; your own need the

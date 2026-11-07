@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Incident recovery steps:** the incident page's Recovery panel lists
+  mitigation steps and follow-ups recorded by the API
+  (`GET|POST /api/incidents/:id/actions`,
+  `PATCH|DELETE /api/incidents/:id/actions/:actionId`). Each step has an owner,
+  an optional due date (overdue steps are highlighted) and a status; ticking it
+  done, reassigning or deleting writes a timeline entry and an audit entry, and
+  the owner is notified. Writes need Infrastructure ≥ `contribute` (delete:
+  `manage`); incidents outside your products are `404`. `GET /api/incidents`
+  returns `openActions` per incident.
+
 ## [2.0.0] - 2026-11-07
 
 Major version: browser sessions are cookie-only, so clients that read the session

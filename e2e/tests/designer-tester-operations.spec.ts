@@ -1,6 +1,7 @@
 /**
  * Personas: Inès Moreau (Designer), Ravi Patel (Tester), Grace Liu (Operations).
  */
+import AxeBuilder from '@axe-core/playwright';
 import { test, expect, uid } from '../support/fixtures';
 import { signInViaApi } from '../support/auth';
 
@@ -118,6 +119,60 @@ test.describe('Operations journey', () => {
     await page.reload();
     await expect(page.getByText(note).first()).toBeVisible();
     expect(JSON.stringify(await (await page.request.get(`/api/incidents/${id}`)).json())).toContain(note);
+  });
+
+  test('records a mitigation step, assigns it, completes it; the server keeps it @smoke', async ({ page }) => {
+    await signInViaApi(page, 'operations', '/incidents');
+    await page.getByRole('button', { name: 'Declare incident' }).click();
+    const modal = page.getByRole('dialog', { name: 'Declare an incident' });
+    await modal.getByRole('textbox', { name: /What’s happening/ }).fill(`Payments timeout ${uid()}`);
+    await modal.getByRole('textbox', { name: /^Impact/ }).fill('Card payments time out for about 10% of users.');
+    await modal.getByRole('button', { name: /^Declare SEV/ }).click();
+    await expect(page).toHaveURL(/\/incidents\/[\w-]+$/);
+    const id = page.url().split('/').pop()!;
+
+    const form = page.getByRole('form', { name: 'Add a recovery step' });
+    const step = `Fail over to the backup gateway ${uid()}`;
+    await form.getByRole('textbox', { name: 'Step' }).fill(step);
+    await form.getByRole('combobox', { name: 'Owner' }).selectOption({ label: 'Kofi Mensah' });
+    await expect(form.getByRole('combobox', { name: 'Kind' })).toHaveValue('mitigation');
+    await form.getByRole('button', { name: 'Add step' }).click();
+    await expect(page.getByText('Mitigation step added')).toBeVisible();
+    const mitigation = page.getByRole('region', { name: /^Mitigation/ });
+    const box = mitigation.getByRole('checkbox', { name: new RegExp(step) });
+    await expect(box).not.toBeChecked();
+
+    type Action = { title: string; owner: string; status: string; kind: string; doneAt: string | null };
+    const actions = async () =>
+      (await (await page.request.get(`/api/incidents/${id}/actions`)).json()) as Action[];
+    const saved = (await actions()).find((a) => a.title === step);
+    expect(saved).toMatchObject({ owner: 'm4', status: 'open', kind: 'mitigation', doneAt: null });
+
+    // Not optimistic: the box ticks once the server has accepted the change (so click, not check()).
+    await box.click();
+    await expect(page.getByText(`“${step}” done`)).toBeVisible();
+    await expect(box).toBeChecked();
+    await expect.poll(async () => (await actions()).find((a) => a.title === step)?.status).toBe('done');
+
+    await page.reload();
+    await expect(page.getByRole('region', { name: /^Mitigation/ }).getByRole('checkbox', { name: new RegExp(step) })).toBeChecked();
+    await expect(page.getByText(/^Action completed: /).first()).toBeVisible();
+
+    const done = (await actions()).find((a) => a.title === step)!;
+    expect(done.doneAt).toBeTruthy();
+    const incident = (await (await page.request.get(`/api/incidents/${id}`)).json()) as { timeline: { note: string }[] };
+    const notes = incident.timeline.map((t) => t.note);
+    expect(notes.some((n) => n.startsWith('Action added · Mitigation:') && n.includes('Kofi Mensah'))).toBe(true);
+    expect(notes.some((n) => n.startsWith('Action completed:'))).toBe(true);
+    const list = (await (await page.request.get('/api/incidents')).json()) as { id: string; openActions: number }[];
+    expect(list.find((i) => i.id === id)?.openActions).toBe(0);
+
+    // The Recovery panel with a real list is clean of critical axe violations.
+    const axe = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .exclude('[data-sonner-toaster]')
+      .analyze();
+    expect(axe.violations.filter((v) => v.impact === 'critical').map((v) => v.id)).toEqual([]);
   });
 
   test('sees deployments across all three products', async ({ page }) => {

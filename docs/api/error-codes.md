@@ -11,7 +11,7 @@ Every error the API raises has a stable machine-readable `code`. Branch on
 `code`, never on `message` (messages are for people and may change). The
 envelope and client guidance are in [Errors](errors.md).
 
-**128 codes** from **343 call sites**. The status column lists every
+**130 codes** from **350 call sites**. The status column lists every
 status a code is raised with; most codes have exactly one.
 
 | Code | Status | Example message | Raised in |
@@ -58,7 +58,7 @@ status a code is raised with; most codes have exactly one.
 | `bad_origin` | 403 | Origin not allowed _(+3 more)_ | `security/headers.ts` |
 | `elevation_required` | 403 | Request just-in-time access for ${scope} | `auth/rbac.ts` |
 | `files_disabled` | 403 | Files are off in this channel | `routes/messaging.routes.ts` |
-| `forbidden` | 403 | Requires manage on Administration _(+23 more)_ | `auth/jit.ts`, `auth/rbac.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/files.routes.ts`, `routes/messaging.routes.ts`, `routes/offboarding.routes.ts`, `routes/team.routes.ts`, `routes/workspaces.routes.ts` |
+| `forbidden` | 403 | Requires manage on Administration _(+24 more)_ | `auth/jit.ts`, `auth/rbac.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/files.routes.ts`, `routes/incident-actions.routes.ts`, `routes/messaging.routes.ts`, `routes/offboarding.routes.ts`, `routes/team.routes.ts`, `routes/workspaces.routes.ts` |
 | `github_forbidden` | 403 | _(computed at runtime)_ | `integrations/github/client.ts` |
 | `reactions_disabled` | 403 | Reactions are off in this channel | `routes/messaging.routes.ts` |
 | `risk_blocked` | 403 | Sign-in blocked by location risk policy — contact an Owner | `routes/auth.routes.ts` |
@@ -70,7 +70,7 @@ status a code is raised with; most codes have exactly one.
 | `step_up_unavailable` | 403 | Personal access tokens cannot perform step-up actions — use an interactive session | `auth/rbac.ts` |
 | `stickers_disabled` | 403 | Stickers are off in this channel | `routes/messaging.routes.ts` |
 | `threads_disabled` | 403 | Threads are off in this channel | `routes/messaging.routes.ts` |
-| `not_found` | 404 | Not found _(+21 more)_ | `auth/jit.ts`, `auth/rbac.ts`, `domain/collab/access.ts`, `domain/engineering/store.ts`, `integrations/github/client.ts`, `lib/http.ts`, `routes/auth.routes.ts`, `routes/backups.routes.ts`, `routes/ci.routes.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/docs.routes.ts`, `routes/files.routes.ts`, `routes/insights.routes.ts`, `routes/integrations.routes.ts`, `routes/messaging.routes.ts`, `routes/monitors.routes.ts`, `routes/offboarding.routes.ts`, `routes/onboarding.routes.ts`, `routes/operations.routes.ts`, `routes/projects.routes.ts`, `routes/pulls.routes.ts`, `routes/system.routes.ts`, `routes/tasks.routes.ts`, `routes/team.routes.ts`, `routes/tokens.routes.ts`, `routes/webhooks.routes.ts`, `routes/workspaces.routes.ts` |
+| `not_found` | 404 | Not found _(+21 more)_ | `auth/jit.ts`, `auth/rbac.ts`, `domain/collab/access.ts`, `domain/engineering/store.ts`, `integrations/github/client.ts`, `lib/http.ts`, `routes/auth.routes.ts`, `routes/backups.routes.ts`, `routes/ci.routes.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/docs.routes.ts`, `routes/files.routes.ts`, `routes/incident-actions.routes.ts`, `routes/insights.routes.ts`, `routes/integrations.routes.ts`, `routes/messaging.routes.ts`, `routes/monitors.routes.ts`, `routes/offboarding.routes.ts`, `routes/onboarding.routes.ts`, `routes/operations.routes.ts`, `routes/projects.routes.ts`, `routes/pulls.routes.ts`, `routes/system.routes.ts`, `routes/tasks.routes.ts`, `routes/team.routes.ts`, `routes/tokens.routes.ts`, `routes/webhooks.routes.ts`, `routes/workspaces.routes.ts` |
 | `method_not_allowed` | 405 | Method not allowed on this route | `lib/http.ts` |
 | `already_linked` | 409 | ${existing.name} is linked to ${existing.product} | `routes/repos.routes.ts` |
 | `already_rolled_back` | 409 | Already rolled back | `routes/operations.routes.ts` |
@@ -100,6 +100,7 @@ status a code is raised with; most codes have exactly one.
 | `replayed_delivery` | 409 | This delivery was already processed | `integrations/github/webhook.ts` |
 | `slug_taken` | 409 | That workspace address is taken | `routes/workspaces.routes.ts` |
 | `token_limit` | 409 | At most ${PAT_MAX_ACTIVE_PER_MEMBER} active tokens — revoke one first | `routes/tokens.routes.ts` |
+| `too_many_actions` | 409 | An incident can have at most 100 actions | `routes/incident-actions.routes.ts` |
 | `training_in_progress` | 409 | Another training run is in progress | `routes/insights.routes.ts` |
 | `upload_missing` | 409 | No object has been uploaded yet | `routes/files.routes.ts` |
 | `upload_rejected` | 409 | Upload was rejected: ${f.rejectReason} | `routes/files.routes.ts` |
@@ -116,10 +117,11 @@ status a code is raised with; most codes have exactly one.
 | `field_not_allowed` | 422 | Field "${f}" can't be queried on ${q.from} | `lib/query.ts` |
 | `format_unsupported` | 422 | Snapshot version or id mismatch | `resilience/backups.ts` |
 | `github_rejected` | 422 | _(computed at runtime)_ | `integrations/github/client.ts` |
+| `invalid_owner` | 422 | owner must be an active member who can see this product | `routes/incident-actions.routes.ts` |
 | `links_disabled` | 422 | External links are off in this channel | `routes/messaging.routes.ts` |
 | `malware_detected` | 422 | The file failed a malware scan | `routes/files.routes.ts` |
 | `name_mismatch` | 422 | Type your full name exactly as on your profile: ${m.name} | `routes/onboarding.routes.ts` |
-| `no_change` | 422 | Nothing to update | `routes/monitors.routes.ts`, `routes/operations.routes.ts` |
+| `no_change` | 422 | Nothing to update | `routes/incident-actions.routes.ts`, `routes/monitors.routes.ts`, `routes/operations.routes.ts` |
 | `operator_unknown` | 422 | Unknown operator "${op}" | `lib/query.ts` |
 | `reason_required` | 422 | Give a reason of at least 10 characters | `auth/jit.ts` |
 | `scope_exceeds_role` | 422 | Your role (${role}) does not grant: ${over.join(', ')} | `security/pats.ts` |
@@ -127,7 +129,7 @@ status a code is raised with; most codes have exactly one.
 | `size_mismatch` | 422 | Uploaded size does not match the request | `routes/files.routes.ts` |
 | `type_mismatch` | 422 | File content does not match its declared type | `routes/files.routes.ts` |
 | `unresolvable_target` | 422 | Destination host could not be resolved | `routes/integrations.routes.ts` |
-| `validation_failed` | 422 | text is required _(+42 more)_ | `lib/validate.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/integrations.routes.ts`, `routes/locations.routes.ts`, `routes/messaging.routes.ts`, `routes/monitors.routes.ts`, `routes/notifications.routes.ts`, `routes/offboarding.routes.ts`, `routes/onboarding.routes.ts`, `routes/pulls.routes.ts`, `routes/system.routes.ts`, `routes/team.routes.ts`, `routes/tokens.routes.ts`, `routes/webhooks.routes.ts`, `routes/workspaces.routes.ts`, `security/pats.ts` |
+| `validation_failed` | 422 | text is required _(+43 more)_ | `lib/validate.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/incident-actions.routes.ts`, `routes/integrations.routes.ts`, `routes/locations.routes.ts`, `routes/messaging.routes.ts`, `routes/monitors.routes.ts`, `routes/notifications.routes.ts`, `routes/offboarding.routes.ts`, `routes/onboarding.routes.ts`, `routes/pulls.routes.ts`, `routes/system.routes.ts`, `routes/team.routes.ts`, `routes/tokens.routes.ts`, `routes/webhooks.routes.ts`, `routes/workspaces.routes.ts`, `security/pats.ts` |
 | `weak_password` | 422 | _(computed at runtime)_ | `routes/auth.routes.ts`, `routes/recovery.routes.ts` |
 | `locked` | 423 | Too many attempts — try again later | `routes/auth.routes.ts` |
 | `rate_limited` | 429 | GitHub rate limit reached _(+4 more)_ | `domain/collab/limits.ts`, `integrations/github/client.ts`, `routes/assistant.routes.ts`, `routes/codespaces.routes.ts`, `security/rateLimit.ts` |
