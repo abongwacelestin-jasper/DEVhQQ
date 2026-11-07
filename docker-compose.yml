@@ -198,15 +198,22 @@ services:
 
   # One-shot schema migration (B-DATA's `migrate` script) before the backend.
   # `node --run` executes the package.json script without npm, which is not
-  # shipped in the runtime image.
+  # shipped in the runtime image. Connects as the schema-owner role `devhq`
+  # (DDL); the backend itself runs as the DML-only role `devhq_app`.
   migrate:
     <<: *hardened
     build: *backend-build
     image: ${DEVHQ_IMAGE_PREFIX:-ghcr.io/devhq/devhq}-backend:${DEVHQ_TAG:-local}
     command: ["node", "--run", "migrate"]
     restart: "no"
-    environment: *backend-env
-    secrets: *backend-secrets
+    environment:
+      <<: *backend-env
+      DATABASE_URL_FILE: /run/secrets/database_url_migrator
+    secrets:
+      - session_secret
+      - session_secret_previous
+      - data_encryption_key
+      - database_url_migrator
     tmpfs:
       - /tmp:size=16m,mode=1777
     networks: [app_net]
@@ -267,12 +274,15 @@ services:
     environment:
       POSTGRES_USER: devhq
       POSTGRES_DB: devhq
+      # Bootstrap owner `devhq` (= migrator). infra/postgres/initdb creates
+      # the DML-only runtime role `devhq_app` on first init.
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --data-checksums"
       PGDATA: /var/lib/postgresql/data/pgdata
-    secrets: [postgres_password]
+    secrets: [postgres_password, app_db_password]
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
     tmpfs:
       - /tmp:size=64m,mode=1777
       - /var/run/postgresql:size=1m,uid=70,gid=70,mode=0775
@@ -376,7 +386,9 @@ secrets:
   session_secret_previous: { file: ./infra/secrets/session_secret_previous }
   data_encryption_key:     { file: ./infra/secrets/data_encryption_key }
   postgres_password:       { file: ./infra/secrets/postgres_password }
+  app_db_password:         { file: ./infra/secrets/app_db_password }
   database_url:            { file: ./infra/secrets/database_url }
+  database_url_migrator:   { file: ./infra/secrets/database_url_migrator }
   minio_root_user:         { file: ./infra/secrets/minio_root_user }
   minio_root_password:     { file: ./infra/secrets/minio_root_password }
   s3_access_key_id:        { file: ./infra/secrets/s3_access_key_id }

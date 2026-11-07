@@ -42,13 +42,23 @@ write() { # name value
 
 hex() { openssl rand -hex "$1"; }
 
+# Derived URLs always match the password files:
+#   database_url           backend, DML-only role devhq_app
+#   database_url_migrator  migrate service, schema owner devhq
+write_db_urls() {
+  [[ -s "$DIR/app_db_password" && -s "$DIR/postgres_password" ]] || return 0
+  write database_url "postgres://devhq_app:$(cat "$DIR/app_db_password")@postgres:5432/devhq"
+  write database_url_migrator "postgres://devhq:$(cat "$DIR/postgres_password")@postgres:5432/devhq"
+}
+
 # name -> generator. Database/MinIO passwords are hex so they never need
 # URL-encoding inside DATABASE_URL.
 generate() {
   case "$1" in
     session_secret)        hex 32 ;;   # 64 hex chars (backend minimum in prod)
     data_encryption_key)   hex 32 ;;   # 32-byte AES-256-GCM key (hex)
-    postgres_password)     hex 24 ;;
+    postgres_password)     hex 24 ;;   # owner/migrator role `devhq`
+    app_db_password)       hex 24 ;;   # runtime role `devhq_app`
     minio_root_user)       printf 'devhq-root-%s' "$(hex 4)" ;;
     minio_root_password)   hex 24 ;;
     s3_access_key_id)      printf 'devhq-app-%s' "$(hex 6)" ;;
@@ -59,7 +69,7 @@ generate() {
   esac
 }
 
-GENERATED="session_secret data_encryption_key postgres_password minio_root_user minio_root_password s3_access_key_id s3_secret_access_key ml_service_token backup_encryption_key"
+GENERATED="session_secret data_encryption_key postgres_password app_db_password minio_root_user minio_root_password s3_access_key_id s3_secret_access_key ml_service_token backup_encryption_key"
 EXTERNAL="session_secret_previous anthropic_api_key smtp_password github_app_private_key github_webhook_secret github_client_secret github_token"
 
 if [[ "${1:-}" == "--rotate" ]]; then
@@ -68,11 +78,11 @@ if [[ "${1:-}" == "--rotate" ]]; then
   case "$name" in
     session_secret)
       echo "use infra/scripts/rotate-session-secret.md (keeps sessions valid)" >&2; exit 1 ;;
-    postgres_password|minio_root_user|minio_root_password|s3_access_key_id|s3_secret_access_key)
+    postgres_password|app_db_password|minio_root_user|minio_root_password|s3_access_key_id|s3_secret_access_key)
       echo "warning: $name is also stored inside its service; follow RUNBOOK 'Rotation'" >&2 ;;
   esac
   write "$name" "$(generate "$name")"
-  [[ "$name" == postgres_password ]] && write database_url "postgres://devhq:$(cat "$DIR/postgres_password")@postgres:5432/devhq"
+  write_db_urls
   exit 0
 fi
 
@@ -85,8 +95,7 @@ for name in $GENERATED; do
   fi
 done
 
-# Derived: the backend's DATABASE_URL always matches postgres_password.
-write database_url "postgres://devhq:$(cat "$DIR/postgres_password")@postgres:5432/devhq"
+write_db_urls
 
 for name in $EXTERNAL; do
   if [[ -e "$DIR/$name" ]]; then

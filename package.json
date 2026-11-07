@@ -51,13 +51,12 @@
     "dev:frontend": "npm run dev --workspace=Frontend",
     "dev:models": "npm run dev --workspace=Models",
     "build": "npm run build --workspaces --if-present",
-    "build:backend": "npm run build --workspace=Backend",
     "build:frontend": "npm run build --workspace=Frontend",
     "start": "npm run start --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
+    "lint": "npm run lint --workspace=Backend && npm run lint --workspace=Frontend",
     "lint:backend": "npm run lint --workspace=Backend",
     "lint:frontend": "npm run lint --workspace=Frontend",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspace=Backend && npm run typecheck --workspace=Frontend",
     "test": "npm run test --workspaces --if-present",
     "test:backend": "npm run test --workspace=Backend",
     "test:frontend": "npm run test --workspace=Frontend",
@@ -66,10 +65,15 @@
     "clean": "rm -rf node_modules Backend/node_modules Frontend/node_modules Models/node_modules",
     "clean:build": "rm -rf Backend/dist Frontend/dist Frontend/.next Models/dist",
     "install:all": "npm install && npm install --workspaces",
-    "audit": "npm audit --audit-level=high",
+    "audit": "npm audit --omit=dev --audit-level=high --workspaces --include-workspace-root",
     "audit:fix": "npm audit fix",
     "hooks:install": "husky",
-    "pre-commit": "lint-staged"
+    "pre-commit": "lint-staged",
+    "secrets": "infra/scripts/gen-secrets.sh",
+    "stack:up": "make up",
+    "stack:dev": "make up-dev",
+    "stack:down": "make down",
+    "stack:smoke": "make smoke"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
@@ -83,11 +87,15 @@
     "typescript-eslint": "^8.0.0"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx}": [
-      "eslint --fix",
+    "Backend/**/*.ts": [
+      "npm exec --workspace=Backend -- eslint --max-warnings 0 --fix",
       "prettier --write"
     ],
-    "*.{json,md}": [
+    "Frontend/**/*.{ts,tsx}": [
+      "npm exec --workspace=Frontend -- eslint --max-warnings 0 --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
   },

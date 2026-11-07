@@ -53,6 +53,7 @@ if [[ "$mode" == "--drill" ]]; then
   db="devhq_restore_drill_$(date -u +%s)"
   log "drill: restoring into scratch database $db"
   compose exec -T postgres createdb -U devhq "$db"
+  # shellcheck disable=SC2329 # invoked via trap
   cleanup_drill() { compose exec -T postgres dropdb -U devhq --if-exists "$db" || true; rm -rf "$work"; }
   trap cleanup_drill EXIT
   decrypt | compose exec -T postgres pg_restore -U devhq -d "$db" --no-owner --exit-on-error

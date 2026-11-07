@@ -8,7 +8,8 @@ committed. Directory mode 0700, files 0640 (see the script header for why).
 |---|---|---|
 | `session_secret`, `session_secret_previous` | backend | generated / rotation procedure |
 | `data_encryption_key` | backend | generated (32-byte hex) |
-| `postgres_password`, `database_url` | postgres, backend, migrate | generated / derived |
+| `postgres_password`, `database_url_migrator` | postgres (owner `devhq`), migrate | generated / derived |
+| `app_db_password`, `database_url` | postgres initdb, backend (role `devhq_app`, DML only) | generated / derived |
 | `minio_root_user`, `minio_root_password` | minio, minio-init | generated |
 | `s3_access_key_id`, `s3_secret_access_key` | backend, models, minio-init | generated (app user) |
 | `ml_service_token` | backend, models | generated |

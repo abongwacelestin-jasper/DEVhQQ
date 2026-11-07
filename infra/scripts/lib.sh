@@ -1,9 +1,11 @@
 # Shared helpers for infra/scripts/*.sh (sourced, not executed).
 # shellcheck shell=bash
+# Variables defined here are consumed by the scripts that source this file.
+# shellcheck disable=SC2034
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 SECRETS="$ROOT/infra/secrets"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 
 # Compose files: honour COMPOSE_FILE if the operator set it (e.g. dev override).
 compose() { docker compose "$@"; }
@@ -28,6 +30,8 @@ PREFIX=postgres
 # Run `mc` inside a throwaway minio-init container on the internal network,
 # authenticated as the application user via MC_HOST_* (never on argv).
 mc_run() {
+  # Single quotes are intended: the script is expanded inside the container.
+  # shellcheck disable=SC2016
   compose run --rm --no-deps -T --entrypoint /bin/sh minio-init -c '
     set -eu
     export MC_HOST_devhq="http://$(cat /run/secrets/s3_access_key_id):$(cat /run/secrets/s3_secret_access_key)@minio:9000"

@@ -87,7 +87,7 @@ lint-infra: ## hadolint, actionlint, shellcheck, compose config
 	@for f in Backend/Dockerfile Frontend/Dockerfile infra/edge/Dockerfile $$(ls Models/Dockerfile 2>/dev/null); do \
 	  echo "hadolint $$f"; docker run --rm -i -v "$(CURDIR)/.hadolint.yaml:/.config/hadolint.yaml:ro" $(HADOLINT) hadolint - < $$f; done
 	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT) -color
-	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt $(SHELLCHECK) -x infra/scripts/*.sh infra/docker/*.sh
+	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt $(SHELLCHECK) -x infra/scripts/*.sh infra/docker/*.sh infra/postgres/initdb/*.sh
 	$(COMPOSE) config -q && $(COMPOSE_DEV) config -q && echo "compose: ok"
 
 backup: ## Encrypted pg_dump to the MinIO backups bucket
