@@ -8,6 +8,7 @@ cd Backend
 npm run test:unit       # unit + integration suites (node --test)
 npm run smoke           # the 32+ HTTP smoke checks (scripts/smoke.ts)
 npm test                # test:unit, then smoke
+npm run test:redis      # Redis suites (test/redis/): real Redis 7 in a throwaway Docker container, or REDIS_TEST_URL
 npm run test:coverage   # suites under coverage + per-area thresholds, writes coverage/lcov.info
 ```
 
