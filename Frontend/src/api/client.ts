@@ -16,6 +16,11 @@ import type { ApiErrorBody } from './types';
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
+/**
+ * Codes that mean the session is gone. `mfa_required` is deliberately absent: it means the
+ * session is password-only (mid sign-in or enrollment), and data requests fired by providers
+ * during that stage must not tear the half-finished sign-in down.
+ */
 const SESSION_ENDED = new Set([
   'unauthenticated',
   'invalid_token',
@@ -23,7 +28,6 @@ const SESSION_ENDED = new Set([
   'session_expired',
   'session_context_changed',
   'account_inactive',
-  'mfa_required',
 ]);
 
 export class ApiError extends Error {

@@ -5,6 +5,7 @@ import { AuthSlideshow, type AuthSlide } from './AuthSlideshow';
 import { LanguageMenu } from '../layout/LanguageMenu';
 import { ThemeToggle } from '../layout/ThemeToggle';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useDemoConfig } from '../../api/auth/useDemoConfig';
 import type { SlideArt } from '../illustrations/AuthSlideArt';
 
 interface AuthLayoutProps {
@@ -22,6 +23,7 @@ const order: SlideArt[] = ['secure', 'ship', 'products', 'volunteer'];
 /** Split layout for sign-in, recovery and onboarding: slideshow + form from tablet up, single column on phones. */
 export function AuthLayout({ illustration, aside, step, wide = false, children }: AuthLayoutProps) {
   const { t } = useLanguage();
+  const demo = useDemoConfig();
   const lead: SlideArt =
     step?.index === 2 ? 'volunteer' : step?.index === 3 ? 'products' : 'secure';
   const slides: AuthSlide[] = [
@@ -94,7 +96,8 @@ export function AuthLayout({ illustration, aside, step, wide = false, children }
           )}
           {children}
         </div>
-        <p className="text-center text-[11px] text-muted">{t('auth.demo')}</p>
+        {/* Only when the server says demo mode is on; never on a production sign-in. */}
+        {demo.enabled && <p className="text-center text-[11px] text-muted">{t('auth.demo')}</p>}
       </main>
     </div>
   );

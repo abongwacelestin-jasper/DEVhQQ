@@ -68,6 +68,10 @@ interface AuthValue {
   directory: Member[];
   /** Second-factor methods the server offers for a password-only session. */
   mfaMethods: string[];
+  /** Password accepted but the member has no second factor: they must enroll one to finish. */
+  enrollRequired: boolean;
+  /** Confirms first-factor enrollment during sign-in; throws the server's error on failure. */
+  confirmEnrollment: (code: string) => Promise<void>;
   /** Server says this session needs a fresh strong verification before sensitive actions. */
   stepUpRequired: boolean;
   lockedUntil: number | null;
@@ -235,6 +239,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       member,
       directory,
       mfaMethods: identity?.mfaMethods ?? [],
+      enrollRequired: !!identity && !identity.verified && identity.enrollRequired,
+      confirmEnrollment: signIn.confirmEnrollment,
       stepUpRequired: state.stepUpRequired,
       lockedUntil: signIn.lockedUntil,
       failedAttempts: signIn.failedAttempts,
@@ -281,6 +287,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn.signInPassword,
       signIn.signInPasskey,
       signIn.verifyMfa,
+      signIn.confirmEnrollment,
       authEvents,
       sessions,
       serverSessions,

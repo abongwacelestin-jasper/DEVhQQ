@@ -142,22 +142,50 @@ export const removePasskey = (id: string) =>
 // TOTP enrollment
 // ---------------------------------------------------------------------------
 
-export async function enrollTotp(): Promise<TotpEnrollment> {
-  const r = await api<Record<string, unknown>>('/api/auth/totp/enroll', {
-    method: 'POST',
-    body: {},
-  });
+function toEnrollment(r: Record<string, unknown>): TotpEnrollment {
   const uri = [r.otpauthUri, r.otpauthUrl, r.uri].find(
     (v): v is string => typeof v === 'string' && v.startsWith('otpauth://'),
   );
   if (!uri) throw new ApiError(502, 'bad_response', 'The server did not return an enrollment URI.');
   const secret =
     typeof r.secret === 'string' ? r.secret : (new URL(uri).searchParams.get('secret') ?? '');
-  return { otpauthUri: uri, secret };
+  return {
+    otpauthUri: uri,
+    secret,
+    expiresAt: typeof r.expiresAt === 'string' ? r.expiresAt : undefined,
+  };
+}
+
+/** Adds or replaces the authenticator of a signed-in member (Security page; step-up applies). */
+export async function enrollTotp(): Promise<TotpEnrollment> {
+  return toEnrollment(
+    await api<Record<string, unknown>>('/api/auth/totp/enroll', { method: 'POST', body: {} }),
+  );
 }
 
 export const confirmTotp = (code: string) =>
   api<{ ok: boolean }>('/api/auth/totp/confirm', { method: 'POST', body: { code } });
+
+/**
+ * First-factor enrollment during sign-in, for a password-only session whose
+ * member has no second factor yet. Confirming rotates the cookie to a verified session.
+ */
+export async function beginSignInEnrollment(): Promise<TotpEnrollment> {
+  return toEnrollment(
+    await api<Record<string, unknown>>('/api/auth/mfa/enroll', {
+      method: 'POST',
+      body: {},
+      ...silent,
+    }),
+  );
+}
+
+export const confirmSignInEnrollment = (code: string) =>
+  api<AuthenticatedResponse>('/api/auth/mfa/enroll/confirm', {
+    method: 'POST',
+    body: { code },
+    ...silent,
+  });
 
 // ---------------------------------------------------------------------------
 // Onboarding (server-authoritative NDA + profile stages)

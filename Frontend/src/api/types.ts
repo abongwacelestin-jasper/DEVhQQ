@@ -81,6 +81,8 @@ export interface SessionResponse {
 export interface PendingResponse {
   member: ApiMember;
   methods: string[];
+  /** The member has no second factor yet and must enroll one to finish signing in. */
+  enrollRequired?: boolean;
 }
 
 /**
@@ -88,8 +90,9 @@ export interface PendingResponse {
  * server might still include is ignored, never stored.
  */
 export interface SignInResponse {
-  next?: 'totp' | 'passkey';
+  next?: 'totp' | 'passkey' | 'enroll';
   methods?: string[];
+  enrollRequired?: boolean;
   risk?: { reasons: string[] };
 }
 
@@ -170,6 +173,8 @@ export interface CreatedAccessToken extends ApiAccessToken {
 export interface TotpEnrollment {
   otpauthUri: string;
   secret: string;
+  /** When the server discards an unconfirmed enrollment (sign-in enrollment only). */
+  expiresAt?: string;
 }
 
 /** GET /api/locations/sign-ins */
