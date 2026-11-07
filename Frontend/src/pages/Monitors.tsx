@@ -9,7 +9,13 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { Sparkline } from '../components/ui/Sparkline';
 import { Button } from '../components/ui/Button';
 import { Modal, Field, inputClass } from '../components/ui/Modal';
-import { DataState, GuardedButton, InlineError, LoadMore } from '../components/engineering/states';
+import {
+  DataState,
+  GuardedButton,
+  InlineError,
+  LoadMore,
+  SampleDataBadge,
+} from '../components/engineering/states';
 import {
   useMonitorChecks,
   useMonitors,
@@ -178,7 +184,12 @@ export function Monitors() {
 
           <Panel
             title="Uptime checks"
-            meta={<span>{rows.length} monitors · newest check on the right</span>}
+            meta={
+              <>
+                <SampleDataBadge source={mon.items.some((m) => m.readOnly) ? 'demo' : mon.source} />
+                <span>{rows.length} monitors · newest check on the right</span>
+              </>
+            }
           >
             {rows.length === 0 ? (
               <div className="px-4 py-10 text-center text-[12.5px] text-muted">
