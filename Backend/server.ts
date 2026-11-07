@@ -39,6 +39,8 @@ import { registerOperationsRoutes } from './routes/operations.routes.ts';
 import { registerLocationRoutes } from './routes/locations.routes.ts';
 import { registerSecurityRoutes } from './routes/security.routes.ts';
 import { registerCodespaceRoutes } from './routes/codespaces.routes.ts';
+import { registerInsightsRoutes } from './routes/insights.routes.ts';
+import { registerAssistantRoutes } from './routes/assistant.routes.ts';
 
 export async function buildApp() {
   await seed();
@@ -57,6 +59,8 @@ export async function buildApp() {
   registerLocationRoutes(router);
   registerSecurityRoutes(router);
   registerCodespaceRoutes(router);
+  registerInsightsRoutes(router);
+  registerAssistantRoutes(router);
   return router;
 }
 

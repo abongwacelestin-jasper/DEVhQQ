@@ -171,12 +171,13 @@ expect(
 );
 
 const comment = await call('POST', `/api/tasks/${newKey}/comments`, { text: 'Smoke comment' }, dev);
-expect(
-  'comment recorded',
-  comment.status === 201 && comment.json.taskKey === newKey,
-  comment.json,
+expect('comment recorded', comment.status === 201 && comment.json.taskKey === newKey, comment.json);
+const subtask = await call(
+  'POST',
+  `/api/tasks/${newKey}/subtasks`,
+  { title: 'Smoke subtask' },
+  dev,
 );
-const subtask = await call('POST', `/api/tasks/${newKey}/subtasks`, { title: 'Smoke subtask' }, dev);
 expect('subtask added', subtask.status === 201, subtask.json);
 const completed = await call(
   'PATCH',
@@ -184,7 +185,11 @@ const completed = await call(
   { done: true },
   dev,
 );
-expect('subtask completed', completed.status === 200 && completed.json.done === true, completed.json);
+expect(
+  'subtask completed',
+  completed.status === 200 && completed.json.done === true,
+  completed.json,
+);
 const time = await call('POST', `/api/tasks/${newKey}/time`, { minutes: 15, note: 'smoke' }, dev);
 expect('time logged', time.status === 201 && time.json.minutes === 15, time.json);
 const reread = await call('GET', `/api/tasks/${newKey}`, undefined, dev);
@@ -223,6 +228,171 @@ expect(
     unknown.status === 401 &&
     (bad.json.error as { code: string }).code === (unknown.json.error as { code: string }).code,
 );
+
+// ── ML lane (wave4/ML): insights + assistant bridge ─────────────────────────
+{
+  const { sign, verifySignature, signedHeaders } = await import('../integrations/ml/signing.ts');
+  const { resetCircuit } = await import('../integrations/ml/client.ts');
+  delete process.env.ML_SERVICE_URL;
+  delete process.env.ML_SERVICE_TOKEN;
+
+  expect(
+    'ML: HMAC signing matches the Python service test vector',
+    sign(
+      'devhq-test-vector-token',
+      '1700000000',
+      '00112233445566778899aabbccddeeff',
+      'POST',
+      '/v1/predict/overdue',
+      '{"estimate":8}',
+    ) === 'v1=d7856a999027e2ace3c8110c1cb32f8322cfb48b19efc4e5b3499a9f2ae32e83',
+  );
+
+  const ti = await call('GET', `/api/insights/tasks/${newKey}`, undefined, dev);
+  expect(
+    'ML: task insight falls back to heuristic when ML_SERVICE_URL is unset',
+    ti.status === 200 &&
+      ti.json.source === 'heuristic' &&
+      ti.json.fallbackReason === 'unconfigured' &&
+      typeof (ti.json.eta as { p50?: unknown }).p50 === 'number',
+    ti.json,
+  );
+  const tiHidden = await call('GET', '/api/insights/tasks/BL-17', undefined, dev);
+  expect('ML: out-of-scope task insight is 404', tiHidden.status === 404, tiHidden.json);
+
+  const deploys = await call('GET', '/api/deployments', undefined, dev);
+  const depId = (deploys.json as unknown as { id: string }[])[0]?.id;
+  const di = await call('GET', `/api/insights/deployments/${depId}`, undefined, dev);
+  expect(
+    'ML: deployment risk falls back to heuristic',
+    di.status === 200 && di.json.source === 'heuristic' && typeof di.json.score === 'number',
+    di.json,
+  );
+  const si = await call('GET', '/api/insights/signins/seed0', undefined, dev);
+  expect('ML: another member’s sign-in insight is 404 for a developer', si.status === 404);
+
+  const ask = await call('POST', '/api/assistant/ask', { question: 'What is blocked?' }, dev);
+  expect(
+    'ML: assistant returns 503 integration_unconfigured without the ML service',
+    ask.status === 503 && (ask.json.error as { code: string }).code === 'integration_unconfigured',
+    ask.json,
+  );
+  const exportAnon = await call('GET', '/api/insights/_export');
+  const exportDev = await call('GET', '/api/insights/_export', undefined, dev);
+  expect(
+    'ML: training export needs Administration:admin or a service signature',
+    exportAnon.status === 401 && exportDev.status === 403,
+    [exportAnon.status, exportDev.status],
+  );
+
+  // A stub ML service that verifies our signatures exactly like the Python one.
+  const token = 'smoke-ml-token-0123456789abcdef0123456789';
+  let mode: 'ok' | 'fail' = 'ok';
+  let lastContextIds: string[] = [];
+  let unsigned = 0;
+  const stub = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
+      const h = (n: string) => String(req.headers[n] ?? '');
+      const bad = verifySignature(
+        token,
+        {
+          signature: h('x-devhq-signature'),
+          timestamp: h('x-devhq-timestamp'),
+          nonce: h('x-devhq-nonce'),
+        },
+        req.method ?? '',
+        req.url ?? '',
+        body,
+      );
+      const reply = (status: number, payload: unknown) => {
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(payload));
+      };
+      if (bad) {
+        unsigned++;
+        return reply(401, { error: { code: bad, message: 'unsigned' } });
+      }
+      if (mode === 'fail') return reply(500, { error: { code: 'boom', message: 'down' } });
+      const model = { name: 'stub', version: 'v0', trainedOn: 'synthetic' };
+      if (req.url === '/v1/predict/task-eta')
+        return reply(200, { etaDays: { p10: 1, p50: 2, p90: 4 }, model });
+      if (req.url === '/v1/predict/overdue')
+        return reply(200, { probability: 0.42, drivers: ['Due in 2 days'], model });
+      if (req.url === '/v1/assistant/answer') {
+        const parsed = JSON.parse(body) as { context: { id: string }[] };
+        lastContextIds = parsed.context.map((c) => c.id);
+        return reply(200, {
+          answer: 'Stub answer',
+          sources: [
+            { id: lastContextIds[0], kind: 'task', title: 't' },
+            { id: 'task:BL-17', kind: 'task', title: 'not sent — must be dropped' },
+          ],
+          model: 'claude-sonnet-5-5',
+          stopReason: 'end_turn',
+          grounded: true,
+        });
+      }
+      return reply(404, { error: { code: 'not_found', message: 'nope' } });
+    });
+  });
+  await new Promise<void>((r) => stub.listen(0, '127.0.0.1', r));
+  process.env.ML_SERVICE_URL = `http://127.0.0.1:${(stub.address() as AddressInfo).port}`;
+  process.env.ML_SERVICE_TOKEN = token;
+  resetCircuit();
+
+  const tm = await call('GET', `/api/insights/tasks/${newKey}`, undefined, dev);
+  expect(
+    'ML: signed call to the ML service returns source:model',
+    tm.status === 200 &&
+      tm.json.source === 'model' &&
+      (tm.json.overdue as { probability: number }).probability === 0.42 &&
+      unsigned === 0,
+    tm.json,
+  );
+  const am = await call('POST', '/api/assistant/ask', { question: 'What is blocked?' }, dev);
+  const amSources = (am.json.sources as { id: string }[] | undefined) ?? [];
+  expect(
+    'ML: assistant context is scoped to the caller and unsent sources are dropped',
+    am.status === 200 &&
+      lastContextIds.length > 0 &&
+      lastContextIds.every((id) => !id.startsWith('task:BL-') && !id.startsWith('task:MA-')) &&
+      amSources.length === 1 &&
+      amSources[0].id === lastContextIds[0],
+    { status: am.status, sources: amSources, sent: lastContextIds.slice(0, 5) },
+  );
+
+  const exportPath = '/api/insights/_export';
+  const signedExport = await fetch(base + exportPath, {
+    headers: { 'User-Agent': 'devhq-smoke', ...signedHeaders(token, 'GET', exportPath) },
+  });
+  const exportJson = (await signedExport.json()) as { source?: string; tasks?: unknown[] };
+  expect(
+    'ML: service-signed training export is accepted',
+    signedExport.status === 200 &&
+      exportJson.source === 'backend' &&
+      Array.isArray(exportJson.tasks),
+    signedExport.status,
+  );
+
+  mode = 'fail';
+  for (let i = 0; i < 5; i++) await call('GET', `/api/insights/tasks/${newKey}`, undefined, dev);
+  const tripped = await call('GET', `/api/insights/tasks/${newKey}`, undefined, dev);
+  expect(
+    'ML: circuit opens after repeated failures and insights stay on heuristics',
+    tripped.status === 200 &&
+      tripped.json.source === 'heuristic' &&
+      tripped.json.fallbackReason === 'circuit_open',
+    tripped.json,
+  );
+
+  stub.close();
+  resetCircuit();
+  delete process.env.ML_SERVICE_URL;
+  delete process.env.ML_SERVICE_TOKEN;
+}
 
 const audit = await call('GET', '/api/audit/verify', undefined, dev);
 expect('audit chain intact', audit.json.ok === true, audit.json);
