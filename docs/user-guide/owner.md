@@ -11,10 +11,13 @@ The Owner has `admin` in every area and sees every product
 2. **Approvals.** Production deploys requested by Operations wait for you on
    **Deployments** (`/deployments`). Open one and approve; the app asks you to
    re-verify if your last verification is older than 5 minutes or your network
-   changed. You cannot approve a deploy you requested.
-3. **Access review** on **Team & roles** (`/team`) — pending JIT grants and
-   active members without a second factor. Approve or deny grants (you cannot
-   approve your own). See [Admin tasks](admin-tasks.md#access-review).
+   changed. You cannot approve a deploy you requested. As Owner you need no
+   JIT grant for it.
+3. **Production access requests** on **Security** (`/security`) → Production
+   access, and in the **Access review** on **Team & roles** (`/team`) —
+   pending JIT grants (you are notified of each request). Approve or deny
+   them (you cannot approve your own); revoke an active grant to cut it off
+   at once. See [Admin tasks](admin-tasks.md#access-review).
 4. **Audit log** (`/audit`) — the full trail; filter by member from a member's
    page (`/team/:memberId`).
 
@@ -30,5 +33,8 @@ The Owner has `admin` in every area and sees every product
 - See every page, including Security, Integrations, Workspaces and Audit.
 
 The Owner also passes every JIT elevation check without a grant
-(`requireElevation` in `Backend/auth/rbac.ts`), though no route uses that
-check yet.
+(`assertElevation` in `Backend/auth/rbac.ts`): approving and rolling back
+production deploys, changing incident severity and resolving a SEV1. This does
+not extend to your personal access tokens: a token is always refused those
+actions (`403 elevation_unavailable`). See
+[JIT elevation](../concepts/jit-access.md#what-needs-a-grant).

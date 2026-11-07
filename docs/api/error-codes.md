@@ -11,7 +11,7 @@ Every error the API raises has a stable machine-readable `code`. Branch on
 `code`, never on `message` (messages are for people and may change). The
 envelope and client guidance are in [Errors](errors.md).
 
-**128 codes** from **343 call sites**. The status column lists every
+**129 codes** from **344 call sites**. The status column lists every
 status a code is raised with; most codes have exactly one.
 
 | Code | Status | Example message | Raised in |
@@ -57,6 +57,7 @@ status a code is raised with; most codes have exactly one.
 | `unauthenticated` | 401 | Sign in required _(+1 more)_ | `auth/rbac.ts`, `auth/webauthn.ts`, `middleware/authenticate.ts`, `routes/assistant.routes.ts`, `routes/auth.routes.ts`, `routes/insights.routes.ts` |
 | `bad_origin` | 403 | Origin not allowed _(+3 more)_ | `security/headers.ts` |
 | `elevation_required` | 403 | Request just-in-time access for ${scope} | `auth/rbac.ts` |
+| `elevation_unavailable` | 403 | Personal access tokens cannot use production access — use an interactive session | `auth/rbac.ts` |
 | `files_disabled` | 403 | Files are off in this channel | `routes/messaging.routes.ts` |
 | `forbidden` | 403 | Requires manage on Administration _(+23 more)_ | `auth/jit.ts`, `auth/rbac.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/files.routes.ts`, `routes/messaging.routes.ts`, `routes/offboarding.routes.ts`, `routes/team.routes.ts`, `routes/workspaces.routes.ts` |
 | `github_forbidden` | 403 | _(computed at runtime)_ | `integrations/github/client.ts` |

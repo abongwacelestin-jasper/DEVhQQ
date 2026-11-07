@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Just-in-time production access is enforced.** Approving a production deploy,
+  rolling back a production deploy that was approved or ran, changing an
+  incident's severity and resolving a SEV1 now need an approved, unexpired grant
+  for `production:<product>`; otherwise `403 elevation_required` with
+  `details.scope`. The Owner is exempt; personal access tokens never carry an
+  elevation (`403 elevation_unavailable`). Expiry and revocation apply on the
+  next request. Each use is audited as `jit.used`. Staging is unaffected.
+- `GET /api/access/grants/mine` lists the caller's own grants; approvers are
+  notified of new requests.
+- Web app: a refused production action opens **Request production access**;
+  deployment and incident detail show pending and active grants with time left;
+  Security → Production access lets Owner and Operations approve, deny and
+  revoke. The Team access review's **Deny** now calls the existing revoke route.
+- Resolving an incident only announces success after the API accepts it.
+
 ## [2.0.0] - 2026-11-07
 
 Major version: browser sessions are cookie-only, so clients that read the session
