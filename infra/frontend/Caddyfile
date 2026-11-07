@@ -56,13 +56,18 @@
 # Applies to SPA responses only (`@spa`, defined in the site block); API
 # responses keep the backend's own headers (Backend/security/headers.ts).
 (security_headers) {
-	# Keep in step with Backend/security/headers.ts. Differences are what the
-	# SPA bundle needs and the API does not: Google Fonts (Frontend/src/index.css),
-	# jsDelivr (the Monaco loader), worker-src blob: (code runner, Monaco), and
-	# the object-storage origin for presigned uploads and image previews.
+	# Keep in step with Backend/security/headers.ts and the THIRD_PARTY list in
+	# Frontend/vite.config.ts. Differences are what the SPA bundle needs and the
+	# API does not: worker-src blob: (code runner, Monaco), and the object-storage
+	# origin for presigned uploads and image previews. Fonts and the Monaco editor
+	# are self-hosted in the build, so style-src and font-src are 'self' only.
 	# No nonce: the Vite build emits only external module scripts.
+	#
+	# Third-party origins: Cloudflare Turnstile (https://challenges.cloudflare.com,
+	# script + challenge iframe on sign-in, forgot password, accept invite) is
+	# owned by the Turnstile change; add any other origin next to it.
 	header @spa {
-		Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https://avatars.githubusercontent.com https://cdn.magicpatterns.com {$S3_PUBLIC_ORIGIN}; connect-src 'self' https://api.github.com {$S3_PUBLIC_ORIGIN}; worker-src 'self' blob:; frame-src https://js.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests"
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://js.stripe.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://avatars.githubusercontent.com https://cdn.magicpatterns.com {$S3_PUBLIC_ORIGIN}; connect-src 'self' https://api.github.com {$S3_PUBLIC_ORIGIN}; worker-src 'self' blob:; frame-src https://challenges.cloudflare.com https://js.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests"
 		Strict-Transport-Security "{$HSTS_VALUE:max-age=63072000; includeSubDomains; preload}"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
@@ -164,9 +169,13 @@
 	}
 
 	# The SPA shell and client-side routes: always revalidate so a deploy is
-	# picked up at once.
+	# picked up at once. preload.caddy (written at image build time by
+	# preload-links.mjs) adds a Link header naming the entry script, stylesheet
+	# and critical font, so the browser, or Cloudflare as 103 Early Hints,
+	# starts fetching them before the HTML arrives. The glob makes it optional.
 	handle {
 		header Cache-Control "no-cache"
+		import /etc/caddy/preload*.caddy
 		try_files {path} /index.html
 		file_server {
 			precompressed br gzip
