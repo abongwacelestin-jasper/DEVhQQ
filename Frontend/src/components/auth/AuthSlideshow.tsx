@@ -60,7 +60,7 @@ export function AuthSlideshow({ slides }: { slides: AuthSlide[] }) {
             transition={{ duration: 0.3, ease }}
             className="absolute inset-0"
           >
-            <AuthSlideArt variant={slide.art} className="h-full w-full" />
+            <AuthSlideArt variant={slide.art} className="h-full w-full" priority={index === 0} />
           </motion.div>
         </AnimatePresence>
       </div>
