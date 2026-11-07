@@ -177,7 +177,7 @@ export function registerIncidentActionRoutes(r: Router) {
         throw new HttpError(
           409,
           'too_many_actions',
-          `An incident can have at most ${MAX_ACTIONS_PER_INCIDENT} actions`,
+          'An incident can have at most 100 actions',
         );
       const at = new Date().toISOString();
       const a: IncidentAction = {
