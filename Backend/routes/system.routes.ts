@@ -2,10 +2,10 @@
  * System routes: probes, observability, API discovery, the safe query runner
  * and the backend console itself.
  *
- * Console access policy (current): any authenticated member. The role filter
- * is a one-line change per route — add `requireArea('Administration', 'view')`
- * after `authenticate` — and is deliberately left off until the console is
- * signed off. Data returned here is still product-scoped per caller.
+ * Console access policy: configuration, metrics and logs need
+ * Administration:view (Owner, Operations), and so does the query runner's
+ * `audit` collection. Discovery, the event stream and the rest of the query
+ * runner stay open to any member; their data is scoped per caller.
  */
 
 import { persistenceStatus } from '../store/collection.ts';
@@ -16,7 +16,7 @@ import type { Ctx, Router } from '../lib/http.ts';
 import { STREAM } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
-import { canSeeProduct, hasOwnerPowers } from '../auth/rbac.ts';
+import { can, canSeeProduct, hasOwnerPowers, requireArea } from '../auth/rbac.ts';
 import { logger } from '../lib/logger.ts';
 import { metrics } from '../lib/metrics.ts';
 import { subscribe } from '../lib/events.ts';
@@ -142,7 +142,11 @@ export const collections: Record<string, Collection> = {
   },
   audit: {
     fields: ['seq', 'at', 'actor', 'action', 'target', 'sensitive'],
-    rows: () => audit.list({ limit: 2000 }) as unknown as Row[],
+    // Same rule as GET /api/audit: the trail is for Administration:view only.
+    rows: (p) =>
+      can(p, 'Administration', 'view')
+        ? (audit.list({ limit: 2000 }) as unknown as Row[])
+        : [],
   },
 };
 
@@ -329,6 +333,7 @@ export function registerSystemRoutes(r: Router) {
     '/api/_config',
     { summary: 'Effective configuration, secrets redacted', tag: 'system' },
     authenticate,
+    requireArea('Administration', 'view'),
     () => publicConfig(),
   );
 
@@ -337,6 +342,7 @@ export function registerSystemRoutes(r: Router) {
     '/api/_metrics',
     { summary: 'Request metrics (format=prometheus for text exposition)', tag: 'system' },
     authenticate,
+    requireArea('Administration', 'view'),
     (ctx) => {
       if (ctx.query.get('format') === 'prometheus') {
         ctx.res.statusCode = 200;
@@ -353,6 +359,7 @@ export function registerSystemRoutes(r: Router) {
     '/api/_logs',
     { summary: 'Recent structured logs (level, q, limit)', tag: 'system' },
     authenticate,
+    requireArea('Administration', 'view'),
     (ctx) => {
       const level = ctx.query.get('level') as 'debug' | 'info' | 'warn' | 'error' | null;
       const q = ctx.query.get('q')?.toLowerCase();

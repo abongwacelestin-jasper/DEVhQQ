@@ -29,6 +29,7 @@ commit. "smoke:N" means the check whose `expect(...)` call is on line N of
 | C-20 | Single password policy (accept-invite, recovery reset) | `security/passwordPolicy.ts` | collab smoke "reset applies the password policy" |
 | C-21 | **Per-subscriber event filtering (CYBER-001).** `/api/_events` delivers security events (audit, signin, team, member/auth/security/token/jit.*) only to Administration:view; product events only when `canSeeProduct` (product from envelope, payload or the referenced record); unknown types denied; stream ends when the member is inactive | `security/eventPolicy.ts:74`, `routes/system.routes.ts:377`, envelope `lib/events.ts` (`publish(type, data, {product})`) | smoke:826 |
 | C-22 | **Validator own-property allow-list (CYBER-004).** `__proto__`/`constructor`/`prototype` refused; inherited names (`toString`) are unknown fields → 422 | `lib/validate.ts:83`, `:86` | smoke:856 |
+| C-23 | **Audit and console reads need Administration:view (QA-028).** `GET /api/audit`, `/api/audit/verify`, `/api/_logs`, `/api/_metrics`, `/api/_config`, `/api/security/posture`, `/api/security/rate-limits` and `GET /api/backups` return 403 to roles without Administration ≥ view; the query runner's `audit` collection returns zero rows for them | `routes/security.routes.ts:20`, `routes/system.routes.ts:145` | smoke:1729 |
 
 ## Rate limiting
 

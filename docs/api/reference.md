@@ -29,27 +29,27 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/health` | Liveness probe | public | — | 429 | [system.routes.ts:252](../../Backend/routes/system.routes.ts#L252) |
-| `GET` | `/api/ready` | Readiness probe — database reachable, write queue healthy, audit chain intact | public | — | 503 | [system.routes.ts:257](../../Backend/routes/system.routes.ts#L257) |
-| `GET` | `/api/version` | Build and runtime version | public | — | 429 | [system.routes.ts:289](../../Backend/routes/system.routes.ts#L289) |
-| `GET` | `/api/openapi.json` | OpenAPI 3.1 document generated from the route table | public | — | 429 | [system.routes.ts:301](../../Backend/routes/system.routes.ts#L301) |
-| `GET` | `/api/_inventory` | Every registered route — API discovery | session | — | 401 403 429 | [system.routes.ts:312](../../Backend/routes/system.routes.ts#L312) |
-| `GET` | `/api/_status-codes` | Status codes this API can return | public | — | 429 | [system.routes.ts:320](../../Backend/routes/system.routes.ts#L320) |
-| `GET` | `/api/_config` | Effective configuration, secrets redacted | session | — | 401 403 429 | [system.routes.ts:327](../../Backend/routes/system.routes.ts#L327) |
-| `GET` | `/api/_metrics` | Request metrics (format=prometheus for text exposition) | session | — | 401 403 429 | [system.routes.ts:335](../../Backend/routes/system.routes.ts#L335) |
-| `GET` | `/api/_logs` | Recent structured logs (level, q, limit) | session | — | 401 403 429 | [system.routes.ts:351](../../Backend/routes/system.routes.ts#L351) |
-| `GET` | `/api/_events` | Live event stream (Server-Sent Events) | session | — | 401 403 429 | [system.routes.ts:368](../../Backend/routes/system.routes.ts#L368) |
-| `GET` | `/console` | Backend console (HTML) | public | — | 429 | [system.routes.ts:459](../../Backend/routes/system.routes.ts#L459) |
-| `GET` | `/backend.html` | Backend console (HTML, alias) | public | — | 429 | [system.routes.ts:465](../../Backend/routes/system.routes.ts#L465) |
-| `GET` | `/fonts/:file` | Console webfonts (self-hosted) | public | — | 429 | [system.routes.ts:493](../../Backend/routes/system.routes.ts#L493) |
-| `GET` | `/` | Redirect to the console | public | — | 429 | [system.routes.ts:499](../../Backend/routes/system.routes.ts#L499) |
+| `GET` | `/api/health` | Liveness probe | public | — | 429 | [system.routes.ts:256](../../Backend/routes/system.routes.ts#L256) |
+| `GET` | `/api/ready` | Readiness probe — database reachable, write queue healthy, audit chain intact | public | — | 503 | [system.routes.ts:261](../../Backend/routes/system.routes.ts#L261) |
+| `GET` | `/api/version` | Build and runtime version | public | — | 429 | [system.routes.ts:293](../../Backend/routes/system.routes.ts#L293) |
+| `GET` | `/api/openapi.json` | OpenAPI 3.1 document generated from the route table | public | — | 429 | [system.routes.ts:305](../../Backend/routes/system.routes.ts#L305) |
+| `GET` | `/api/_inventory` | Every registered route — API discovery | session | — | 401 403 429 | [system.routes.ts:316](../../Backend/routes/system.routes.ts#L316) |
+| `GET` | `/api/_status-codes` | Status codes this API can return | public | — | 429 | [system.routes.ts:324](../../Backend/routes/system.routes.ts#L324) |
+| `GET` | `/api/_config` | Effective configuration, secrets redacted | session | Administration ≥ view | 401 403 429 | [system.routes.ts:331](../../Backend/routes/system.routes.ts#L331) |
+| `GET` | `/api/_metrics` | Request metrics (format=prometheus for text exposition) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:340](../../Backend/routes/system.routes.ts#L340) |
+| `GET` | `/api/_logs` | Recent structured logs (level, q, limit) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:357](../../Backend/routes/system.routes.ts#L357) |
+| `GET` | `/api/_events` | Live event stream (Server-Sent Events) | session | — | 401 403 429 | [system.routes.ts:375](../../Backend/routes/system.routes.ts#L375) |
+| `GET` | `/console` | Backend console (HTML) | public | — | 429 | [system.routes.ts:466](../../Backend/routes/system.routes.ts#L466) |
+| `GET` | `/backend.html` | Backend console (HTML, alias) | public | — | 429 | [system.routes.ts:472](../../Backend/routes/system.routes.ts#L472) |
+| `GET` | `/fonts/:file` | Console webfonts (self-hosted) | public | — | 429 | [system.routes.ts:500](../../Backend/routes/system.routes.ts#L500) |
+| `GET` | `/` | Redirect to the console | public | — | 429 | [system.routes.ts:506](../../Backend/routes/system.routes.ts#L506) |
 
 ## query
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/_query/collections` | Queryable collections and their fields | session | — | 401 403 429 | [system.routes.ts:406](../../Backend/routes/system.routes.ts#L406) |
-| `POST` | `/api/_query` | Run a safe JSON query against an allow-listed collection | session | — | 401 422 | [system.routes.ts:420](../../Backend/routes/system.routes.ts#L420) |
+| `GET` | `/api/_query/collections` | Queryable collections and their fields | session | — | 401 403 429 | [system.routes.ts:413](../../Backend/routes/system.routes.ts#L413) |
+| `POST` | `/api/_query` | Run a safe JSON query against an allow-listed collection | session | — | 401 422 | [system.routes.ts:427](../../Backend/routes/system.routes.ts#L427) |
 
 ## auth
 
@@ -186,18 +186,18 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/audit` | Audit trail, newest first (limit, sensitive=1, actor, action) | session | — | 401 403 429 | [security.routes.ts:18](../../Backend/routes/security.routes.ts#L18) |
-| `GET` | `/api/audit/verify` | Recompute and verify the audit hash chain | session | — | 401 403 429 | [security.routes.ts:36](../../Backend/routes/security.routes.ts#L36) |
-| `GET` | `/api/security/posture` | Live security posture across the six pillars | session | — | 401 403 429 | [security.routes.ts:44](../../Backend/routes/security.routes.ts#L44) |
-| `GET` | `/api/security/rate-limits` | Most-drained rate-limit buckets | session | — | 401 403 429 | [security.routes.ts:75](../../Backend/routes/security.routes.ts#L75) |
+| `GET` | `/api/audit` | Audit trail, newest first (limit, sensitive=1, actor, action) | session | Administration ≥ view | 401 403 429 | [security.routes.ts:18](../../Backend/routes/security.routes.ts#L18) |
+| `GET` | `/api/audit/verify` | Recompute and verify the audit hash chain | session | Administration ≥ view | 401 403 429 | [security.routes.ts:37](../../Backend/routes/security.routes.ts#L37) |
+| `GET` | `/api/security/posture` | Live security posture across the six pillars | session | Administration ≥ view | 401 403 429 | [security.routes.ts:46](../../Backend/routes/security.routes.ts#L46) |
+| `GET` | `/api/security/rate-limits` | Most-drained rate-limit buckets | session | Administration ≥ view | 401 403 429 | [security.routes.ts:78](../../Backend/routes/security.routes.ts#L78) |
 
 ## backups
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/backups` | Backup status and latest checksum | session | — | 401 403 429 | [security.routes.ts:83](../../Backend/routes/security.routes.ts#L83) |
-| `POST` | `/api/backups` | Create an immutable snapshot now (step-up) | session | Infrastructure ≥ manage · step-up | 401 403 | [security.routes.ts:91](../../Backend/routes/security.routes.ts#L91) |
-| `POST` | `/api/backups/drill` | Run a restore drill — no live data touched (step-up) | session | Infrastructure ≥ manage · step-up | 401 403 | [security.routes.ts:108](../../Backend/routes/security.routes.ts#L108) |
+| `GET` | `/api/backups` | Backup status and latest checksum | session | Administration ≥ view | 401 403 429 | [security.routes.ts:87](../../Backend/routes/security.routes.ts#L87) |
+| `POST` | `/api/backups` | Create an immutable snapshot now (step-up) | session | Infrastructure ≥ manage · step-up | 401 403 | [security.routes.ts:96](../../Backend/routes/security.routes.ts#L96) |
+| `POST` | `/api/backups/drill` | Run a restore drill — no live data touched (step-up) | session | Infrastructure ≥ manage · step-up | 401 403 | [security.routes.ts:113](../../Backend/routes/security.routes.ts#L113) |
 | `GET` | `/api/backups/snapshots` | Backup manifests, newest first (limit ≤ 100) | session | Infrastructure ≥ manage | 401 403 429 | [backups.routes.ts:30](../../Backend/routes/backups.routes.ts#L30) |
 | `GET` | `/api/storage/status` | Object storage driver, buckets and audit archive state | session | Infrastructure ≥ view | 401 403 429 | [backups.routes.ts:42](../../Backend/routes/backups.routes.ts#L42) |
 | `POST` | `/api/backups/:id/restore` | Restore a backup — dry-run by default (admin + step-up) | session | Administration ≥ admin · step-up | 401 403 404 422 | [backups.routes.ts:51](../../Backend/routes/backups.routes.ts#L51) |

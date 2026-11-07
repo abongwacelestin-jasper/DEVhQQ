@@ -85,8 +85,8 @@ The last 500 lines are kept in memory: `GET /api/_logs?level=&q=&limit=`.
 - `GET /api/security/rate-limits` — the 50 most-drained buckets.
 - The backend console (`/console`) charts all of the above.
 
-Logs, metrics, config, posture and rate limits are open to any signed-in
-member today; see
+Logs, metrics, config, posture and rate limits need Administration ≥ `view`
+(Owner, Operations); other roles get `403 forbidden`. See
 [Roles and permissions](../concepts/roles-and-permissions.md#routes-open-to-every-signed-in-member).
 
 Metrics, logs, rate limits and events are per process and reset on restart.

@@ -6,9 +6,11 @@ import { signInAs } from '../helpers/auth.ts';
 
 let app: TestServer;
 let dev: Client;
+let admin: Client;
 before(async () => {
   app = await startApp();
   dev = await signInAs(app, 'developer');
+  admin = await signInAs(app, 'admin');
 });
 after(() => app.close());
 
@@ -46,7 +48,7 @@ describe('system — probes and discovery', () => {
   });
 
   it('config is redacted (secrets reported as set/unset only)', async () => {
-    const cfg = await dev.get<{ secrets: Record<string, string> }>('/api/_config');
+    const cfg = await admin.get<{ secrets: Record<string, string> }>('/api/_config');
     assert.equal(cfg.status, 200);
     assert.ok(!cfg.text.includes('dev-only-secret'));
     for (const v of Object.values(cfg.json.secrets))
@@ -54,16 +56,24 @@ describe('system — probes and discovery', () => {
   });
 
   it('metrics are exposed as JSON and Prometheus text', async () => {
-    assert.equal((await dev.get('/api/_metrics')).status, 200);
-    const prom = await dev.get('/api/_metrics?format=prometheus');
+    assert.equal((await admin.get('/api/_metrics')).status, 200);
+    const prom = await admin.get('/api/_metrics?format=prometheus');
     assert.equal(prom.status, 200);
     assert.match(prom.headers.get('content-type') ?? '', /^text\/plain/);
   });
 
   it('logs redact secrets', async () => {
-    const logs = await dev.get('/api/_logs?limit=500');
+    const logs = await admin.get('/api/_logs?limit=500');
     assert.equal(logs.status, 200);
     assert.ok(!logs.text.includes('devhq-demo'), 'demo password never logged');
+  });
+
+  it('config, metrics and logs need Administration:view', async () => {
+    for (const path of ['/api/_config', '/api/_metrics', '/api/_logs']) {
+      const res = await dev.get(path);
+      assert.equal(res.status, 403, path);
+      assert.equal(errorCode(res), 'forbidden', path);
+    }
   });
 
   it('unknown routes 404 and wrong methods 405', async () => {
@@ -104,8 +114,14 @@ describe('system — query runner', () => {
     );
     assert.equal(res.status, 200);
     assert.ok(res.json.rows.every((r) => ['urgent', 'high'].includes(r.priority)));
-    const audit = await dev.get<{ action: string }[]>('/api/audit?action=console.query');
+    const audit = await admin.get<{ action: string }[]>('/api/audit?action=console.query');
     assert.ok(audit.json.length > 0);
+  });
+
+  it('the audit collection is empty for callers without Administration:view', async () => {
+    const q = { from: 'audit', select: ['seq', 'action'] };
+    assert.equal((await dev.post<{ total: number }>('/api/_query', q)).json.total, 0);
+    assert.ok((await admin.post<{ total: number }>('/api/_query', q)).json.total > 0);
   });
 
   it('refuses secrets, unknown collections, nested conditions and bad bounds', async () => {

@@ -41,12 +41,29 @@ describe('security — audit trail', () => {
   });
 
   it('the hash chain verifies and readiness reports it intact', async () => {
-    assert.deepEqual((await as.developer.get('/api/audit/verify')).json, { ok: true });
+    assert.deepEqual((await as.admin.get('/api/audit/verify')).json, { ok: true });
     const ready = await app.client().get<{ ready: boolean; auditChain: string }>('/api/ready');
     assert.deepEqual(
       [ready.status, ready.json.ready, ready.json.auditChain],
       [200, true, 'intact'],
     );
+  });
+});
+
+describe('security — console reads need Administration:view', () => {
+  it('a Developer is refused the trail, its verification, posture, rate limits and backups', async () => {
+    for (const path of [
+      '/api/audit',
+      '/api/audit/verify',
+      '/api/security/posture',
+      '/api/security/rate-limits',
+      '/api/backups',
+    ])
+      assert.equal((await as.developer.get(path)).status, 403, path);
+  });
+
+  it('Operations (Administration:view) can read the trail', async () => {
+    assert.equal((await as.operations.get('/api/audit?limit=5')).status, 200);
   });
 });
 
