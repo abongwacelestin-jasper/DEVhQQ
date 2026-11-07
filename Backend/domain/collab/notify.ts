@@ -11,6 +11,7 @@ import { can } from '../../auth/rbac.ts';
 import { audit } from '../../audit/auditLog.ts';
 import { subscribe } from '../../lib/events.ts';
 import { logger } from '../../lib/logger.ts';
+import { jobEnabled } from '../../lib/jobs.ts';
 import { config } from '../../config/env.ts';
 import { db } from '../../store/db.ts';
 import type { Member, Principal } from '../../types.ts';
@@ -241,6 +242,7 @@ export async function runDigest(minAgeMs: number): Promise<number> {
 }
 
 function startDigest() {
+  if (!jobEnabled('digest')) return;
   const minutes = Number(process.env.MAIL_DIGEST_MINUTES ?? 0);
   if (!Number.isFinite(minutes) || minutes <= 0) return;
   const ms = minutes * 60_000;

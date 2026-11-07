@@ -21,6 +21,27 @@ export const buckets = config.storage.buckets;
 /** WORM mode for backups/audit: compliance in production, governance elsewhere. */
 export const lockMode: LockMode = config.isProd ? 'COMPLIANCE' : 'GOVERNANCE';
 
+/**
+ * How the backups/audit buckets are actually made immutable, as reported by
+ * the status endpoints. S3 and MinIO use Object Lock (`lockMode`). Cloudflare
+ * R2 has no Object Lock API: it uses bucket lock rules, which block delete and
+ * overwrite for every API token but can be removed by a Cloudflare account
+ * admin, so they are reported as what they are rather than as COMPLIANCE
+ * (docs/deploy/RAILWAY.md#worm-on-r2). Set with STORAGE_LOCK_MODE.
+ */
+export type WormMode = LockMode | 'R2_BUCKET_LOCK';
+
+export function parseWormMode(raw: string | undefined, fallback: LockMode): WormMode {
+  const v = (raw ?? '').trim().toUpperCase();
+  if (!v) return fallback;
+  if (v === 'GOVERNANCE' || v === 'COMPLIANCE' || v === 'R2_BUCKET_LOCK') return v;
+  throw new Error(
+    `STORAGE_LOCK_MODE must be GOVERNANCE | COMPLIANCE | R2_BUCKET_LOCK (got "${raw}")`,
+  );
+}
+
+export const wormMode: WormMode = parseWormMode(process.env.STORAGE_LOCK_MODE, lockMode);
+
 let store: ObjectStore | undefined;
 
 export function objectStore(): ObjectStore {
@@ -56,7 +77,7 @@ export function storageInfo() {
   return {
     driver: config.storage.endpoint ? 's3' : 'local',
     buckets,
-    lockMode,
+    lockMode: wormMode,
     uploads: uploadsAvailable(),
   };
 }

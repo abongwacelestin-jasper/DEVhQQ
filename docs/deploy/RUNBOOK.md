@@ -1,7 +1,8 @@
 # DevHQ operations runbook
 
 Single-host Docker Compose deployment. Architecture and trust boundaries:
-[ARCHITECTURE.md](ARCHITECTURE.md). All commands run as the `deploy` user in
+[ARCHITECTURE.md](ARCHITECTURE.md). Hosting on Railway with Cloudflare R2
+instead: [RAILWAY.md](RAILWAY.md). All commands run as the `deploy` user in
 `/opt/devhq` unless a step says `sudo`.
 
 ---

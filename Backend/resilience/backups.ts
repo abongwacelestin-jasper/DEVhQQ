@@ -27,7 +27,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { config } from '../config/env.ts';
 import { audit } from '../audit/auditLog.ts';
-import { buckets, lockMode, objectStore, StorageError } from '../storage/index.ts';
+import { buckets, objectStore, StorageError, wormMode } from '../storage/index.ts';
 import { decryptBlob, DecryptError, encryptBlob, encryptionKeyId } from './encryption.ts';
 import {
   applyRestore,
@@ -327,6 +327,6 @@ export async function backupStatus() {
     retentionDays: config.backups.retentionDays,
     store: objectStore().kind,
     bucket: buckets.backups,
-    lockMode,
+    lockMode: wormMode,
   };
 }

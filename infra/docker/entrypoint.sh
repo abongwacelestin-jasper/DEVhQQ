@@ -18,6 +18,30 @@
 # script becomes a no-op and can be removed.
 set -eu
 
+# --- Railway: volume ownership, then drop root ------------------------------
+# Railway mounts volumes owned by root, so a service with a volume runs the
+# container as root (RAILWAY_RUN_UID=0). Fix the ownership of the state
+# directory and re-exec this script as the unprivileged devhq user. Under
+# Compose the container already runs as 10001 and this block is skipped.
+if [ "$(id -u)" = 0 ]; then
+  state="${DEVHQ_STATE_DIR:-/var/lib/devhq}"
+  mkdir -p "$state/audit" "$state/backups"
+  chown 10001:10001 "$state" "$state/audit" "$state/backups"
+  chmod 0750 "$state"
+  # Files written by a previous run as root (e.g. a `railway ssh` session).
+  find "$state" -xdev ! -user 10001 -exec chown 10001:10001 {} + 2>/dev/null || true
+  exec su-exec 10001:10001 "$0" "$@"
+fi
+
+# --- Least privilege for the schema-owner URL --------------------------------
+# DATABASE_MIGRATION_URL (the DDL role) is only for the migration command
+# (Railway pre-deploy: `node --run migrate`). Everything else runs as the
+# DML-only role, so the API never holds DDL credentials in its environment.
+case " $* " in
+  *" --run migrate "* | *"db/migrate.ts"*) ;;
+  *) unset DATABASE_MIGRATION_URL ;;
+esac
+
 SECRET_VARS="
 SESSION_SECRET
 SESSION_SECRET_PREVIOUS

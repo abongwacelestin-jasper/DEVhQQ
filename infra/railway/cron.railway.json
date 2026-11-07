@@ -1,0 +1,21 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Backend/Dockerfile",
+    "watchPatterns": [
+      "/Backend/**",
+      "/infra/docker/entrypoint.sh",
+      "/package.json",
+      "/package-lock.json",
+      "/.npmrc",
+      "/infra/railway/cron.railway.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "node --experimental-strip-types --disable-warning=ExperimentalWarning worker.ts --once backup,drill",
+    "cronSchedule": "17 3 * * *",
+    "restartPolicyType": "NEVER",
+    "numReplicas": 1
+  }
+}

@@ -17,7 +17,7 @@ this page links them and adds the application-side first-run steps.
 ```mermaid
 flowchart LR
   U[Browser] -->|443| EDGE["edge · Caddy"]
-  EDGE -->|"/"| FE["frontend · nginx :8081"]
+  EDGE -->|"/"| FE["frontend · Caddy :8081"]
   EDGE -->|"/api, /console"| BE["backend · Node :8080"]
   BE --> PG[("postgres :5432")]
   BE --> S3[("minio :9000")]

@@ -1,7 +1,12 @@
 # DevHQ deployment architecture
 
-One host, Docker Compose, everything behind a single edge. Source of truth:
-`docker-compose.yml` (prod-like) and `docker-compose.dev.yml` (dev override).
+Two supported deployments built from the same images:
+
+- **Compose** (this page's first half): one host, everything behind a single
+  edge. Source of truth: `docker-compose.yml` (prod-like) and
+  `docker-compose.dev.yml` (dev override).
+- **Railway + Cloudflare R2** ([Railway topology](#railway-topology) below;
+  runbook: [RAILWAY.md](RAILWAY.md)).
 
 ## Services and networks
 
@@ -16,7 +21,7 @@ flowchart LR
       edge[edge · Caddy 2<br/>:80 :443 tcp+udp<br/>TLS · HSTS · HTTP/3]
     end
     subgraph edge_net[edge_net · internal]
-      frontend[frontend · nginx<br/>:8081 static SPA]
+      frontend[frontend · Caddy<br/>:8081 static SPA]
       backend[backend · Node 22<br/>:8080 API + /console]
     end
     subgraph app_net[app_net · internal]
@@ -50,7 +55,7 @@ ASCII view of the same thing:
                                    │  TLS ends here; XFF overwritten
                  ┌─────────────────┴─────────────────┐    edge_net (internal)
                  ▼                                   ▼
-       [frontend: nginx :8081]            [backend: node :8080] ──▶ egress_net ──▶ GitHub/SMTP
+       [frontend: caddy :8081]            [backend: node :8080] ──▶ egress_net ──▶ GitHub/SMTP
                                                      │
                  ┌───────────────┬───────────────────┼──────────────┐  app_net (internal)
                  ▼               ▼                   ▼              ▼
@@ -94,8 +99,8 @@ published on `127.0.0.1` for host tools.
 ## Container hardening (every service)
 
 `read_only: true` root filesystem with tmpfs for scratch paths, `cap_drop:
-[ALL]`, `no-new-privileges`, non-root uid (backend 10001, edge 10002, nginx
-101, postgres 70, MinIO 65532), CPU/memory/pids limits, healthchecks with
+[ALL]`, `no-new-privileges`, non-root uid (backend 10001, edge 10002, frontend
+10003, postgres 70, MinIO 65532), CPU/memory/pids limits, healthchecks with
 `depends_on: service_healthy`, `restart: unless-stopped`, json-file log
 rotation (5 × 10 MB). The edge binds :80/:443 without
 `CAP_NET_BIND_SERVICE` through the namespaced sysctl
@@ -115,7 +120,7 @@ unavailable.
 | Image | Base (pinned by digest) | Notes |
 |---|---|---|
 | backend | `node:22-alpine` | `npm ci --omit=dev --ignore-scripts`; npm/corepack removed from runtime; tini; `*_FILE` entrypoint |
-| frontend | `node:22-alpine` → `nginxinc/nginx-unprivileged:1.29-alpine` | pre-gzipped assets, SPA fallback, CSP |
+| frontend | `node:22-alpine` → `caddy:2.11-alpine` | pre-compressed (Brotli + gzip) assets, SPA fallback, CSP; optional same-origin `/api` proxy (Railway) |
 | edge | `caddy:2.10-alpine` | file capability stripped, non-root |
 | models | ML lane (`Models/Dockerfile`) | |
 | postgres | `postgres:17-alpine` | |
@@ -129,12 +134,66 @@ out.
 
 ## Headers: who sets what
 
-| Header | SPA (nginx) | API (backend) | Edge |
+| Header | SPA (frontend Caddy) | API (backend) | Edge |
 |---|---|---|---|
-| `Strict-Transport-Security` | — | prod only | always (single source) |
-| `Content-Security-Policy` | `infra/nginx/security-headers.conf` | `Backend/security/headers.ts` | — |
+| `Strict-Transport-Security` | `HSTS_VALUE` (the only source on Railway) | prod only | always (Compose) |
+| `Content-Security-Policy` | `infra/frontend/Caddyfile` | `Backend/security/headers.ts` | — |
 | nosniff, frame DENY, referrer, permissions, COOP, CORP | yes | yes | — |
 | `Cache-Control` | `immutable` for `/assets/*`, `no-cache` for the shell | `no-store` | — |
 
 The SPA's CSP adds what the bundle needs beyond the API policy: Google Fonts,
-jsDelivr (Monaco loader) and `worker-src blob:` (code runner).
+jsDelivr (Monaco loader), `worker-src blob:` (code runner) and, when
+`S3_PUBLIC_ORIGIN` is set, the object-storage origin for presigned uploads.
+
+## Railway topology
+
+Runbook, variables and decisions: [RAILWAY.md](RAILWAY.md). Config as code:
+`infra/railway/*.railway.json`.
+
+```mermaid
+flowchart LR
+  user(["Browser"])
+  gh(["GitHub webhooks"])
+  ext(["GitHub API · Resend · Anthropic API"])
+
+  subgraph cf["Cloudflare"]
+    cfedge["DNS + proxy<br/>TLS Full strict"]
+    r2[("R2<br/>uploads · backups · audit · models<br/>bucket locks on backups, audit")]
+  end
+
+  subgraph railway["Railway project · private network *.railway.internal"]
+    redge["Railway edge · TLS"]
+    frontend["frontend · Caddy<br/>SPA + /api proxy<br/>public: app domain"]
+    backend["backend · Node API<br/>replicas = 1 · volume /var/lib/devhq<br/>pre-deploy: migrate"]
+    cron[["cron · worker.ts --once backup,drill<br/>03:17 UTC daily"]]
+    worker["worker · worker.ts<br/>phase 2, not deployed"]
+    models["models · FastAPI<br/>private only"]
+    pg[("Postgres<br/>devhq_migrator · devhq_app · devhq_jobs")]
+    redis[("Redis<br/>provisioned, unused until the queue wave")]
+  end
+
+  user -- "HTTPS" --> cfedge --> redge --> frontend
+  gh -- "HTTPS /api/github/webhook" --> cfedge
+  frontend -- "/api/*, /console<br/>backend.railway.internal:8080" --> backend
+  user -. "presigned PUT/GET" .-> r2
+  backend -- "devhq_app" --> pg
+  backend -- "S3 API" --> r2
+  backend -- "HMAC-signed" --> models
+  backend -.-> redis
+  cron -- "devhq_jobs (read + audit insert)" --> pg
+  cron -- "encrypted snapshots" --> r2
+  worker -.-> pg
+  worker -.-> redis
+  models -- "own token, models bucket" --> r2
+  backend -.-> ext
+  models -.-> ext
+```
+
+| Boundary | Railway | Compose equivalent |
+|---|---|---|
+| Internet → app | Cloudflare (proxied) → Railway edge → `frontend`; only `frontend` has a public domain | `edge` on `public_net` |
+| Client IP | `frontend` computes it from `X-Forwarded-For` (trusted: private, CGNAT, Cloudflare ranges) or `CF-Connecting-IP`, and overwrites `X-Forwarded-For` | `edge` overwrites `X-Forwarded-For` |
+| App → data | private networking; Postgres roles `devhq_app` (API), `devhq_jobs` (cron), `devhq_migrator` (pre-deploy only) | `app_net`, roles `devhq_app` / `devhq` |
+| Object storage | R2 tokens scoped to buckets; bucket locks (not Object Lock COMPLIANCE, see [WORM on R2](RAILWAY.md#worm-on-r2)) | MinIO users + Object Lock |
+| Secrets | Railway (sealed) variables | files under `/run/secrets` |
+| Periodic jobs | `backend` (monitors, digests), `cron` (backups, drill) | `backend` (all) |

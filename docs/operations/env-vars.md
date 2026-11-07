@@ -12,7 +12,7 @@ and `Models/`. What each one means and its defaults are in the
 hand-written [configuration reference](configuration.md); this page is the
 drift check: if code starts reading a new variable, it appears here.
 
-**98 variables.** "`_FILE`" means the container can pass the
+**101 variables.** "`_FILE`" means the container can pass the
 value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 
 | Variable | Backend | Frontend | Models | `_FILE` | In `.env.example` |
@@ -46,7 +46,7 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `DATABASE_SSL` | `db/pool.ts` |  |  |  | yes |
 | `DATABASE_SSL_CA` | `db/pool.ts` |  |  |  | yes |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | `db/pool.ts` |  |  |  |  |
-| `DATABASE_URL` | `db/boot.ts`<br>`db/migrate.ts`<br>`db/smoke-pg.ts`<br>`scripts/smoke.ts`<br>`scripts/verify-audit.ts` |  |  | yes | yes |
+| `DATABASE_URL` | `db/boot.ts`<br>`db/migrate.ts`<br>`db/smoke-pg.ts`<br>`scripts/smoke.ts`<br>`scripts/verify-audit.ts`<br>`worker.ts` |  |  | yes | yes |
 | `DATA_ENCRYPTION_KEY` | `config/env.ts`<br>`domain/engineering/secrets.ts`<br>`resilience/encryption.ts` |  |  | yes | yes |
 | `DATA_ENCRYPTION_KEYS_PREVIOUS` | `config/env.ts` |  |  |  | yes |
 | `DEMO_DISABLED` | `store/db.ts` |  |  |  | yes |
@@ -62,8 +62,9 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `GITHUB_TOKEN` | `integrations/github/config.ts`<br>`routes/codespaces.routes.ts` |  |  | yes | yes |
 | `GITHUB_WEBHOOK_SECRET` | `integrations/github/config.ts`<br>`scripts/smoke.ts` |  |  | yes | yes |
 | `HOST` |  |  | `devhq_models/cli.py` |  |  |
+| `JOBS_IN_PROCESS` | `lib/jobs.ts` |  |  |  | yes |
 | `LOG_LEVEL` | `lib/logger.ts` |  | `devhq_models/cli.py` |  | yes |
-| `MAIL_DIGEST_MINUTES` | `domain/collab/notify.ts` |  |  |  | yes |
+| `MAIL_DIGEST_MINUTES` | `domain/collab/notify.ts`<br>`worker.ts` |  |  |  | yes |
 | `MAIL_FROM` | `config/mail.ts` |  |  |  | yes |
 | `MAIL_REPLY_TO` | `config/mail.ts` |  |  |  | yes |
 | `MAIL_TRANSPORT` | `config/mail.ts` |  |  |  | yes |
@@ -109,16 +110,18 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `SMTP_USER` | `mail/index.ts` |  |  |  | yes |
 | `STORAGE_LOCAL_DIR` | `config/env.ts`<br>`scripts/smoke.ts` |  |  |  | yes |
 | `STORAGE_LOCAL_PORT` | `storage/localDriver.ts` |  |  |  | yes |
+| `STORAGE_LOCK_MODE` | `storage/index.ts` |  |  |  | yes |
 | `STREAM_HEARTBEAT_MS` | `domain/collab/realtime.ts` |  |  |  | yes |
 | `TRUST_PROXY` | `lib/http.ts`<br>`scripts/smoke.ts` |  |  |  | yes |
 | `VITE_API_BASE` |  | `src/api/client.ts`<br>`src/components/assistant/askAssistant.ts` |  |  |  |
 | `WEBAUTHN_ALGORITHMS` | `config/env.ts` |  |  |  | yes |
 | `WEBAUTHN_RP_ID` | `config/env.ts` |  |  |  | yes |
 | `WEBAUTHN_RP_NAME` | `config/env.ts` |  |  |  | yes |
+| `WORKER_LOOP_ENABLED` | `worker.ts` |  |  |  | yes |
 
 ## In `.env.example` but not read by application code
 
 Usually Compose or edge settings (read by `docker-compose.yml`, the Caddyfile
 or scripts, not by the Node/Python code).
 
-`ACME_EMAIL` · `DEVHQ_DOMAIN` · `DEVHQ_IMAGE_PREFIX` · `DEVHQ_SECRETS_GID` · `DEVHQ_TAG` · `EDGE_BIND` · `EDGE_HTTPS_PORT` · `EDGE_HTTP_PORT` · `EDGE_MAX_BODY_SIZE` · `HSTS_VALUE` · `MINIO_ENABLE_SSE` · `S3_PUBLIC_HOST` · `STORAGE_LOCK_MODE`
+`ACME_EMAIL` · `DEVHQ_DOMAIN` · `DEVHQ_IMAGE_PREFIX` · `DEVHQ_SECRETS_GID` · `DEVHQ_TAG` · `EDGE_BIND` · `EDGE_HTTPS_PORT` · `EDGE_HTTP_PORT` · `EDGE_MAX_BODY_SIZE` · `HSTS_VALUE` · `MINIO_ENABLE_SSE` · `S3_PUBLIC_HOST` · `WORKER_JOBS`

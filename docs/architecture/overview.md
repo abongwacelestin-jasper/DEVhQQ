@@ -16,7 +16,7 @@ flowchart LR
     BC["Backend console<br/>/console"]
   end
   EDGE["edge · Caddy<br/>TLS, HSTS, routing"]
-  FE["frontend · nginx<br/>static SPA"]
+  FE["frontend · Caddy<br/>static SPA"]
   subgraph BE["backend · Node 22, strip-only TS"]
     R[Router + pipeline]
     C[(Collections<br/>in memory)]
@@ -101,7 +101,7 @@ sequenceDiagram
 4. **Security headers** (`Backend/security/headers.ts`): CSP with a fresh
    nonce, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`,
    `Permissions-Policy`, COOP/CORP, `Cache-Control: no-store`, and HSTS in
-   production. Which header is set by which layer (edge, nginx, backend) is
+   production. Which header is set by which layer (edge, frontend server, backend) is
    tabulated in [docs/deploy/ARCHITECTURE.md](../deploy/ARCHITECTURE.md#headers-who-sets-what).
 5. **Origin guard.** An `Origin` in `allowedOrigins` gets credentialed CORS
    headers. A preflight from any other origin is `403 bad_origin`; so is any

@@ -30,6 +30,7 @@ import { DEMO, seed } from './store/db.ts';
 import { closePersistence, initPersistence } from './db/boot.ts';
 import { audit } from './audit/auditLog.ts';
 import { createBackup, pruneBackups } from './resilience/backups.ts';
+import { jobEnabled } from './lib/jobs.ts';
 import { registerSystemRoutes } from './routes/system.routes.ts';
 import { registerAuthRoutes } from './routes/auth.routes.ts';
 import { registerProjectRoutes } from './routes/projects.routes.ts';
@@ -128,12 +129,15 @@ async function main() {
   });
 
   // Snapshot on boot (non-prod) and daily, then prune past retention.
+  // JOBS_IN_PROCESS without `backup`: the cron service runs it (worker.ts --once).
   const backup = () =>
     void createBackup()
       .then(pruneBackups)
       .catch((e) => logger.error('backup failed', { err: String(e) }));
-  if (!config.isProd) setTimeout(backup, 2000).unref();
-  setInterval(backup, 24 * 60 * 60_000).unref();
+  if (jobEnabled('backup')) {
+    if (!config.isProd) setTimeout(backup, 2000).unref();
+    setInterval(backup, 24 * 60 * 60_000).unref();
+  }
 
   const shutdown = (signal: string) => {
     logger.info('shutdown', { signal });

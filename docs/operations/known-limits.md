@@ -15,6 +15,24 @@ One-shot commands that write data (`bootstrap-owner`) must run with the
 backend stopped for the same reason. See the
 [runbook scaling notes](../deploy/RUNBOOK.md#5-scaling-notes).
 
+## Periodic jobs run where `JOBS_IN_PROCESS` says, and the worker waits
+
+The API's daily backup timer restarts with every deploy (and production skips
+the boot-time backup), so a service deployed more than once a day never backs
+up from that timer. Run backups from a scheduler instead: the Railway cron
+service runs `worker.ts --once backup,drill`, and Compose has
+`make backup` for database dumps. Monitors and digests write collections, so
+they must stay in the API process until cross-instance invalidation exists;
+`worker.ts` refuses its long-running mode in production unless
+`WORKER_LOOP_ENABLED=1`. See [Railway: Jobs](../deploy/RAILWAY.md#10-jobs-where-each-periodic-job-runs).
+
+## R2 bucket locks are not S3 Object Lock COMPLIANCE
+
+On Cloudflare R2 the backups and audit buckets are protected by bucket lock
+rules: no token can delete or overwrite a locked object, but a Cloudflare
+account admin can remove the rule. See
+[WORM on R2](../deploy/RAILWAY.md#worm-on-r2) for the compensating controls.
+
 ## ML models are synthetic until there is real history
 
 Outside production the models service trains and promotes **synthetic

@@ -8,7 +8,7 @@ There are two independent backup paths. Use both.
 | Code | `Backend/resilience/backups.ts` | `infra/scripts/backup-db.sh`, `infra/scripts/restore-db.sh` |
 | Encryption | gzip, then AES-256-GCM with `DATA_ENCRYPTION_KEY` (backup id as associated data) | AES-256-CBC (PBKDF2-SHA256) + HMAC-SHA256 with `backup_encryption_key` |
 | Where | `S3_BUCKET_BACKUPS`: `snapshots/YYYY/MM/DD/<id>.json.gz.enc` + `manifests/<id>.json` | `S3_BUCKET_BACKUPS`: `postgres/` |
-| When | 2 s after start outside production, then every 24 h of uptime; on demand `POST /api/backups` | cron (`make backup`), and before every deploy |
+| When | 2 s after start outside production, then every 24 h of uptime (only where `JOBS_IN_PROCESS` includes `backup`); on Railway a daily cron service (`worker.ts --once backup,drill`); on demand `POST /api/backups` | cron (`make backup`), and before every deploy |
 | Restore | `POST /api/backups/:id/restore` (dry run by default) | `infra/scripts/restore-db.sh … --yes` |
 | Drill | `POST /api/backups/drill` | `make restore-drill` |
 

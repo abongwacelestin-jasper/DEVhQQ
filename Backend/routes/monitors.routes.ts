@@ -24,6 +24,7 @@ import { PRODUCTS, monitorHistory, monitors, paginate } from '../domain/engineer
 import type { MonitorRow } from '../domain/engineering/types.ts';
 import { ensureMonitorDemo } from '../domain/engineering/demo.ts';
 import { BlockedTargetError, vetUrl } from '../monitors/ssrf.ts';
+import { jobEnabled } from '../lib/jobs.ts';
 import {
   MIN_INTERVAL_SEC,
   historyOf,
@@ -84,7 +85,7 @@ function visibleMonitor(p: Principal, id: string): MonitorRow {
 }
 
 export function registerMonitorRoutes(r: Router) {
-  startMonitorScheduler();
+  if (jobEnabled('monitors')) startMonitorScheduler();
 
   r.add(
     'GET',
