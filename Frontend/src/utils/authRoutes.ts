@@ -26,8 +26,20 @@ const RETURN_TTL_MS = 10 * 60_000;
 const AUTH_PATHS =
   /^\/(sign-in|verify|onboarding|accept-invite|forgot-password|reset-password)(\/|$)/;
 
+/**
+ * Same-origin, in-app paths only. Backslashes and control characters are refused
+ * outright: browsers read `/\\evil.com` like `//evil.com` (React Router open-redirect
+ * advisory, CVE-2025-68470 bypass).
+ */
 function safePath(p: unknown): p is string {
-  return typeof p === 'string' && p.startsWith('/') && !p.startsWith('//') && !AUTH_PATHS.test(p);
+  if (typeof p !== 'string' || p.length > 2048) return false;
+  if (!p.startsWith('/') || p.startsWith('//') || /[\\\u0000-\u001f\u007f]/.test(p)) return false;
+  try {
+    if (new URL(p, 'https://devhq.invalid').origin !== 'https://devhq.invalid') return false;
+  } catch {
+    return false;
+  }
+  return !AUTH_PATHS.test(p);
 }
 
 export function rememberReturnTo(path: string) {
