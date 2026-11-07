@@ -47,8 +47,8 @@ export function useSignIn(
 
   /** One-step demo sign-in: the API creates a verified session for the demo role. Throws on failure. */
   const signInDemo = useCallback(
-    async (key: RoleKey) => {
-      await signInDemoRole(key);
+    async (key: RoleKey, turnstileToken?: string | null) => {
+      await signInDemoRole(key, turnstileToken);
       const me = await hydrate({ method: 'demo' });
       if (!me) throw new Error('The server did not start a session. Try again.');
       log('Signed in', `${me.member.role} · demo access`);
@@ -58,11 +58,15 @@ export function useSignIn(
 
   /** Step 1 of 2: password. The server issues a password-only session; the second factor is still outstanding. */
   const signInPassword = useCallback(
-    async (email: string, password: string): Promise<SignInResult> => {
+    async (
+      email: string,
+      password: string,
+      turnstileToken?: string | null,
+    ): Promise<SignInResult> => {
       if (lockedUntil && lockedUntil > Date.now())
         return { ok: false, error: 'Too many attempts. Try again shortly.' };
       try {
-        await signInWithPassword(email, password);
+        await signInWithPassword(email, password, turnstileToken);
         const me = await hydrate({ method: 'password' });
         if (!me) return { ok: false, error: 'The server did not start a session. Try again.' };
         setFailed(0);

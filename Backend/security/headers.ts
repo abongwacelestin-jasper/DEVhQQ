@@ -34,9 +34,10 @@ import { HttpError } from '../types.ts';
 
 /** Third-party origins the SPA deliberately allows. Keep this list short; pin scripts with SRI. */
 const THIRD_PARTY = {
-  script: ['https://js.stripe.com'],
+  // challenges.cloudflare.com: Turnstile api.js and its iframe (security/turnstile.ts).
+  script: ['https://js.stripe.com', 'https://challenges.cloudflare.com'],
   connect: ['https://api.github.com'],
-  frame: ['https://js.stripe.com'],
+  frame: ['https://js.stripe.com', 'https://challenges.cloudflare.com'],
   img: ['https://cdn.magicpatterns.com', 'https://avatars.githubusercontent.com'],
 };
 

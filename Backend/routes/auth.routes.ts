@@ -11,6 +11,7 @@
  *  - identical responses and timing for unknown email vs wrong password,
  *  - account lock after 5 consecutive failures (15 minutes),
  *  - location risk scoring (impossible travel, Tor/VPN/datacenter IPs),
+ *  - optional Cloudflare Turnstile on password, demo and invite (security/turnstile.ts),
  *  - session token rotated on every privilege change,
  *  - TOTP replay protection per member (across sessions), secrets sealed at rest.
  *
@@ -27,6 +28,7 @@
 import type { Ctx, Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { accountLimiter, authLimiter, chargeAccount } from '../security/rateLimit.ts';
+import { MAX_TOKEN_LENGTH, turnstileGuard, turnstilePublicConfig } from '../security/turnstile.ts';
 import {
   dummyPasswordHash,
   hashPassword,
@@ -108,9 +110,12 @@ const MAX_FAILURES = 5;
 const LOCK_MS = 15 * 60_000;
 const cookieAge = Math.floor(config.sessionAbsoluteMs / 1000);
 
+/** Cloudflare Turnstile token; checked by `turnstileGuard` before the handler (security/turnstile.ts). */
+const turnstileToken = v.optional(v.string({ max: MAX_TOKEN_LENGTH, trim: false }));
 const signInBody = v.object({
   email: v.email(),
   password: v.string({ min: 1, max: 512, trim: false }),
+  turnstileToken,
 });
 const changePasswordBody = v.object({
   currentPassword: v.string({ min: 1, max: 512, trim: false }),
@@ -123,12 +128,14 @@ const backupBody = v.object({
 });
 const demoBody = v.object({
   role: v.enumOf(demoAccounts.map((a) => a.key) as [string, ...string[]]),
+  turnstileToken,
 });
 const inviteTokenPattern = /^[A-Za-z0-9_-]{20,200}$/;
 const acceptInviteBody = v.object({
   token: v.string({ max: 200, pattern: inviteTokenPattern }),
   // The full policy is applied after parsing so the user gets a concrete reason.
   password: v.string({ min: 1, max: 400, trim: false }),
+  turnstileToken,
 });
 const b64 = (max = 4096) => v.string({ max, pattern: /^[A-Za-z0-9_-]+$/ });
 const assertionBody = v.object({
@@ -381,9 +388,10 @@ export function registerAuthRoutes(r: Router) {
       summary: 'Set a password and activate an invited account',
       tag: 'auth',
       auth: 'public',
-      responses: [400, 410, 422, 429],
+      responses: [400, 403, 410, 422, 429, 503],
     },
     authLimiter,
+    turnstileGuard('accept-invite'),
     async (ctx) => {
       const body = parse(acceptInviteBody, ctx.body);
       const member = requireInvite(body.token);
@@ -409,6 +417,17 @@ export function registerAuthRoutes(r: Router) {
       publish('team', { memberId: member.id, status: member.status });
       return { ok: true, email: member.email, member: publicMember(member) };
     },
+  );
+
+  /**
+   * Public settings the sign-in screens need before anyone is signed in:
+   * whether the Turnstile widget is on and its (public) site key.
+   */
+  r.add(
+    'GET',
+    '/api/auth/config',
+    { summary: 'Public sign-in settings (bot-protection widget)', tag: 'auth', auth: 'public' },
+    () => ({ turnstile: turnstilePublicConfig() }),
   );
 
   r.add(
@@ -443,9 +462,10 @@ export function registerAuthRoutes(r: Router) {
       summary: 'One-step demo sign-in by role (non-production only)',
       tag: 'auth',
       auth: 'public',
-      responses: [404, 422, 429],
+      responses: [400, 403, 404, 422, 429, 503],
     },
     authLimiter,
+    turnstileGuard('sign-in'),
     (ctx) => {
       if (!DEMO.enabled) throw new HttpError(404, 'not_found', 'Route not found');
       const { role } = parse(demoBody, ctx.body);
@@ -470,9 +490,10 @@ export function registerAuthRoutes(r: Router) {
       summary: 'Password sign-in (step 1 of 2)',
       tag: 'auth',
       auth: 'public',
-      responses: [401, 403, 422, 423, 429],
+      responses: [400, 401, 403, 422, 423, 429, 503],
     },
     authLimiter,
+    turnstileGuard('sign-in'),
     async (ctx) => {
       const { email, password } = parse(signInBody, ctx.body);
       const member = findMemberByEmail(email);

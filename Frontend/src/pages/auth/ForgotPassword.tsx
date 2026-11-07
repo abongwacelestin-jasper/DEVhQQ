@@ -5,6 +5,8 @@ import { AuthLayout } from '../../components/auth/AuthLayout';
 import { SecurityIllustration } from '../../components/illustrations/SecurityIllustration';
 import { requestRecovery } from '../../api/auth/endpoints';
 import { ApiError } from '../../api/client';
+import { TURNSTILE_ERRORS } from '../../api/auth/turnstile';
+import { TURNSTILE_PENDING, useTurnstile } from '../../components/auth/TurnstileWidget';
 
 const input =
   'h-9 w-full rounded-md border border-line-strong bg-white px-3 text-[13px] text-ink outline-none transition-colors duration-150 placeholder:text-subtle focus:border-accent focus:ring-2 focus:ring-accent/20';
@@ -16,6 +18,7 @@ export function ForgotPassword() {
   const [error, setError] = useState('');
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
+  const turnstile = useTurnstile('recover');
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -28,10 +31,11 @@ export function ForgotPassword() {
    * so "sent" is shown for every accepted request. Rate limits and outages are real errors.
    */
   const send = async (address: string) => {
+    if (turnstile.enabled && !turnstile.token) return setError(TURNSTILE_PENDING);
     setBusy(true);
     setError('');
     try {
-      await requestRecovery(address);
+      await requestRecovery(address, turnstile.token);
       setSentTo(address);
       setResendIn(30);
     } catch (e) {
@@ -39,12 +43,16 @@ export function ForgotPassword() {
       setError(
         err?.status === 429
           ? 'Too many requests. Wait a minute and try again.'
-          : err?.isUnavailable
-            ? 'Password recovery isn’t available on this server yet. Ask an Owner to reset your access.'
-            : (err?.message ?? 'Couldn’t send the reset link. Try again.'),
+          : err && TURNSTILE_ERRORS.has(err.code)
+            ? err.message
+            : err?.isUnavailable
+              ? 'Password recovery isn’t available on this server yet. Ask an Owner to reset your access.'
+              : (err?.message ?? 'Couldn’t send the reset link. Try again.'),
       );
     } finally {
       setBusy(false);
+      // Tokens are single-use: a fresh check for the next request (or a resend).
+      turnstile.reset();
     }
   };
 
@@ -95,6 +103,7 @@ export function ForgotPassword() {
                 />
               </span>
             </label>
+            {turnstile.widget}
             {error && (
               <p
                 role="alert"
@@ -133,6 +142,7 @@ export function ForgotPassword() {
             Open the link from the same browser. Didn’t ask for this? Ignore the email — your
             password stays the same.
           </p>
+          {turnstile.enabled && <div className="mt-3">{turnstile.widget}</div>}
           {error && (
             <p role="alert" aria-live="assertive" className="mt-3 text-[12px] font-medium text-bad">
               {error}

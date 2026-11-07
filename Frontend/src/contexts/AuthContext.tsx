@@ -92,8 +92,13 @@ interface AuthValue {
   refreshSessions: () => Promise<ApiSessionView[]>;
   idleMinutes: number;
   setIdleMinutes: (n: number) => void;
-  signInDemo: (key: RoleKey) => Promise<void>;
-  signInPassword: (email: string, password: string) => Promise<SignInResult>;
+  /** `turnstileToken`: the Cloudflare Turnstile token when the server has the check on. */
+  signInDemo: (key: RoleKey, turnstileToken?: string | null) => Promise<void>;
+  signInPassword: (
+    email: string,
+    password: string,
+    turnstileToken?: string | null,
+  ) => Promise<SignInResult>;
   signInPasskey: () => Promise<SignInResult>;
   verifyMfa: (code: string, trust: boolean) => Promise<boolean>;
   /** Second factor with a one-time backup code; resolves with the codes left, or null if refused. */

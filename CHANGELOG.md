@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cloudflare Turnstile (optional):** `TURNSTILE_MODE=on` puts a bot check on
+  password sign-in, demo sign-in, the password reset request and invite
+  acceptance. Tokens are verified server-side (hostname, per-form action,
+  single use), the check fails closed (`503 turnstile_unavailable`) with an
+  audited `TURNSTILE_FAIL_OPEN=1` incident switch, and production refuses to
+  boot without both keys. New public `GET /api/auth/config`. Explicit CLI
+  clients are exempt (`TURNSTILE_EXEMPT_CLI=0` turns that off). Setup:
+  [Railway: Cloudflare Turnstile](docs/deploy/RAILWAY.md#cloudflare-turnstile).
 - **Incident recovery steps:** the incident page's Recovery panel lists
   mitigation steps and follow-ups recorded by the API
   (`GET|POST /api/incidents/:id/actions`,

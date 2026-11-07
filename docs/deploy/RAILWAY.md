@@ -424,6 +424,55 @@ Domain verification (SPF, DKIM, DMARC), the brand variables, previews
 (`npm run mail:preview`) and troubleshooting are in
 [Email](../operations/email.md).
 
+### Cloudflare Turnstile
+
+Optional bot protection on the public auth forms: password sign-in,
+the password reset request and invite acceptance (and demo sign-in, which
+production never has). Off by default (`TURNSTILE_MODE=off`). How it works
+and what is exempt: [Security controls, C-26](../security/CONTROLS.md).
+
+1. **Create the widget.** Cloudflare dashboard → Turnstile → *Add widget*.
+   Name it `DevHQ`, choose **Managed** as the widget mode, and leave
+   *pre-clearance* off.
+2. **Hostnames.** Add the app's host exactly as in `APP_ORIGIN`, e.g.
+   `app.example.com`. The backend refuses a token whose `hostname` is not
+   `APP_ORIGIN`'s host, so a widget used on another site cannot sign in
+   here. Add a staging host as a separate widget (or hostname) if you have
+   one.
+3. **Keys as Railway variables**, on `backend` only (the frontend reads the
+   site key from `GET /api/auth/config`, so it needs no variable):
+
+   | Variable | Value |
+   |---|---|
+   | `TURNSTILE_MODE` | `on` |
+   | `TURNSTILE_SITE_KEY` | the widget's *Site key* (public) |
+   | `TURNSTILE_SECRET_KEY` | the widget's *Secret key* (secret; seal it in the dashboard) |
+   | `TURNSTILE_FAIL_OPEN` | leave unset. `1` only during a Cloudflare incident (see below) |
+   | `TURNSTILE_EXEMPT_CLI` | leave unset (`1`), or `0` if nobody signs in with a password from the CLI |
+
+   With `TURNSTILE_MODE=on` and either key missing, or with one of
+   Cloudflare's test keys, production refuses to boot, so a typo shows up as
+   a failed deploy, not as an open form.
+4. **CSP.** Nothing to change: the frontend's Caddyfile already allows
+   `https://challenges.cloudflare.com` in `script-src` and `frame-src`. The
+   script is loaded only when the backend says the mode is on.
+5. **Check it.** Open `/sign-in`: a "Security check" box appears under the
+   password field and turns into "Security check complete." Then
+   `curl -s -XPOST https://app.example.com/api/auth/sign-in -H 'Origin: https://app.example.com' -H 'Content-Type: application/json' -d '{"email":"x@example.com","password":"x"}'`
+   must answer `400 turnstile_required`.
+
+**When Cloudflare is down.** The backend fails closed: sign-in, recovery and
+invite acceptance answer `503 turnstile_unavailable` (siteverify times out
+after 5 s). Already signed-in sessions, MFA and passkeys keep working. For a
+long incident, set `TURNSTILE_FAIL_OPEN=1` and redeploy: requests that
+cannot be verified then go through, each one audited as
+`security.turnstile_fail_open`. Tokens that Cloudflare *rejects* are still
+refused. Remove the variable when Cloudflare recovers.
+
+**Rotating the secret.** Cloudflare → Turnstile → the widget → *Rotate secret
+key*, then update `TURNSTILE_SECRET_KEY` and redeploy. Cloudflare keeps the
+old secret valid for a short overlap.
+
 ## 8. Custom domain and DNS on Cloudflare
 
 1. `setup.sh` runs `railway domain --service frontend app.example.com`, which
@@ -632,6 +681,9 @@ The worker in phase 2 adds about the backend's idle cost (5–10).
     restore works.
 14. Railway Postgres backups enabled; deployment-failure notifications on.
 15. Mail: an invite email arrives (Resend), SPF/DKIM pass.
+    If Turnstile is on: the sign-in page shows the security check, and a
+    request without a token answers `400 turnstile_required`
+    ([Cloudflare Turnstile](#cloudflare-turnstile)).
 16. `models`: `GET /api/insights/…` answers with `source` from the models
     service (or `heuristic` until models are promoted); the assistant works if
     `ANTHROPIC_API_KEY` is set.

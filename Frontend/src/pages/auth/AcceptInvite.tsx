@@ -13,6 +13,8 @@ import {
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import { SecurityIllustration } from '../../components/illustrations/SecurityIllustration';
 import { ApiError, api } from '../../api/client';
+import { acceptInvite } from '../../api/auth/endpoints';
+import { TURNSTILE_PENDING, useTurnstile } from '../../components/auth/TurnstileWidget';
 
 const input =
   'h-9 w-full rounded-md border border-line-strong bg-white px-3 pr-9 text-[13px] text-ink outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/20';
@@ -42,6 +44,7 @@ export function AcceptInvite() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const turnstile = useTurnstile('accept-invite');
 
   useEffect(() => {
     let alive = true;
@@ -92,13 +95,16 @@ export function AcceptInvite() {
     if (busy) return;
     if (score < rules.length) return setError('Your password doesn’t meet every requirement yet.');
     if (pw !== confirm) return setError('The two passwords don’t match.');
+    if (turnstile.enabled && !turnstile.token) return setError(TURNSTILE_PENDING);
 
     setBusy(true);
     setError('');
     try {
-      await api(`/api/auth/accept-invite`, { method: 'POST', body: { token, password: pw } });
+      await acceptInvite(token, pw, turnstile.token);
       setDone(true);
     } catch (err) {
+      // Tokens are single-use: a fresh check for the next attempt.
+      turnstile.reset();
       setError(err instanceof ApiError ? err.message : 'The invite could not be accepted.');
     } finally {
       setBusy(false);
@@ -231,6 +237,7 @@ export function AcceptInvite() {
                 className={`${input} mt-1`}
               />
             </label>
+            {turnstile.widget}
             {error && (
               <p
                 role="alert"
