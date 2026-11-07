@@ -323,9 +323,9 @@ const RULES: Rule[] = [
   {
     method: 'GET',
     path: '/api/offboarding',
-    allow: OWNER_OPS,
+    allow: DEMO_KEYS,
     ok: 200,
-    needs: 'Administration:view',
+    needs: 'any member (non-admins see only their own)',
   },
   { method: 'GET', path: '/api/repos', allow: DEMO_KEYS, ok: 200, needs: 'Repository:view' },
   {

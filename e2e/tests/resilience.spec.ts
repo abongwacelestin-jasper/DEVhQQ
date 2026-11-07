@@ -13,7 +13,7 @@ test.describe('Resilience', () => {
       // QA-027 is fixed: an unreachable API on reload shows an error state.
       await signInViaApi(page, 'admin', '/my-work');
       await expect(page.getByRole('heading', { level: 1, name: 'My work' })).toBeVisible();
-      await page.route('**/api/**', (route) =>
+      await page.route((url) => url.pathname.startsWith('/api/'), (route) =>
         mode === 'HTTP 502'
           ? route.fulfill({ status: 502, contentType: 'text/html', body: '<h1>502 Bad Gateway</h1>' })
           : route.abort('connectionrefused'),
@@ -40,7 +40,7 @@ test.describe('Resilience', () => {
 
   test('slow API shows loading skeletons, then the data', async ({ page }) => {
     await signInViaApi(page, 'admin', '/');
-    await page.route('**/api/**', async (route) => {
+    await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
       if (route.request().url().includes('/api/_events')) return route.continue();
       await new Promise((r) => setTimeout(r, 2500));
       await route.continue();

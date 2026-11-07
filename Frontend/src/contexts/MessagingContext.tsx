@@ -137,8 +137,8 @@ function channelFrom(data: Record<string, unknown>): ApiChannel | null {
 }
 
 export function MessagingProvider({ children }: { children: React.ReactNode }) {
-  const { session, canDo } = useAuth();
-  const me = session?.memberId ?? null;
+  const { canDo, readyMemberId } = useAuth();
+  const me = readyMemberId;
   const { members: directory } = useDirectory();
 
   const [availability, setAvailability] = useState<Availability>('loading');

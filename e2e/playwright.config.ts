@@ -54,6 +54,8 @@ export default defineConfig({
     actionTimeout: 15_000,
     locale: 'en-GB',
     timezoneId: 'UTC',
+    // E2E_CHANNEL=chrome runs the suite in the installed Google Chrome instead of bundled Chromium.
+    ...(process.env.E2E_CHANNEL ? { channel: process.env.E2E_CHANNEL } : {}),
   },
   projects: [
     {

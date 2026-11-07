@@ -86,8 +86,8 @@ const toResignation = (r: ApiResignation): Resignation => r;
 const OffboardingContext = createContext<OffboardingValue | null>(null);
 
 export function OffboardingProvider({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
-  const memberId = session?.memberId ?? null;
+  const { readyMemberId } = useAuth();
+  const memberId = readyMemberId;
   const [resignations, setList] = useState<Resignation[]>([]);
   const [status, setStatus] = useState<Availability>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +103,7 @@ export function OffboardingProvider({ children }: { children: React.ReactNode })
 
   const reload = useCallback(async () => {
     try {
+      // The server scopes this: the whole queue for Administration:view, else your own.
       const body = await api<{ items: ApiResignation[] } | ApiResignation[]>('/api/offboarding');
       setList(itemsOf(body).map(toResignation));
       setStatus('ready');

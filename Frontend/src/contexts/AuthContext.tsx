@@ -55,6 +55,11 @@ interface AuthValue {
   session: Session | null;
   role: DemoRole | null;
   stage: AuthStage;
+  /**
+   * The member id once the second factor is verified, else null. Data providers key
+   * their fetches on this so nothing calls the API with a password-only session.
+   */
+  readyMemberId: string | null;
   /** True while the session probe is in flight — routes must not redirect during it. */
   booting: boolean;
   /** Set when the server could not be reached at boot (not when signed out). */
@@ -234,6 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       role,
       stage: stageOf(session),
+      readyMemberId: identity?.verified ? (session?.memberId ?? null) : null,
       booting,
       bootError: state.bootError,
       retryBoot: state.retryBoot,

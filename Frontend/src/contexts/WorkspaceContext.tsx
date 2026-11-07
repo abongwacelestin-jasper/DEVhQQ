@@ -144,8 +144,8 @@ function readSelected(): string | null {
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
-  const memberId = session?.memberId ?? null;
+  const { readyMemberId } = useAuth();
+  const memberId = readyMemberId;
   const [list, setList] = useState<Workspace[]>([]);
   const [status, setStatus] = useState<Availability>('loading');
   const [error, setError] = useState<string | null>(null);

@@ -627,6 +627,7 @@ export function DocView({ doc }: { doc: ProjectDoc }) {
       <aside className="min-w-0 border-t border-line xl:w-[290px] xl:border-l xl:border-t-0">
         <div className="border-b border-line px-3 py-2">
           <Segmented
+            fill
             label="Doc details"
             value={rail}
             onChange={setRail}

@@ -88,8 +88,8 @@ export function unknownMember(id: string): Member {
 }
 
 export function useDirectory() {
-  const { session } = useAuth();
-  const owner = session?.memberId ?? null;
+  // Only once the second factor is verified: a password-only session gets 401 here.
+  const { readyMemberId: owner } = useAuth();
   const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {

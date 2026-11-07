@@ -13,7 +13,7 @@
 import type { Ctx, Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
-import { can, requireArea, requireStepUp } from '../auth/rbac.ts';
+import { can, requireStepUp } from '../auth/rbac.ts';
 import { revokeAllFor } from '../auth/sessions.ts';
 import { listGrants, revokeGrant } from '../auth/jit.ts';
 import { publish } from '../lib/events.ts';
@@ -133,12 +133,17 @@ export function registerOffboardingRoutes(r: Router) {
   r.add(
     'GET',
     '/api/offboarding',
-    { summary: 'All offboardings (Administration:view)', tag },
+    { summary: 'Offboardings: all for Administration:view, otherwise only your own', tag },
     authenticate,
-    requireArea('Administration', 'view'),
-    () => ({
-      items: [...resignations.values()].sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)),
-    }),
+    (ctx) => {
+      const p = ctx.principal!;
+      const all = can(p, 'Administration', 'view');
+      return {
+        items: [...resignations.values()]
+          .filter((r) => all || r.memberId === p.memberId)
+          .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)),
+      };
+    },
   );
 
   r.add(

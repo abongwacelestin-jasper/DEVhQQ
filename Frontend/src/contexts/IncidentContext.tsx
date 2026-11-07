@@ -77,8 +77,8 @@ function toIncident(i: ApiIncident): Incident {
 }
 
 export function IncidentProvider({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
-  const memberId = session?.memberId ?? null;
+  const { readyMemberId } = useAuth();
+  const memberId = readyMemberId;
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [declareOpen, setDeclareOpen] = useState(false);
   const [loading, setLoading] = useState(true);

@@ -71,8 +71,8 @@ function apiPatch(p: DocPatch) {
 }
 
 export function DocsProvider({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
-  const memberId = session?.memberId ?? null;
+  const { readyMemberId } = useAuth();
+  const memberId = readyMemberId;
   const [docs, setDocs] = useState<ProjectDoc[]>([]);
 
   const reload = useCallback(async () => {

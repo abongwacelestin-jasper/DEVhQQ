@@ -82,7 +82,7 @@ function mergeProjects(scope: ScopeResponse['projects']): Project[] {
 }
 
 export function ProductFilterProvider({ children }: { children: React.ReactNode }) {
-  const { canSeeProduct, session } = useAuth();
+  const { canSeeProduct, session, readyMemberId } = useAuth();
   const initial = useMemo(readStored, []);
   const [selected, setSelectedState] = useState<Selection>(initial.selected);
   const [project, setProjectState] = useState<ProjectSelection>(initial.project);
@@ -90,7 +90,7 @@ export function ProductFilterProvider({ children }: { children: React.ReactNode 
 
   // Scope comes from the server, scoped to the caller's products.
   useEffect(() => {
-    if (!session?.memberId) return;
+    if (!readyMemberId) return;
     let alive = true;
     api<ScopeResponse>('/api/scope')
       .then((scope) => {
@@ -102,7 +102,7 @@ export function ProductFilterProvider({ children }: { children: React.ReactNode 
     return () => {
       alive = false;
     };
-  }, [session?.memberId]);
+  }, [readyMemberId]);
 
   const allowedProducts = useMemo(
     () => products.filter((p) => canSeeProduct(p.id)),

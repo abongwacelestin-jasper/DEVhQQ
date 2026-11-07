@@ -106,8 +106,8 @@ const tempId = (prefix: string) =>
 const WorkContext = createContext<WorkValue | null>(null);
 
 export function WorkProvider({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
-  const memberId = session?.memberId ?? null;
+  const { readyMemberId } = useAuth();
+  const memberId = readyMemberId;
   /** Optimistic rows are attributed to the session's member; the server's resync is authoritative. */
   const me = memberId ?? '';
 

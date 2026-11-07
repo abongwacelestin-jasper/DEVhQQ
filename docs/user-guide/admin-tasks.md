@@ -76,7 +76,7 @@ every session ends, and history stays in the audit log. Reactivate with
    deactivated, their sessions and JIT grants are revoked, and their personal
    access tokens are revoked through the `member.deactivated` event.
 
-`GET /api/offboarding` lists all of them (Administration ≥ `view`).
+`GET /api/offboarding` lists all of them for Administration ≥ `view`; other members see only their own.
 
 Deactivating directly with `PATCH /api/team/:memberId` revokes sessions, and
 tokens stop working at once, but does not revoke JIT grants (open item in

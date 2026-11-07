@@ -78,6 +78,9 @@ export function onServerEvents(types: readonly string[], fn: Listener): () => vo
     }
     set.add(fn);
   });
+  // A fresh subscription (e.g. right after sign-in) earns a fresh attempt even if the
+  // stream gave up earlier while the session was not yet valid.
+  if (!source && failures >= 3) failures = 0;
   open();
   types.forEach(attach);
   return () => {
