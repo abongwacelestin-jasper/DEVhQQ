@@ -75,6 +75,7 @@ export function CompleteProfile() {
   const [email, setEmail] = useState<'instant' | 'daily' | 'off'>('instant');
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const codes = useMemo(
     () =>
       Array.from(
@@ -109,8 +110,13 @@ export function CompleteProfile() {
     setStep((s) => s + 1);
   };
 
-  const finish = () => {
-    completeProfile(p);
+  const finish = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    const r = await completeProfile(p);
+    setBusy(false);
+    if (!r.ok) return setError(r.error ?? 'Your profile could not be saved. Try again.');
     try {
       localStorage.setItem(
         `devhq.profile.${me.id}`,
@@ -470,11 +476,21 @@ export function CompleteProfile() {
                 : 'by email as they happen'}
             .
           </p>
+          {error && (
+            <p
+              role="alert"
+              aria-live="assertive"
+              className="mx-auto mt-3 w-fit rounded-md bg-bad-soft px-2.5 py-1.5 text-[12px] font-medium text-bad"
+            >
+              {error}
+            </p>
+          )}
           <button
-            onClick={finish}
-            className="mx-auto mt-4 flex h-9 items-center gap-1.5 rounded-md bg-ink px-4 text-[13px] font-semibold text-white hover:bg-ink/90"
+            onClick={() => void finish()}
+            disabled={busy}
+            className="mx-auto mt-4 flex h-9 items-center gap-1.5 rounded-md bg-ink px-4 text-[13px] font-semibold text-white hover:bg-ink/90 disabled:opacity-60"
           >
-            Enter DevHQ <ArrowRightIcon className="h-4 w-4" />
+            {busy ? 'Saving…' : 'Enter DevHQ'} <ArrowRightIcon className="h-4 w-4" />
           </button>
         </section>
       )}

@@ -273,7 +273,4 @@ export function areaForPath(pathname: string): Area {
   return (allAreas as string[]).includes(seg) ? (seg as Area) : 'overview';
 }
 
-export const demoPassword = 'devhq-demo';
-export const demoMfaCode = '246810';
-
 export type { ProductId };
