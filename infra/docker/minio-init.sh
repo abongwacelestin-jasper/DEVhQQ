@@ -16,14 +16,27 @@
 # an application user restricted to them. It is safe to run on every `up`.
 set -eu
 
+read_secret() { tr -d '\r\n' < "$1"; }
+
 if [ -f /bootstrap/bootstrap.sh ]; then
+  # STORAGE's bootstrap takes plain env (MINIO_ENDPOINT, MINIO_ROOT_*, S3_*,
+  # optional MODELS_S3_*); translate the compose secret files into that contract.
+  MINIO_ENDPOINT=${MINIO_ENDPOINT:-$MINIO_URL}
+  MINIO_ROOT_USER=$(read_secret "$MINIO_ROOT_USER_FILE")
+  MINIO_ROOT_PASSWORD=$(read_secret "$MINIO_ROOT_PASSWORD_FILE")
+  S3_ACCESS_KEY_ID=$(read_secret "$S3_ACCESS_KEY_ID_FILE")
+  S3_SECRET_ACCESS_KEY=$(read_secret "$S3_SECRET_ACCESS_KEY_FILE")
+  export MINIO_ENDPOINT MINIO_ROOT_USER MINIO_ROOT_PASSWORD S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY
+  if [ -n "${MODELS_S3_ACCESS_KEY_ID_FILE:-}" ] && [ -s "$MODELS_S3_ACCESS_KEY_ID_FILE" ]; then
+    MODELS_S3_ACCESS_KEY_ID=$(read_secret "$MODELS_S3_ACCESS_KEY_ID_FILE")
+    MODELS_S3_SECRET_ACCESS_KEY=$(read_secret "$MODELS_S3_SECRET_ACCESS_KEY_FILE")
+    export MODELS_S3_ACCESS_KEY_ID MODELS_S3_SECRET_ACCESS_KEY
+  fi
   echo "minio-init: running STORAGE bootstrap (infra/minio/bootstrap.sh)"
   exec sh /bootstrap/bootstrap.sh
 fi
 
 echo "minio-init: infra/minio/bootstrap.sh not found; using INFRA fallback"
-
-read_secret() { tr -d '\r\n' < "$1"; }
 
 MC_CONFIG_DIR=${MC_CONFIG_DIR:-/tmp/.mc}
 export MC_CONFIG_DIR

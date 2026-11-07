@@ -70,6 +70,8 @@ x-backend-env: &backend-env
   <<: *core-env
   DATABASE_URL_FILE: /run/secrets/database_url
   S3_ENDPOINT: http://minio:9000
+  # MinIO is reachable only on the internal app_net; TLS terminates at the edge.
+  S3_ALLOW_HTTP: "1"
   S3_REGION: ${S3_REGION:-us-east-1}
   S3_FORCE_PATH_STYLE: "true"
   S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key_id
@@ -248,14 +250,15 @@ services:
       S3_ENDPOINT: http://minio:9000
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_FORCE_PATH_STYLE: "true"
-      S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key_id
-      S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_access_key
+      # Own least-privilege MinIO user: read/write on the models bucket only.
+      S3_ACCESS_KEY_ID_FILE: /run/secrets/models_s3_access_key_id
+      S3_SECRET_ACCESS_KEY_FILE: /run/secrets/models_s3_secret_access_key
       S3_BUCKET_MODELS: ${S3_BUCKET_MODELS:-devhq-models}
     secrets:
       - ml_service_token
       - anthropic_api_key
-      - s3_access_key_id
-      - s3_secret_access_key
+      - models_s3_access_key_id
+      - models_s3_secret_access_key
     tmpfs:
       - /tmp:size=256m,mode=1777
     networks: [app_net, egress_net]
@@ -353,11 +356,18 @@ services:
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
       S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key_id
       S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_access_key
+      MODELS_S3_ACCESS_KEY_ID_FILE: /run/secrets/models_s3_access_key_id
+      MODELS_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/models_s3_secret_access_key
       S3_BUCKET_UPLOADS: ${S3_BUCKET_UPLOADS:-devhq-uploads}
       S3_BUCKET_BACKUPS: ${S3_BUCKET_BACKUPS:-devhq-backups}
       S3_BUCKET_AUDIT: ${S3_BUCKET_AUDIT:-devhq-audit}
       S3_BUCKET_MODELS: ${S3_BUCKET_MODELS:-devhq-models}
-    secrets: [minio_root_user, minio_root_password, s3_access_key_id, s3_secret_access_key]
+      # Bucket default encryption (SSE-S3) needs a MinIO KMS key; enable it in production
+      # together with MINIO_KMS_SECRET_KEY on the minio service (see infra/minio/README.md).
+      ENABLE_SSE: ${MINIO_ENABLE_SSE:-0}
+      # GOVERNANCE locally; COMPLIANCE in production makes WORM retention irreversible.
+      STORAGE_LOCK_MODE: ${STORAGE_LOCK_MODE:-GOVERNANCE}
+    secrets: [minio_root_user, minio_root_password, s3_access_key_id, s3_secret_access_key, models_s3_access_key_id, models_s3_secret_access_key]
     volumes:
       - ./infra/docker/minio-init.sh:/infra/minio-init.sh:ro
       - ./infra/minio:/bootstrap:ro
@@ -399,6 +409,8 @@ secrets:
   minio_root_password:     { file: ./infra/secrets/minio_root_password }
   s3_access_key_id:        { file: ./infra/secrets/s3_access_key_id }
   s3_secret_access_key:    { file: ./infra/secrets/s3_secret_access_key }
+  models_s3_access_key_id:     { file: ./infra/secrets/models_s3_access_key_id }
+  models_s3_secret_access_key: { file: ./infra/secrets/models_s3_secret_access_key }
   ml_service_token:        { file: ./infra/secrets/ml_service_token }
   anthropic_api_key:       { file: ./infra/secrets/anthropic_api_key }
   smtp_password:           { file: ./infra/secrets/smtp_password }

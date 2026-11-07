@@ -63,13 +63,15 @@ generate() {
     minio_root_password)   hex 24 ;;
     s3_access_key_id)      printf 'devhq-app-%s' "$(hex 6)" ;;
     s3_secret_access_key)  hex 24 ;;
+    models_s3_access_key_id)     printf 'devhq-models-%s' "$(hex 6)" ;;   # ML service: models bucket only
+    models_s3_secret_access_key) hex 24 ;;
     ml_service_token)      hex 32 ;;
     backup_encryption_key) hex 32 ;;
     *) return 1 ;;
   esac
 }
 
-GENERATED="session_secret data_encryption_key postgres_password app_db_password minio_root_user minio_root_password s3_access_key_id s3_secret_access_key ml_service_token backup_encryption_key"
+GENERATED="session_secret data_encryption_key postgres_password app_db_password minio_root_user minio_root_password s3_access_key_id s3_secret_access_key models_s3_access_key_id models_s3_secret_access_key ml_service_token backup_encryption_key"
 EXTERNAL="session_secret_previous anthropic_api_key smtp_password github_app_private_key github_webhook_secret github_client_secret github_token"
 
 if [[ "${1:-}" == "--rotate" ]]; then
@@ -78,7 +80,7 @@ if [[ "${1:-}" == "--rotate" ]]; then
   case "$name" in
     session_secret)
       echo "use infra/scripts/rotate-session-secret.md (keeps sessions valid)" >&2; exit 1 ;;
-    postgres_password|app_db_password|minio_root_user|minio_root_password|s3_access_key_id|s3_secret_access_key)
+    postgres_password|app_db_password|minio_root_user|minio_root_password|s3_access_key_id|s3_secret_access_key|models_s3_access_key_id|models_s3_secret_access_key)
       echo "warning: $name is also stored inside its service; follow RUNBOOK 'Rotation'" >&2 ;;
   esac
   write "$name" "$(generate "$name")"
