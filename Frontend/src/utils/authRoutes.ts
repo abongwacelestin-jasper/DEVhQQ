@@ -33,7 +33,11 @@ const AUTH_PATHS =
  */
 function safePath(p: unknown): p is string {
   if (typeof p !== 'string' || p.length > 2048) return false;
-  if (!p.startsWith('/') || p.startsWith('//') || /[\\\u0000-\u001f\u007f]/.test(p)) return false;
+  if (!p.startsWith('/') || p.startsWith('//') || p.includes('\\')) return false;
+  for (const ch of p) {
+    const c = ch.charCodeAt(0);
+    if (c < 0x20 || c === 0x7f) return false;
+  }
   try {
     if (new URL(p, 'https://devhq.invalid').origin !== 'https://devhq.invalid') return false;
   } catch {

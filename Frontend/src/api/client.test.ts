@@ -76,7 +76,7 @@ describe('api() — success paths', () => {
 
 describe('api() — error mapping', () => {
   let client: ClientModule;
-  let signedOut: ReturnType<typeof vi.fn>;
+  let signedOut: ReturnType<typeof vi.fn<() => void>>;
   let stepUp: ReturnType<typeof vi.fn<(cause: unknown) => Promise<boolean>>>;
 
   beforeEach(async () => {
