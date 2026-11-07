@@ -230,6 +230,8 @@ export interface SignInRecord {
   result: 'success' | 'failed' | 'blocked' | 'challenged';
   location: GeoLocation;
   risk: { score: number; reasons: string[] };
+  /** "Chrome on macOS" from the User-Agent; used to spot sign-ins from a new device. */
+  device?: string;
 }
 
 /**

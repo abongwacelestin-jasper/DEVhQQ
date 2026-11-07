@@ -23,8 +23,7 @@ import { revokeAllFor } from '../auth/sessions.ts';
 import { audit } from '../audit/auditLog.ts';
 import { db, findMemberByEmail } from '../store/db.ts';
 import { HttpError } from '../types.ts';
-import { sendMail } from '../mail/index.ts';
-import { passwordChangedEmail, recoveryEmail } from '../mail/templates.ts';
+import { sendPasswordChanged, sendPasswordReset } from '../mail/events.ts';
 import { recoveryTokens, saveMember } from '../domain/collab/store.ts';
 import { passwordProblem } from '../domain/collab/passwordPolicy.ts';
 import {
@@ -81,11 +80,8 @@ export function registerRecoveryRoutes(r: Router) {
           expiresAt: Date.now() + TOKEN_TTL_MS,
           ip: ctx.ip,
         });
-        const link = `${config.appOrigin}/reset-password?token=${encodeURIComponent(raw)}`;
-        void sendMail({
-          to: member.email,
-          ...recoveryEmail(member.name, link, TOKEN_TTL_MS / 60_000),
-        });
+        const link = `${config.mail.brand.appUrl}/reset-password?token=${encodeURIComponent(raw)}`;
+        void sendPasswordReset(member, ctx, link, TOKEN_TTL_MS / 60_000);
         audit.append({
           actor: member.id,
           action: 'auth.recovery_requested',
@@ -150,7 +146,6 @@ export function registerRecoveryRoutes(r: Router) {
       member.lockedUntil = undefined;
       saveMember(member.id);
       const revoked = revokeAllFor(member.id);
-      const at = new Date().toISOString();
       audit.append({
         actor: member.id,
         action: 'auth.password_reset',
@@ -158,7 +153,7 @@ export function registerRecoveryRoutes(r: Router) {
         sensitive: true,
         requestId: ctx.requestId,
       });
-      void sendMail({ to: member.email, ...passwordChangedEmail(member.name, ctx.ip, at) });
+      void sendPasswordChanged(member, ctx, { sessionsSignedOut: true });
       return { ok: true, email: member.email, revokedSessions: revoked };
     },
   );
