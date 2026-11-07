@@ -1,0 +1,238 @@
+import '../setup.ts';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import type { IncomingMessage } from 'node:http';
+import { config } from '../../config/env.ts';
+import {
+  createSession,
+  findSessionByPrefix,
+  listSessions,
+  markVerified,
+  revoke,
+  revokeAllFor,
+  rotateSession,
+  sessionCount,
+  validateSession,
+} from '../../auth/sessions.ts';
+import { signToken } from '../../security/crypto.ts';
+import { HttpError } from '../../types.ts';
+
+const CHROME_MAC =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+const FIREFOX_WIN =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
+
+const req = (ua = CHROME_MAC) => ({ headers: { 'user-agent': ua } }) as unknown as IncomingMessage;
+
+let n = 0;
+const member = () => `sess-member-${++n}`;
+
+function expectCode(fn: () => unknown, code: string) {
+  assert.throws(fn, (e: unknown) => e instanceof HttpError && e.status === 401 && e.code === code);
+}
+
+describe('auth/sessions — creation and validation', () => {
+  it('creates a verified session bound to UA, IP and location', () => {
+    const { token, session } = createSession(member(), req(), '102.89.1.1', 'password', 'verified');
+    assert.ok(session.verifiedAt > 0);
+    assert.equal(session.client, 'Chrome · macOS');
+    assert.equal(session.location.city, 'Lagos');
+    assert.equal(session.lastTotpCounter, -1);
+    const v = validateSession(token, req(), '102.89.1.1');
+    assert.equal(v.session.id, session.id);
+    assert.equal(v.stepUpRequired, false);
+  });
+
+  it('a password-stage session starts with verifiedAt = 0 (step-up required)', () => {
+    const { token, session } = createSession(member(), req(), '127.0.0.1', 'password', 'password');
+    assert.equal(session.stage, 'password');
+    assert.equal(validateSession(token, req(), '127.0.0.1').stepUpRequired, true);
+  });
+
+  it('rejects forged and unknown tokens before any lookup', () => {
+    const { token } = createSession(member(), req(), '127.0.0.1', 'password', 'verified');
+    expectCode(() => validateSession(`${token}x`, req(), '127.0.0.1'), 'invalid_token');
+    expectCode(() => validateSession('garbage', req(), '127.0.0.1'), 'invalid_token');
+    expectCode(
+      () => validateSession(signToken('never-issued'), req(), '127.0.0.1'),
+      'session_revoked',
+    );
+  });
+
+  it('labels common clients without storing the raw UA', () => {
+    const cases: [string, string][] = [
+      ['curl/8.4.0', 'curl'],
+      ['HTTPie/3.2', 'HTTPie'],
+      ['PostmanRuntime/7.36', 'Postman'],
+      [FIREFOX_WIN, 'Firefox · Windows'],
+      ['Mozilla/5.0 (Windows NT 10.0) AppleWebKit Chrome/126 Safari Edg/126', 'Edge · Windows'],
+      [
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) AppleWebKit Version/17 Safari/604',
+        'Safari · iOS',
+      ],
+      ['Mozilla/5.0 (Linux; Android 14) Chrome/126 Mobile', 'Chrome · Android'],
+      ['Mozilla/5.0 (X11; Linux x86_64) Firefox/128', 'Firefox · Linux'],
+      ['', 'Client · Unknown OS'],
+    ];
+    for (const [ua, label] of cases) {
+      const { session } = createSession(member(), req(ua), '127.0.0.1', 'password', 'verified');
+      assert.equal(session.client, label, ua);
+      assert.ok(!JSON.stringify(session).includes(ua) || ua === '', 'raw UA not stored');
+    }
+  });
+});
+
+describe('auth/sessions — lifetimes (fake time)', () => {
+  it('idle past sessionIdleMs keeps the session but demands step-up', (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: 1_000_000_000_000 });
+    const { token } = createSession(member(), req(), '127.0.0.1', 'password', 'verified');
+    t.mock.timers.tick(config.sessionIdleMs);
+    assert.equal(
+      validateSession(token, req(), '127.0.0.1').stepUpRequired,
+      false,
+      'exactly idle limit',
+    );
+    t.mock.timers.tick(config.sessionIdleMs + 1);
+    const v = validateSession(token, req(), '127.0.0.1');
+    assert.equal(v.stepUpRequired, true);
+    assert.equal(v.session.verifiedAt, 0);
+    assert.equal(v.session.revoked, false);
+  });
+
+  it('activity inside the idle window keeps the session verified', (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: 1_000_000_000_000 });
+    const { token } = createSession(member(), req(), '127.0.0.1', 'password', 'verified');
+    for (let i = 0; i < 5; i++) {
+      t.mock.timers.tick(config.sessionIdleMs - 1000);
+      assert.equal(validateSession(token, req(), '127.0.0.1').stepUpRequired, false, `hop ${i}`);
+    }
+  });
+
+  it('absolute lifetime ends the session regardless of activity', (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: 1_000_000_000_000 });
+    const { token, session } = createSession(member(), req(), '127.0.0.1', 'password', 'verified');
+    const hop = Math.floor(config.sessionIdleMs / 2);
+    let elapsed = 0;
+    while (elapsed + hop <= config.sessionAbsoluteMs) {
+      t.mock.timers.tick(hop);
+      elapsed += hop;
+      validateSession(token, req(), '127.0.0.1');
+    }
+    t.mock.timers.tick(config.sessionAbsoluteMs - elapsed + 1);
+    expectCode(() => validateSession(token, req(), '127.0.0.1'), 'session_expired');
+    assert.equal(session.revoked, true);
+    expectCode(() => validateSession(token, req(), '127.0.0.1'), 'session_revoked');
+  });
+});
+
+describe('auth/sessions — context binding', () => {
+  it('a User-Agent change revokes the session (likely token theft)', () => {
+    const { token, session } = createSession(
+      member(),
+      req(CHROME_MAC),
+      '127.0.0.1',
+      'password',
+      'verified',
+    );
+    expectCode(
+      () => validateSession(token, req(FIREFOX_WIN), '127.0.0.1'),
+      'session_context_changed',
+    );
+    assert.equal(session.revoked, true);
+    expectCode(() => validateSession(token, req(CHROME_MAC), '127.0.0.1'), 'session_revoked');
+  });
+
+  it('an IP change keeps the session, moves its location and clears verifiedAt', () => {
+    const { token, session } = createSession(member(), req(), '102.89.1.1', 'password', 'verified');
+    const v = validateSession(token, req(), '91.64.2.2');
+    assert.equal(v.stepUpRequired, true);
+    assert.equal(session.ip, '91.64.2.2');
+    assert.equal(session.location.city, 'Berlin');
+    assert.equal(session.verifiedAt, 0);
+    // Coming back to the old IP does not restore trust.
+    assert.equal(validateSession(token, req(), '102.89.1.1').stepUpRequired, true);
+  });
+});
+
+describe('auth/sessions — rotation and revocation', () => {
+  it('rotation issues a new token and kills the old one (no fixation)', () => {
+    const { token: oldToken, session: old } = createSession(
+      member(),
+      req(),
+      '127.0.0.1',
+      'password',
+      'password',
+    );
+    const { token: newToken, session } = rotateSession(old, { stage: 'verified' });
+    assert.notEqual(session.id, old.id);
+    assert.equal(old.revoked, true);
+    expectCode(() => validateSession(oldToken, req(), '127.0.0.1'), 'session_revoked');
+    assert.equal(validateSession(newToken, req(), '127.0.0.1').session.stage, 'verified');
+  });
+
+  it('markVerified rotates, sets verifiedAt and records the TOTP counter', (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: 1_500_000_000_000 });
+    const { token: pwToken, session } = createSession(
+      member(),
+      req(),
+      '127.0.0.1',
+      'password',
+      'password',
+    );
+    const { token, session: verified } = markVerified(session, 42);
+    assert.equal(verified.stage, 'verified');
+    assert.equal(verified.verifiedAt, 1_500_000_000_000);
+    assert.equal(verified.lastTotpCounter, 42);
+    expectCode(() => validateSession(pwToken, req(), '127.0.0.1'), 'session_revoked');
+    assert.equal(validateSession(token, req(), '127.0.0.1').stepUpRequired, false);
+    // Without a counter the previous one is kept.
+    assert.equal(markVerified(verified).session.lastTotpCounter, 42);
+  });
+
+  it('revoke and revokeAllFor end sessions; other members are untouched', () => {
+    const a = member();
+    const b = member();
+    const a1 = createSession(a, req(), '127.0.0.1', 'password', 'verified');
+    const a2 = createSession(a, req(), '127.0.0.2', 'passkey', 'verified');
+    const b1 = createSession(b, req(), '127.0.0.3', 'password', 'verified');
+    const before = sessionCount();
+    revoke(a1.session.id);
+    expectCode(() => validateSession(a1.token, req(), '127.0.0.1'), 'session_revoked');
+    assert.equal(revokeAllFor(a), 1);
+    expectCode(() => validateSession(a2.token, req(), '127.0.0.2'), 'session_revoked');
+    assert.equal(validateSession(b1.token, req(), '127.0.0.3').session.memberId, b);
+    assert.equal(sessionCount(), before - 2);
+    assert.equal(revokeAllFor(a), 0);
+  });
+
+  it('lists only the member’s sessions, newest first, with truncated ids', (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: 1_600_000_000_000 });
+    const m = member();
+    const first = createSession(m, req(), '127.0.0.1', 'password', 'verified');
+    t.mock.timers.tick(1000);
+    const second = createSession(m, req(FIREFOX_WIN), '127.0.0.2', 'passkey', 'verified');
+    createSession(member(), req(), '127.0.0.9', 'password', 'verified');
+    const list = listSessions(m, second.session.id);
+    assert.deepEqual(
+      list.map((s) => s.id),
+      [second.session.id.slice(0, 8), first.session.id.slice(0, 8)],
+    );
+    assert.deepEqual(
+      list.map((s) => s.current),
+      [true, false],
+    );
+    for (const s of list) {
+      assert.equal(s.id.length, 8);
+      assert.equal(JSON.stringify(s).includes(first.session.id), false, 'full id never listed');
+      assert.equal('uaHash' in s, false);
+    }
+  });
+
+  it('findSessionByPrefix needs ≥ 8 chars and the owning member', () => {
+    const m = member();
+    const { session } = createSession(m, req(), '127.0.0.1', 'password', 'verified');
+    assert.equal(findSessionByPrefix(m, session.id.slice(0, 7)), undefined);
+    assert.equal(findSessionByPrefix(m, session.id.slice(0, 8))?.id, session.id);
+    assert.equal(findSessionByPrefix('someone-else', session.id.slice(0, 8)), undefined);
+  });
+});

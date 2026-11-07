@@ -86,13 +86,78 @@ export const permissionMatrix: Record<PermissionArea, Record<RoleName, Permissio
   },
 };
 
-export function can(p: Principal, area: PermissionArea, level: PermissionLevel): boolean {
-  return rank[permissionMatrix[area][p.role]] >= rank[level];
+/**
+ * How a principal authenticated. Sessions come from the sign-in flow; PATs
+ * are personal access tokens for CLIs and scripts. Kept beside the Principal
+ * (a WeakMap keyed by the principal object) so the shared Principal type does
+ * not change for other lanes.
+ */
+export type PrincipalAuth =
+  | { kind: 'session' }
+  | { kind: 'pat'; tokenId: string; scopes: Partial<Record<PermissionArea, PermissionLevel>> };
+
+const principalAuth = new WeakMap<Principal, PrincipalAuth>();
+
+export function setPrincipalAuth(p: Principal, auth: PrincipalAuth) {
+  principalAuth.set(p, auth);
 }
 
-export function canSeeProduct(p: Principal, product: ProductId): boolean {
-  return p.role === 'Owner' || p.products.includes(product);
+export function principalAuthOf(p: Principal): PrincipalAuth {
+  return principalAuth.get(p) ?? { kind: 'session' };
 }
+
+export function isPat(p: Principal): boolean {
+  return principalAuthOf(p).kind === 'pat';
+}
+
+export const PERMISSION_AREAS = Object.keys(permissionMatrix) as PermissionArea[];
+export const GRANTABLE_LEVELS = ['view', 'contribute', 'manage', 'admin'] as const;
+
+function minLevel(a: PermissionLevel, b: PermissionLevel): PermissionLevel {
+  return rank[a] <= rank[b] ? a : b;
+}
+
+/**
+ * The level a principal actually holds in an area: the role's level, and for
+ * a PAT the intersection of the role with the token's scope (an area missing
+ * from the token's scopes is `none`). Roles are read live, so a demotion
+ * immediately narrows every token the member has issued.
+ */
+export function effectiveLevel(p: Principal, area: PermissionArea): PermissionLevel {
+  const roleLevel = permissionMatrix[area][p.role];
+  const auth = principalAuthOf(p);
+  if (auth.kind === 'session') return roleLevel;
+  return minLevel(roleLevel, auth.scopes[area] ?? 'none');
+}
+
+export function levelAtLeast(have: PermissionLevel, want: PermissionLevel): boolean {
+  return rank[have] >= rank[want];
+}
+
+export function can(p: Principal, area: PermissionArea, level: PermissionLevel): boolean {
+  return rank[effectiveLevel(p, area)] >= rank[level];
+}
+
+/**
+ * Owner-only shortcuts (see every product, every session) honour PAT scope: an
+ * Owner's token needs `organization:admin` to use them.
+ */
+export function hasOwnerPowers(p: Principal): boolean {
+  return p.role === 'Owner' && effectiveLevel(p, 'Organization') === 'admin';
+}
+
+/** Owners see every product only through `hasOwnerPowers` (so PAT scope applies; FINDING B-8). */
+export function canSeeProduct(p: Principal, product: ProductId): boolean {
+  return hasOwnerPowers(p) || p.products.includes(product);
+}
+
+/** Route guard: rejects personal access tokens (account and credential management are session-only). */
+export const requireSession: Middleware = (ctx, next) => {
+  if (!ctx.principal) throw new HttpError(401, 'unauthenticated', 'Sign in required');
+  if (isPat(ctx.principal))
+    throw new HttpError(403, 'session_required', 'This action needs an interactive session');
+  return next();
+};
 
 /** Route guard: requires an authenticated principal with at least `level` in `area`. */
 export function requireArea(area: PermissionArea, level: PermissionLevel): Middleware {
@@ -107,11 +172,20 @@ export function requireArea(area: PermissionArea, level: PermissionLevel): Middl
 /**
  * Step-up guard for sensitive actions (changing roles, revoking access,
  * security policy changes). Requires a strong verification within `maxAgeMs`.
+ * Personal access tokens can never pass it.
  */
 export function requireStepUp(maxAgeMs = 5 * 60_000): Middleware {
   return (ctx, next) => {
     const p = ctx.principal;
     if (!p) throw new HttpError(401, 'unauthenticated', 'Sign in required');
+    // A token cannot prove a human is present, so it never satisfies step-up —
+    // 403 (not 401) so clients don't prompt for a re-verification that can't help.
+    if (isPat(p))
+      throw new HttpError(
+        403,
+        'step_up_unavailable',
+        'Personal access tokens cannot perform step-up actions — use an interactive session',
+      );
     if (!p.verifiedAt || Date.now() - p.verifiedAt > maxAgeMs)
       throw new HttpError(
         401,
@@ -128,7 +202,7 @@ export function requireElevation(scopeOf: (params: Record<string, string>) => st
     const p = ctx.principal;
     if (!p) throw new HttpError(401, 'unauthenticated', 'Sign in required');
     const scope = scopeOf(ctx.params);
-    if (p.role !== 'Owner' && !p.elevations.includes(scope))
+    if (!hasOwnerPowers(p) && !p.elevations.includes(scope))
       throw new HttpError(403, 'elevation_required', `Request just-in-time access for ${scope}`);
     return next();
   };

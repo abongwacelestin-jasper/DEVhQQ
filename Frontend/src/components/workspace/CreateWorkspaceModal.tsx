@@ -5,23 +5,31 @@ import { Button } from '../ui/Button';
 import { WorkspacesIllustration } from '../illustrations/WorkspacesIllustration';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
-import { useReauth } from '../../contexts/ReauthContext';
+import { toast } from 'sonner';
+import { errorMessage, isUnavailable } from '../work/apiState';
+import { ApiError } from '../../api/client';
+import { useDirectory } from '../team/useDirectory';
+import { Avatar } from '../ui/Avatar';
 import { moduleCatalog, workspaceTemplates } from '../../data/workspaces';
+import type { WorkspaceTemplateId } from '../../contexts/WorkspaceContext';
 import type { ModuleKey } from '../../types/workspace';
 
 const palette = ['#4F46E5', '#0E7490', '#B45309', '#BE185D', '#15803D'];
+const templateIds: readonly string[] = ['product', 'agency', 'regulated', 'startup'];
+const isTemplateId = (t: string): t is WorkspaceTemplateId => templateIds.includes(t);
 
 export function CreateWorkspaceModal() {
   const { createWorkspaceOpen, setCreateWorkspaceOpen } = useWorkspaceUI();
-  const { workspaces, addWorkspace, switchTo } = useWorkspace();
-  const { requestReauth } = useReauth();
+  const { workspaces, createWorkspace, switchTo } = useWorkspace();
+  const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
   const [template, setTemplate] = useState(workspaceTemplates[0].id);
   const [modules, setModules] = useState<ModuleKey[]>(workspaceTemplates[0].modules);
   const [mfa, setMfa] = useState(true);
-  const [sso, setSso] = useState(false);
-  const [invites, setInvites] = useState('');
+  const [picked, setPicked] = useState<string[]>([]);
   const [error, setError] = useState('');
+  const { me, members } = useDirectory();
+  const candidates = members.filter((m) => m.status === 'active' && m.id !== me);
 
   useEffect(() => {
     if (createWorkspaceOpen) {
@@ -29,8 +37,7 @@ export function CreateWorkspaceModal() {
       setTemplate(workspaceTemplates[0].id);
       setModules(workspaceTemplates[0].modules);
       setMfa(true);
-      setSso(false);
-      setInvites('');
+      setPicked([]);
       setError('');
     }
   }, [createWorkspaceOpen]);
@@ -39,39 +46,46 @@ export function CreateWorkspaceModal() {
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
   const close = () => setCreateWorkspaceOpen(false);
-  const emails = invites.split(/[\s,]+/).filter(Boolean);
-  const badEmail = emails.find((e) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
 
   const create = () => {
     if (name.trim().length < 2) return setError('Name the workspace — usually the company name.');
+    if (slug.length < 2)
+      return setError('The workspace address needs at least two letters or digits.');
     if (workspaces.some((w) => w.slug === slug))
       return setError(`devhq.app/${slug} is already taken.`);
-    if (badEmail) return setError(`“${badEmail}” isn’t a valid email.`);
-    requestReauth({
-      title: 'Create workspace',
-      description: `${name} becomes a separate, isolated workspace. You’ll be its Owner.`,
-      actionLabel: 'Verify & create',
-      successMessage: `${name} created${emails.length ? ` · ${emails.length} invite${emails.length > 1 ? 's' : ''} sent` : ''}`,
-      onConfirm: () => {
-        const id = `ws${Date.now()}`;
-        addWorkspace({
-          id,
-          name: name.trim(),
-          slug,
-          color: palette[workspaces.length % palette.length],
-          members: 1 + emails.length,
-          products: 0,
-          template,
-          modules,
-          role: 'Owner',
-          mfaRequired: mfa,
-        });
-        switchTo(id);
+    if (!isTemplateId(template)) return setError('Pick a template.');
+    setError('');
+    setBusy(true);
+    // Organization:admin only; the server answers 403 for anyone else.
+    createWorkspace({
+      name: name.trim(),
+      slug,
+      color: palette[workspaces.length % palette.length],
+      template,
+      modules,
+      mfaRequired: mfa,
+      members: picked,
+    })
+      .then((ws) => {
+        switchTo(ws.id);
+        toast.success(
+          `${ws.name} created${picked.length ? ` · ${picked.length} member${picked.length > 1 ? 's' : ''} added` : ''}`,
+        );
         close();
-      },
-    });
+      })
+      .catch((e: unknown) =>
+        setError(
+          isUnavailable(e)
+            ? 'Creating workspaces isn’t available on this server yet.'
+            : e instanceof ApiError && e.status === 403
+              ? 'Only organization admins can create workspaces.'
+              : errorMessage(e, 'The workspaces API did not respond.'),
+        ),
+      )
+      .finally(() => setBusy(false));
   };
 
   return (
@@ -85,8 +99,8 @@ export function CreateWorkspaceModal() {
       footer={
         <>
           <Button onClick={close}>Cancel</Button>
-          <Button variant="primary" onClick={create}>
-            Create workspace
+          <Button variant="primary" onClick={create} disabled={busy}>
+            {busy ? 'Creating…' : 'Create workspace'}
           </Button>
         </>
       }
@@ -181,33 +195,42 @@ export function CreateWorkspaceModal() {
               />{' '}
               Require MFA for everyone
             </label>
-            <label className="flex items-center gap-2 text-[12.5px] text-ink">
-              <input
-                type="checkbox"
-                checked={sso}
-                onChange={(e) => setSso(e.target.checked)}
-                className="h-3.5 w-3.5 accent-[#4F46E5]"
-              />{' '}
-              SSO-only sign in
-            </label>
             {!mfa && (
               <p className="text-[11.5px] font-medium text-warn">
                 Not recommended — production access will still require MFA.
               </p>
             )}
           </fieldset>
-          <Field
-            label="Invite teammates (optional)"
-            hint="Comma or space separated. They join as Developers."
-          >
-            <textarea
-              value={invites}
-              onChange={(e) => setInvites(e.target.value)}
-              rows={2}
-              placeholder="ada@company.com, lin@company.com"
-              className={`${inputClass} h-auto resize-none py-1.5`}
-            />
-          </Field>
+          <fieldset>
+            <legend className="text-[12px] font-medium text-ink">Add teammates (optional)</legend>
+            <p className="text-[11px] text-muted">
+              Existing active members. New people are invited from Team.
+            </p>
+            <ul className="mt-1 max-h-28 space-y-0.5 overflow-y-auto scroll-thin">
+              {candidates.length === 0 && (
+                <li className="text-[11.5px] text-muted">No other active members.</li>
+              )}
+              {candidates.map((m) => (
+                <li key={m.id}>
+                  <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-[12.5px] text-ink hover:bg-sunken/60">
+                    <input
+                      type="checkbox"
+                      checked={picked.includes(m.id)}
+                      onChange={() =>
+                        setPicked((l) =>
+                          l.includes(m.id) ? l.filter((x) => x !== m.id) : [...l, m.id],
+                        )
+                      }
+                      className="h-3.5 w-3.5 accent-[#4F46E5]"
+                    />
+                    <Avatar id={m.id} size="xs" />
+                    <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                    <span className="text-[11px] text-muted">{m.role}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </fieldset>
         </div>
 
         {error && (

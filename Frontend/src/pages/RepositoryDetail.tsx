@@ -1,7 +1,5 @@
 import { Link, useParams } from 'react-router-dom';
-import { toast } from 'sonner';
 import {
-  BadgeCheckIcon,
   CircleCheckIcon,
   CircleXIcon,
   ExternalLinkIcon,
@@ -14,24 +12,47 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProductMark } from '../components/ui/ProductMark';
 import { Avatar } from '../components/ui/Avatar';
 import { Sparkline } from '../components/ui/Sparkline';
-import { Button } from '../components/ui/Button';
 import { NotFound } from '../components/ui/NotFound';
-import { branchProtection, commits, pullRequests, repositories } from '../data/engineering';
+import { Person } from '../components/engineering/Person';
+import { DataState, LoadMore, SampleDataBadge } from '../components/engineering/states';
+import { ago, pullHref, safeHref } from '../components/engineering/format';
+import { usePulls, useRepo } from '../components/engineering/data/hooks';
 import { members, permissionMatrix } from '../data/team';
-import { ciMeta, firstName, productById, reviewMeta, toneDot } from '../utils/status';
-import { repoFromSlug } from '../utils/slug';
+import { ciMeta, firstName, productById, reviewMeta } from '../utils/status';
 
 export function RepositoryDetail() {
-  const { repoSlug = '' } = useParams();
-  const repo = repositories.find((r) => r.name === repoFromSlug(repoSlug));
-  if (!repo)
-    return <NotFound what="Repository" backTo="/repositories" backLabel="Back to repositories" />;
+  // The router has already decoded the segment; it is the API's repo id.
+  const { repoSlug: repoId = '' } = useParams();
+  const res = useRepo(repoId);
+  const pulls = usePulls({ repo: repoId, state: 'open' });
 
-  const repoCommits = commits.filter((c) => c.repo === repo.name);
-  const prs = pullRequests.filter((p) => p.repo === repo.name);
-  const protection = branchProtection[repo.name] ?? [];
+  if (res.status === 'not-found')
+    return <NotFound what="Repository" backTo="/repositories" backLabel="Back to repositories" />;
+  if (res.status !== 'ready' || !res.data)
+    return (
+      <div className="space-y-4">
+        <DetailHeader
+          crumbs={[{ label: 'Repositories', to: '/repositories' }, { label: repoId }]}
+          title={<span className="font-mono">{repoId}</span>}
+        />
+        <DataState
+          status={res.status}
+          error={res.error}
+          what="Repositories"
+          github
+          onRetry={res.reload}
+        />
+      </div>
+    );
+
+  const repo = res.data;
+  const weeks = repo.weeklyCommits ?? [];
+  const total = weeks.reduce((s, n) => s + n, 0);
+  const protection = repo.branchProtection;
+  const commits = repo.recentCommits ?? [];
   const access = members.filter((m) => m.status === 'active' && m.products.includes(repo.product));
-  const total = repo.weeklyCommits.reduce((s, n) => s + n, 0);
+  const href = safeHref(repo.url);
+  const ci = repo.ci ?? 'none';
 
   return (
     <div className="space-y-4">
@@ -42,129 +63,168 @@ export function RepositoryDetail() {
         title={<span className="font-mono">{repo.name}</span>}
         badges={
           <>
-            <StatusBadge {...ciMeta[repo.ci]} dot />
+            <StatusBadge {...ciMeta[ci]} dot />
             <span className="flex items-center gap-1 text-[12px] text-muted">
-              <GitBranchIcon className="h-3 w-3" />
+              <GitBranchIcon className="h-3 w-3" aria-hidden />
               {repo.defaultBranch}
             </span>
-            <span className="flex items-center gap-1 text-[12px] text-muted">
-              <TagIcon className="h-3 w-3" />
-              {repo.latestTag}
-            </span>
-            <span className="text-[12px] text-muted">{repo.language}</span>
+            {repo.latestTag && (
+              <span className="flex items-center gap-1 text-[12px] text-muted">
+                <TagIcon className="h-3 w-3" aria-hidden />
+                {repo.latestTag}
+              </span>
+            )}
+            {repo.language && <span className="text-[12px] text-muted">{repo.language}</span>}
+            <SampleDataBadge source={repo.source} />
           </>
         }
         actions={
-          <Button
-            icon={<ExternalLinkIcon className="h-3.5 w-3.5" />}
-            onClick={() => toast('Opening GitHub', { description: `github.com/${repo.name}` })}
-          >
-            Open in GitHub
-          </Button>
+          href && (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-white px-3 text-[12.5px] font-medium text-ink hover:border-line-strong"
+            >
+              <ExternalLinkIcon className="h-3.5 w-3.5" aria-hidden />
+              Open in GitHub
+            </a>
+          )
         }
       />
 
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
         <div className="bg-white px-3.5 py-2.5">
-          <p className="text-[11.5px] text-muted">Commits · 8 weeks</p>
-          <div className="flex items-end justify-between gap-2">
-            <p className="text-[18px] font-semibold tabular-nums text-ink">{total}</p>
-            <div className="h-6 w-20">
-              <Sparkline
-                points={repo.weeklyCommits}
-                width={80}
-                height={24}
-                label="Weekly commits"
-              />
-            </div>
-          </div>
+          <dt className="text-[11.5px] text-muted">Commits · {weeks.length || '—'} weeks</dt>
+          <dd className="flex items-end justify-between gap-2">
+            <span className="text-[18px] font-semibold tabular-nums text-ink">
+              {weeks.length ? total : '—'}
+            </span>
+            {weeks.length > 1 && (
+              <span className="h-6 w-20">
+                <Sparkline points={weeks} width={80} height={24} label="Weekly commits" />
+              </span>
+            )}
+          </dd>
         </div>
         <div className="bg-white px-3.5 py-2.5">
-          <p className="text-[11.5px] text-muted">Open pull requests</p>
-          <p className="text-[18px] font-semibold tabular-nums text-ink">{repo.openPrs}</p>
+          <dt className="text-[11.5px] text-muted">Open pull requests</dt>
+          <dd className="text-[18px] font-semibold tabular-nums text-ink">
+            {repo.openPrs ?? (pulls.status === 'ready' ? pulls.items.length : '—')}
+          </dd>
         </div>
         <div className="bg-white px-3.5 py-2.5">
-          <p className="text-[11.5px] text-muted">Members with access</p>
-          <p className="text-[18px] font-semibold tabular-nums text-ink">{access.length}</p>
+          <dt className="text-[11.5px] text-muted">Members with access</dt>
+          <dd className="text-[18px] font-semibold tabular-nums text-ink">{access.length}</dd>
         </div>
         <div className="bg-white px-3.5 py-2.5">
-          <p className="text-[11.5px] text-muted">Branch protection</p>
-          <p
-            className={`text-[18px] font-semibold tabular-nums ${protection.every((p) => p.ok) ? 'text-ok' : 'text-warn'}`}
+          <dt className="text-[11.5px] text-muted">Branch protection</dt>
+          <dd
+            className={`text-[18px] font-semibold tabular-nums ${!protection ? 'text-ink' : protection.every((p) => p.ok) ? 'text-ok' : 'text-warn'}`}
           >
-            {protection.filter((p) => p.ok).length}/{protection.length}
-          </p>
+            {protection ? `${protection.filter((p) => p.ok).length}/${protection.length}` : '—'}
+          </dd>
         </div>
-      </div>
+      </dl>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_288px]">
         <div className="space-y-4">
           <Panel title="Recent commits" meta={<span>{repo.defaultBranch}</span>}>
-            <ul className="divide-y divide-line">
-              {repoCommits.map((c) => (
-                <li key={c.sha} className="flex items-center gap-2.5 px-3.5 py-2">
-                  <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${toneDot[ciMeta[c.ci].tone]}`}
-                    title={ciMeta[c.ci].label}
-                  />
-                  <span className="font-mono text-[12px] text-ink">{c.sha}</span>
-                  <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted">
-                    {c.message}
-                  </span>
-                  {c.signed ? (
-                    <span className="hidden items-center gap-0.5 text-[11px] font-medium text-ok sm:inline-flex">
-                      <BadgeCheckIcon className="h-3 w-3" />
-                      Verified
+            {commits.length === 0 ? (
+              <p className="px-3.5 py-4 text-[12.5px] text-muted">No commits synced yet.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {commits.map((c) => (
+                  <li key={c.sha} className="flex items-center gap-2.5 px-3.5 py-2 text-[12px]">
+                    <span className="font-mono text-ink">{c.sha.slice(0, 7)}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-muted">
+                      {c.message}
                     </span>
-                  ) : (
-                    <span className="hidden text-[11px] font-medium text-warn sm:inline">
-                      Unsigned
-                    </span>
-                  )}
-                  <Avatar id={c.author} size="xs" />
-                  <span className="w-8 text-right text-[11.5px] text-subtle">{c.ago}</span>
-                </li>
-              ))}
-            </ul>
+                    <Person id={c.author} showName={false} />
+                    <span className="w-16 text-right text-[11.5px] text-subtle">{ago(c.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Panel>
-          <Panel title="Pull requests" meta={<span>{prs.length}</span>}>
-            <ul className="divide-y divide-line">
-              {prs.map((p) => (
-                <li key={p.number}>
-                  <Link
-                    to={`/pull-requests/${p.number}`}
-                    className="flex items-center gap-2 px-3.5 py-2 hover:bg-sunken/50"
-                  >
-                    <span className="font-mono text-[11.5px] text-subtle">#{p.number}</span>
-                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">
-                      {p.title}
-                    </span>
-                    <StatusBadge {...reviewMeta[p.review]} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          <Panel
+            title="Open pull requests"
+            meta={
+              <>
+                <SampleDataBadge source={pulls.source} />
+                {pulls.status === 'ready' && <span>{pulls.items.length}</span>}
+              </>
+            }
+          >
+            {pulls.status !== 'ready' ? (
+              <DataState
+                status={pulls.status}
+                error={pulls.error}
+                what="Pull requests"
+                github
+                onRetry={pulls.reload}
+                rows={2}
+              />
+            ) : pulls.items.length === 0 ? (
+              <p className="px-3.5 py-4 text-[12.5px] text-muted">No open pull requests.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {pulls.items.map((p) => (
+                  <li key={`${p.repoId}#${p.number}`}>
+                    <Link
+                      to={pullHref(p)}
+                      className="flex items-center gap-2 px-3.5 py-2 hover:bg-sunken/50"
+                    >
+                      <span className="font-mono text-[11.5px] text-subtle">#{p.number}</span>
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">
+                        {p.title}
+                      </span>
+                      <StatusBadge {...reviewMeta[p.review]} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <LoadMore
+              hasMore={pulls.hasMore}
+              loading={pulls.loadingMore}
+              onClick={pulls.loadMore}
+            />
           </Panel>
         </div>
 
         <div className="grid content-start gap-4 md:grid-cols-2 lg:grid-cols-1">
-          <Panel title="Branch protection" meta={<span>main</span>}>
-            <ul className="space-y-2 px-3.5 py-3">
-              {protection.map((p) => (
-                <li key={p.label} className="flex items-start gap-2 text-[12.5px] text-ink">
-                  {p.ok ? (
-                    <CircleCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok" />
-                  ) : (
-                    <CircleXIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-bad" />
-                  )}
-                  {p.label}
-                </li>
-              ))}
-            </ul>
-            {!protection.every((p) => p.ok) && (
-              <p className="border-t border-line px-3.5 py-2.5 text-[12px] text-muted">
-                Change these in GitHub. DevHQ doesn’t request administration permissions.
+          <Panel title="Branch protection" meta={<span>{repo.defaultBranch}</span>}>
+            {!protection ? (
+              <p className="px-3.5 py-3 text-[12px] text-muted">
+                Not reported by the server. Branch rules are managed in GitHub.
               </p>
+            ) : (
+              <>
+                <ul className="space-y-2 px-3.5 py-3">
+                  {protection.map((p) => (
+                    <li key={p.label} className="flex items-start gap-2 text-[12.5px] text-ink">
+                      {p.ok ? (
+                        <CircleCheckIcon
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok"
+                          aria-label="On"
+                        />
+                      ) : (
+                        <CircleXIcon
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-bad"
+                          aria-label="Off"
+                        />
+                      )}
+                      {p.label}
+                    </li>
+                  ))}
+                </ul>
+                {!protection.every((p) => p.ok) && (
+                  <p className="border-t border-line px-3.5 py-2.5 text-[12px] text-muted">
+                    Change these in GitHub. DevHQ doesn’t request administration permissions.
+                  </p>
+                )}
+              </>
             )}
           </Panel>
           <Panel title="Who can see this" meta={<span>via product access</span>}>

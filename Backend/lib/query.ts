@@ -63,7 +63,13 @@ function test(value: unknown, cond: Condition): boolean {
             : arg.includes(value as Scalar))
         );
       case 'nin':
-        return Array.isArray(arg) && !arg.includes(value as Scalar);
+        // The complement of `in`, including array-valued fields (no overlap).
+        return (
+          Array.isArray(arg) &&
+          (Array.isArray(value)
+            ? !value.some((v) => arg.includes(v as Scalar))
+            : !arg.includes(value as Scalar))
+        );
       case 'gt':
         return (value as number | string) > (arg as number | string);
       case 'gte':

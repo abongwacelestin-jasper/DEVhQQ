@@ -161,7 +161,13 @@ export class Router {
       };
       if (route) {
         const m = url.pathname.match(route.pattern)!;
-        route.keys.forEach((k, i) => (ctx.params[k] = decodeURIComponent(m[i + 1])));
+        route.keys.forEach((k, i) => {
+          try {
+            ctx.params[k] = decodeURIComponent(m[i + 1]);
+          } catch {
+            throw new HttpError(400, 'malformed_url', 'Malformed percent-encoding in the URL');
+          }
+        });
         if (req.method !== 'GET' && req.method !== 'DELETE' && req.method !== 'HEAD') {
           const { json, raw } = await readBody(req);
           ctx.body = json;

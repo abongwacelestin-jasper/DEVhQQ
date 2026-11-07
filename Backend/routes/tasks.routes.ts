@@ -225,7 +225,8 @@ export function registerTaskRoutes(r: Router) {
       };
       db.tasks.set(task.key, task);
       record(task, ctx.principal!.memberId, 'created');
-      if (body.reviewer) record(task, ctx.principal!.memberId, 'reviewer', undefined, body.reviewer);
+      if (body.reviewer)
+        record(task, ctx.principal!.memberId, 'reviewer', undefined, body.reviewer);
       audit.append({
         actor: ctx.principal!.memberId,
         action: 'task.created',
@@ -276,11 +277,9 @@ export function registerTaskRoutes(r: Router) {
           to === undefined ? undefined : String(to),
         );
       }
-      Object.assign(
-        t,
-        Object.fromEntries(changed.map((k) => [k, patch[k]])),
-      );
+      Object.assign(t, Object.fromEntries(changed.map((k) => [k, patch[k]])));
       touch(t);
+      db.tasks.save(t.key);
       audit.append({
         actor: p.memberId,
         action: 'task.updated',
@@ -377,6 +376,7 @@ export function registerTaskRoutes(r: Router) {
       s.done = body.done;
       s.doneBy = body.done ? ctx.principal!.memberId : undefined;
       s.doneAt = body.done ? new Date().toISOString() : undefined;
+      db.subtasks.save(s.id);
       record(
         t,
         ctx.principal!.memberId,

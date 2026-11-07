@@ -1,3 +1,4 @@
+import { useLanguage } from '../../contexts/LanguageContext';
 import React from 'react';
 import { Link } from 'react-router-dom';
 
@@ -42,6 +43,7 @@ export function PageHero({
   stats,
   tint = 'accent',
 }: PageHeroProps) {
+  const { heading } = useLanguage();
   const n = Math.min(stats?.length ?? 0, 6);
   return (
     <section className={`overflow-hidden rounded-lg border border-line ${tints[tint]}`}>
@@ -56,7 +58,7 @@ export function PageHero({
             </div>
           )}
           <h1 className="text-[17px] font-semibold leading-snug tracking-tight text-ink">
-            {title}
+            {typeof title === 'string' ? heading(title) : title}
           </h1>
           {badges && <div className="mt-1 flex flex-wrap items-center gap-1.5">{badges}</div>}
           {description && (

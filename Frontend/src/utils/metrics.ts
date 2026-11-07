@@ -10,12 +10,39 @@ const DAY = 86_400_000;
  * Whole days back from the relative label the API sends ("3d ago", "4h ago", "now").
  * Anything under a day counts as today, so a fresh deploy lands in the current bucket.
  */
+const MONTH_ABBR = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/**
+ * Whole days since a relative label: "3d", "2w", "3d ago" (relative()), "just now",
+ * minutes/hours (0), or a "Oct 2" day label for anything older (F-FE-1).
+ */
 export function daysAgo(ago: string): number {
-  if (ago === 'now') return 0;
-  const value = parseInt(ago, 10);
-  if (Number.isNaN(value)) return 0;
-  if (ago.endsWith('d')) return value;
-  if (ago.endsWith('w')) return value * 7;
+  const s = ago.trim();
+  if (s === 'now' || s === 'just now') return 0;
+  const rel = /^(\d+)\s*([mhdw])(?:\s+ago)?$/.exec(s);
+  if (rel) {
+    const n = Number(rel[1]);
+    return rel[2] === 'd' ? n : rel[2] === 'w' ? n * 7 : 0;
+  }
+  const day = /^([A-Z][a-z]{2}) (\d{1,2})$/.exec(s);
+  if (day && MONTH_ABBR.includes(day[1])) {
+    let d = new Date(NOW.getFullYear(), MONTH_ABBR.indexOf(day[1]), Number(day[2]));
+    if (d > NOW) d = new Date(NOW.getFullYear() - 1, d.getMonth(), d.getDate());
+    return Math.max(0, Math.round((startOfDay(NOW).getTime() - d.getTime()) / 86_400_000));
+  }
   return 0;
 }
 

@@ -27,6 +27,17 @@ const sq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 const dq = (s: string) => JSON.stringify(s);
 
 /** Generates a copy-ready request in the chosen client. Uses $DEVHQ_TOKEN unless the live token is opted in. */
+/** JSON → Python literals, leaving the words true/false/null inside strings alone (F-FE-2). */
+function toPythonLiterals(json: string): string {
+  const py: Record<string, string> = { true: 'True', false: 'False', null: 'None' };
+  return json.replace(/"(?:[^"\\]|\\.)*"|\b(true|false|null)\b/g, (m, word?: string) =>
+    word ? py[word] : m,
+  );
+}
+
+/** PowerShell single-quoted string: a quote is escaped by doubling it (F-FE-3). */
+const psq = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
 export function buildSnippet(kind: SnippetKind, i: SnippetInput): string {
   const full = i.origin.replace(/\/$/, '') + i.url;
   const tok = i.includeToken && i.token ? i.token : null;
@@ -79,18 +90,12 @@ export function buildSnippet(kind: SnippetKind, i: SnippetInput): string {
     }
     case 'python':
       return `import os, requests\n\nres = requests.request(\n    ${dq(i.method)},\n    ${dq(full)},\n    headers={\n        "Authorization": ${tok ? dq(`Bearer ${tok}`) : `f"Bearer {os.environ['DEVHQ_TOKEN']}"`},\n${extra.map(([k, v]) => `        ${dq(k)}: ${dq(v)},`).join('\n')}${extra.length ? '\n' : ''}    },${
-        compact
-          ? `\n    json=${pretty
-              .replace(/\btrue\b/g, 'True')
-              .replace(/\bfalse\b/g, 'False')
-              .replace(/\bnull\b/g, 'None')
-              .replace(/\n/g, '\n    ')},`
-          : ''
+        compact ? `\n    json=${toPythonLiterals(pretty).replace(/\n/g, '\n    ')},` : ''
       }\n    timeout=10,\n)\nprint(res.status_code, res.json())`;
     case 'go':
       return `package main\n\nimport (\n\t"fmt"\n\t"io"\n\t"net/http"\n\t"os"${compact ? '\n\t"strings"' : ''}\n)\n\nfunc main() {\n\treq, _ := http.NewRequest(${dq(i.method)}, ${dq(full)}, ${compact ? `strings.NewReader(${dq(compact)})` : 'nil'})\n\treq.Header.Set("Authorization", ${tok ? dq(`Bearer ${tok}`) : '"Bearer "+os.Getenv("DEVHQ_TOKEN")'})${compact ? '\n\treq.Header.Set("Content-Type", "application/json")' : ''}${extra.map(([k, v]) => `\n\treq.Header.Set(${dq(k)}, ${dq(v)})`).join('')}\n\tres, err := http.DefaultClient.Do(req)\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\tdefer res.Body.Close()\n\tbody, _ := io.ReadAll(res.Body)\n\tfmt.Println(res.StatusCode, string(body))\n}`;
     case 'powershell':
-      return `$headers = @{\n  "Authorization" = ${tok ? dq(`Bearer ${tok}`) : '"Bearer $env:DEVHQ_TOKEN"'}\n${extra.map(([k, v]) => `  ${dq(k)} = ${dq(v)}`).join('\n')}${extra.length ? '\n' : ''}}\n${compact ? `$body = @'\n${pretty}\n'@\n` : ''}Invoke-RestMethod -Method ${i.method} -Uri '${full}' -Headers $headers${compact ? " -ContentType 'application/json' -Body $body" : ''}`;
+      return `$headers = @{\n  "Authorization" = ${tok ? dq(`Bearer ${tok}`) : '"Bearer $env:DEVHQ_TOKEN"'}\n${extra.map(([k, v]) => `  ${dq(k)} = ${dq(v)}`).join('\n')}${extra.length ? '\n' : ''}}\n${compact ? `$body = @'\n${pretty}\n'@\n` : ''}Invoke-RestMethod -Method ${i.method} -Uri ${psq(full)} -Headers $headers${compact ? " -ContentType 'application/json' -Body $body" : ''}`;
     case 'wget':
       return [
         `wget -qO- --method=${i.method}`,

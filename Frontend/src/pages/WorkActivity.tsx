@@ -1,6 +1,6 @@
+import { useLanguage } from '../contexts/LanguageContext';
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { toast } from 'sonner';
 import { DownloadIcon, SearchIcon } from 'lucide-react';
 import { Panel } from '../components/ui/Panel';
 import { Avatar } from '../components/ui/Avatar';
@@ -11,18 +11,27 @@ import { EmptyIllustration } from '../components/illustrations/EmptyIllustration
 import { useWork } from '../contexts/WorkContext';
 import { useDateRange } from '../contexts/DateRangeContext';
 import { useProductFilter } from '../contexts/ProductFilterContext';
-import { members } from '../data/team';
-import { firstName } from '../utils/status';
+import { useDirectory } from '../components/team/useDirectory';
+import { useTaskInsights } from '../components/work/useTaskInsights';
+import { TaskInsightBadge } from '../components/work/TaskInsightBadge';
 import { NOW, addDays, formatDay, formatDayHeading, formatTime, startOfDay } from '../utils/date';
 import { describeEvent, eventKindLabel, formatMinutes } from '../utils/taskEvents';
 import type { TaskEventKind } from '../types/work';
 
 const kinds = Object.keys(eventKindLabel) as TaskEventKind[];
 
+/** RFC 4180 quoting; a leading =,+,-,@ is prefixed so spreadsheets don't evaluate it. */
+const csvCell = (v: string) => {
+  const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+};
+
 export function WorkActivity() {
+  const { heading } = useLanguage();
   const { events, tasks } = useWork();
   const { inRange, from, to, label } = useDateRange();
   const { matchesTask } = useProductFilter();
+  const { members, memberById } = useDirectory();
   const [params, setParams] = useSearchParams();
   const member = params.get('member') ?? '';
   const kind = (params.get('kind') ?? '') as TaskEventKind | '';
@@ -95,6 +104,41 @@ export function WorkActivity() {
   ];
 
   const people = members.filter((m) => m.status === 'active');
+
+  // ETA / overdue-risk for open tasks in view (first 40, so a wide range doesn't fan out requests).
+  const openKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const e of rows) {
+      const t = taskByKey.get(e.taskKey);
+      if (t && t.status !== 'done') keys.add(t.key);
+      if (keys.size >= 40) break;
+    }
+    return [...keys];
+  }, [rows, taskByKey]);
+  const insights = useTaskInsights(openKeys);
+
+  const exportCsv = () => {
+    const header = ['time', 'actor', 'task', 'title', 'change', 'note'];
+    const lines = rows.map((e) =>
+      [
+        e.at,
+        memberById(e.actor).name,
+        e.taskKey,
+        taskByKey.get(e.taskKey)?.title ?? '',
+        describeEvent(e),
+        e.note ?? '',
+      ]
+        .map(csvCell)
+        .join(','),
+    );
+    const blob = new Blob([[header.join(','), ...lines].join('\r\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `devhq-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const topPeople = people
     .map((m) => ({ m, n: rows.filter((e) => e.actor === m.id).length }))
     .filter((x) => x.n > 0)
@@ -106,7 +150,9 @@ export function WorkActivity() {
       <section className="grid items-center gap-3 overflow-hidden rounded-lg border border-line bg-sunken/40 px-3.5 py-3 md:grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
         <TimelineIllustration className="hidden h-[84px] w-auto md:block" />
         <div className="min-w-0">
-          <h1 className="text-[17px] font-semibold tracking-tight text-ink">Work activity</h1>
+          <h1 className="text-[17px] font-semibold tracking-tight text-ink">
+            {heading('Work activity')}
+          </h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
             An append-only record of every task change — who did what, and exactly when. {label}.
           </p>
@@ -114,11 +160,8 @@ export function WorkActivity() {
             size="sm"
             className="mt-2"
             icon={<DownloadIcon className="h-3.5 w-3.5" />}
-            onClick={() =>
-              toast.success('Export started', {
-                description: `${rows.length} events · signed CSV will be emailed.`,
-              })
-            }
+            onClick={exportCsv}
+            disabled={rows.length === 0}
           >
             Export CSV
           </Button>
@@ -263,9 +306,7 @@ export function WorkActivity() {
                         className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-semibold text-ink hover:underline"
                       >
                         <Avatar id={e.actor} size="xs" />
-                        <span className="truncate">
-                          {members.find((m) => m.id === e.actor)?.name ?? firstName(e.actor)}
-                        </span>
+                        <span className="truncate">{memberById(e.actor).name}</span>
                       </Link>
                       <p className="col-start-2 min-w-0 text-[12.5px] text-ink md:col-start-auto">
                         <span className="text-muted">{describeEvent(e)}</span>
@@ -281,6 +322,9 @@ export function WorkActivity() {
                           <ProductMark product={t.product} size="sm" />
                           <span className="font-mono font-medium text-accent">{t.key}</span>
                           <span className="truncate text-ink">{t.title}</span>
+                          {insights.available && t.status !== 'done' && (
+                            <TaskInsightBadge insight={insights.get(t.key)} />
+                          )}
                         </Link>
                       )}
                     </li>

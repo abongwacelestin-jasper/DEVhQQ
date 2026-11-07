@@ -17,12 +17,18 @@ export function CodeInput({
   autoFocus = true,
 }: CodeInputProps) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
-  const digits = Array.from({ length }, (_, i) => value[i] ?? '');
+  // A cleared box is kept as a space so later digits never shift left (F-FE-6).
+  const digits = Array.from({ length }, (_, i) => (/\d/.test(value[i] ?? '') ? value[i] : ''));
 
   const setAt = (i: number, d: string) => {
     const next = digits.slice();
     next[i] = d;
-    onChange(next.join('').slice(0, length));
+    onChange(
+      next
+        .map((x) => x || ' ')
+        .join('')
+        .trimEnd(),
+    );
   };
 
   return (
@@ -68,4 +74,9 @@ export function CodeInput({
       ))}
     </div>
   );
+}
+
+/** True when every box holds a digit (a cleared middle box is a space, not a shorter code). */
+export function isCompleteCode(value: string, length = 6): boolean {
+  return value.length === length && /^\d+$/.test(value);
 }

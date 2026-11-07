@@ -102,7 +102,9 @@ export function RolesPanel({ members, matrix, onViewMembers }: RolesPanelProps) 
                 ) : (
                   <ShieldCheckIcon className="h-3 w-3" />
                 )}
-                {detail.productionDefault ? 'Production by default' : 'No standing production access'}
+                {detail.productionDefault
+                  ? 'Production by default'
+                  : 'No standing production access'}
               </span>
             </header>
 

@@ -5,6 +5,7 @@ import {
   CrownIcon,
   EyeIcon,
   EyeOffIcon,
+  FingerprintIcon,
   KeyRoundIcon,
   LockIcon,
 } from 'lucide-react';
@@ -13,14 +14,16 @@ import { AuthLayout } from '../../components/auth/AuthLayout';
 import { SignInIllustration } from '../../components/illustrations/SignInIllustration';
 import { Avatar } from '../../components/ui/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
-import { demoPassword, demoRoles, type RoleKey } from '../../data/roles';
-import { members } from '../../data/team';
+import { roleByKey, type RoleKey } from '../../data/roles';
+import { useDemoConfig } from '../../api/auth/useDemoConfig';
+import { passkeySupported } from '../../utils/webauthn';
 
 const input =
   'h-9 w-full rounded-md border border-line-strong bg-white px-3 text-[13px] text-ink outline-none transition-colors duration-150 placeholder:text-subtle focus:border-accent focus:ring-2 focus:ring-accent/20';
 
 export function SignIn() {
-  const { signInDemo, signInPassword, lockedUntil } = useAuth();
+  const { signInDemo, signInPassword, signInPasskey, lockedUntil } = useAuth();
+  const demo = useDemoConfig();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,7 +50,7 @@ export function SignIn() {
     navigate('/verify');
   };
 
-  const demo = async (key: RoleKey) => {
+  const signInAs = async (key: RoleKey) => {
     if (busy) return;
     setBusy(true);
     setError('');
@@ -63,8 +66,20 @@ export function SignIn() {
     }
   };
 
-  const admin = demoRoles[0];
-  const others = demoRoles.slice(1);
+  const passkey = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    const r = await signInPasskey();
+    setBusy(false);
+    if (!r.ok) return setError(r.error ?? 'Passkey sign-in failed.');
+    navigate('/verify');
+  };
+
+  // Demo accounts exist only when the server publishes them.
+  const accounts = demo.enabled ? demo.accounts : [];
+  const admin = accounts.find((a) => a.key === 'admin');
+  const others = accounts.filter((a) => a.key !== 'admin');
 
   return (
     <AuthLayout
@@ -125,6 +140,7 @@ export function SignIn() {
         {(error || lockedFor > 0) && (
           <p
             role="alert"
+            aria-live="assertive"
             className="flex items-center gap-1.5 rounded-md bg-bad-soft px-2.5 py-1.5 text-[12px] font-medium text-bad"
           >
             <LockIcon className="h-3.5 w-3.5 shrink-0" />
@@ -138,60 +154,78 @@ export function SignIn() {
         >
           {busy ? 'Checking…' : 'Continue'} <ArrowRightIcon className="h-4 w-4" />
         </button>
+        {passkeySupported() && (
+          <button
+            type="button"
+            onClick={() => void passkey()}
+            disabled={busy}
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-line-strong text-[13px] font-medium text-ink hover:bg-sunken/60 disabled:opacity-50"
+          >
+            <FingerprintIcon className="h-4 w-4" /> Sign in with a passkey
+          </button>
+        )}
         <button
           type="button"
           onClick={() =>
-            toast('SSO isn’t configured for this demo workspace', {
-              description: 'Use a demo account below.',
+            toast('SSO isn’t configured for this workspace', {
+              description: 'Sign in with your email and password, or a passkey.',
             })
           }
           className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-line-strong text-[13px] font-medium text-ink hover:bg-sunken/60"
         >
           <KeyRoundIcon className="h-4 w-4" /> Continue with SSO
         </button>
-        <p className="text-[11.5px] text-muted">
-          Demo password for any member below:{' '}
-          <code className="rounded bg-sunken px-1 font-mono text-ink">{demoPassword}</code>
-        </p>
+        {demo.enabled && demo.password && (
+          <p className="text-[11.5px] text-muted">
+            Demo environment · password for any member below:{' '}
+            <code className="rounded bg-sunken px-1 font-mono text-ink">{demo.password}</code>
+          </p>
+        )}
       </form>
 
-      <div className="my-5 flex items-center gap-3 text-[11.5px] font-medium text-muted">
-        <span className="h-px flex-1 bg-line" /> Demo access{' '}
-        <span className="h-px flex-1 bg-line" />
-      </div>
+      {accounts.length > 0 && (
+        <div className="my-5 flex items-center gap-3 text-[11.5px] font-medium text-muted">
+          <span className="h-px flex-1 bg-line" /> Demo access{' '}
+          <span className="h-px flex-1 bg-line" />
+        </div>
+      )}
 
-      <button
-        onClick={() => void demo(admin.key)}
-        disabled={busy}
-        className="group flex w-full items-center gap-3 rounded-lg border-2 border-ink bg-white px-3 py-2.5 text-left transition-colors duration-150 hover:bg-sunken/50 disabled:opacity-60"
-      >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ink text-white">
-          <CrownIcon className="h-4 w-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-semibold text-ink">Admin demo</span>
-          <span className="block truncate text-[11.5px] text-muted">{admin.summary}</span>
-        </span>
-        <ArrowRightIcon className="h-4 w-4 text-ink transition-transform duration-150 group-hover:translate-x-0.5" />
-      </button>
+      {admin && (
+        <button
+          onClick={() => void signInAs(admin.key as RoleKey)}
+          disabled={busy}
+          className="group flex w-full items-center gap-3 rounded-lg border-2 border-ink bg-white px-3 py-2.5 text-left transition-colors duration-150 hover:bg-sunken/50 disabled:opacity-60"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ink text-white">
+            <CrownIcon className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-semibold text-ink">Admin demo</span>
+            <span className="block truncate text-[11.5px] text-muted">
+              {roleByKey('admin').summary}
+            </span>
+          </span>
+          <ArrowRightIcon className="h-4 w-4 text-ink transition-transform duration-150 group-hover:translate-x-0.5" />
+        </button>
+      )}
 
       <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
         {others.map((r) => {
-          const m = members.find((x) => x.id === r.memberId)!;
           return (
             <li key={r.key}>
               <button
-                onClick={() => void demo(r.key)}
+                onClick={() => void signInAs(r.key as RoleKey)}
                 disabled={busy}
                 className="flex w-full items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-left transition-colors duration-150 hover:border-line-strong hover:bg-sunken/50 disabled:opacity-60"
               >
-                <Avatar id={m.id} size="sm" />
+                <Avatar id={r.memberId} size="sm" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[12.5px] font-semibold text-ink">
                     {r.label}
                   </span>
                   <span className="block truncate text-[11px] text-muted">
-                    {m.name} · NDA + profile
+                    {r.name}
+                    {roleByKey(r.key as RoleKey).needsOnboarding ? ' · NDA + profile' : ''}
                   </span>
                 </span>
               </button>

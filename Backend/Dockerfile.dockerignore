@@ -1,0 +1,22 @@
+# Context filter for Backend/Dockerfile (build context = repository root).
+# Allow-list: start from nothing and add back exactly what the image needs.
+*
+!package.json
+!package-lock.json
+!.npmrc
+!Backend/
+!Frontend/package.json
+!Models/package.json
+!infra/docker/entrypoint.sh
+
+# Never ship these, even from inside allowed paths.
+**/.git
+**/node_modules
+**/.env
+**/.env.*
+**/.audit
+**/.backups
+**/*.log
+**/coverage
+**/.DS_Store
+Backend/Dockerfile*

@@ -1,0 +1,25 @@
+# Default build-context filter for the repository root.
+# Each Dockerfile also has a stricter allow-list next to it
+# (<path>/Dockerfile.dockerignore), which BuildKit uses in preference to this.
+.git
+.github
+.husky
+**/node_modules
+**/dist
+**/coverage
+**/.vite
+**/.env
+**/.env.*
+**/.audit
+**/.backups
+**/*.log
+**/.DS_Store
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+infra/secrets
+docker-compose*.yml
+docs
+.claude

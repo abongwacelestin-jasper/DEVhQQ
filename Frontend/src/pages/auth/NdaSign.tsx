@@ -55,6 +55,7 @@ export function NdaSign() {
   const [start, setStart] = useState('2026-11-02');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   if (!session) return null;
   const me = memberById(session.memberId);
 
@@ -89,19 +90,16 @@ export function NdaSign() {
     URL.revokeObjectURL(url);
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     if (!allDone) return setError('Complete every section before signing.');
-    if (!signNda(name))
-      return setError(`Type your full name exactly as on your profile: ${me.name}`);
-    try {
-      localStorage.setItem(
-        `devhq.volunteer.${me.id}`,
-        JSON.stringify({ hours, days, duration, areas, start, signedAt: new Date().toISOString() }),
-      );
-    } catch {
-      /* storage unavailable */
-    }
+    setBusy(true);
+    setError('');
+    // The server records the signature and decides the next stage.
+    const r = await signNda(name, { hours, days, duration, areas, start });
+    setBusy(false);
+    if (!r.ok) return setError(r.error ?? 'The agreement could not be signed. Try again.');
     toast.success('Agreement signed', {
       description: `${hours}h/week commitment recorded · ${formatDateTime(new Date())}`,
     });
@@ -361,10 +359,10 @@ export function NdaSign() {
               </label>
               <button
                 type="submit"
-                disabled={!allDone || !name.trim()}
+                disabled={!allDone || !name.trim() || busy}
                 className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-ink text-[13px] font-semibold text-white hover:bg-ink/90 disabled:opacity-40 sm:w-auto sm:px-5"
               >
-                <FileSignatureIcon className="h-4 w-4" /> Sign agreement
+                <FileSignatureIcon className="h-4 w-4" /> {busy ? 'Signing…' : 'Sign agreement'}
               </button>
               <p className="flex items-center gap-1 text-[11px] text-muted">
                 <LockIcon className="h-3 w-3" /> Signature, timestamp and network address are stored
@@ -376,6 +374,7 @@ export function NdaSign() {
           {error && (
             <p
               role="alert"
+              aria-live="assertive"
               className="mt-3 rounded-md bg-bad-soft px-2.5 py-1.5 text-[12px] font-medium text-bad"
             >
               {error}

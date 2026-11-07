@@ -1,3 +1,6 @@
+/** Version of the mutual NDA the server records a signature against. */
+export const NDA_VERSION = '3.3';
+
 export type NdaSectionId = 'confidentiality' | 'code' | 'data' | 'security' | 'commitment' | 'sign';
 
 export interface NdaSection {

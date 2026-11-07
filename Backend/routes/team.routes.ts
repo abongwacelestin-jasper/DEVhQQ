@@ -10,9 +10,11 @@
 import type { Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
-import { canSeeProduct, permissionMatrix, requireArea, requireStepUp } from '../auth/rbac.ts';
+import { can, canSeeProduct, permissionMatrix, requireArea, requireStepUp } from '../auth/rbac.ts';
+import { asPrincipal, notify } from '../domain/collab/notify.ts';
 import { approveGrant, listGrants, requestGrant, revokeGrant } from '../auth/jit.ts';
 import { revokeAllFor } from '../auth/sessions.ts';
+import { revokeStandingAccess } from '../security/pats.ts';
 import { audit } from '../audit/auditLog.ts';
 import { hashToken, randomToken } from '../security/crypto.ts';
 import { db, findMemberByEmail, publicMember } from '../store/db.ts';
@@ -34,6 +36,12 @@ const roles = [
   'Operations',
 ] as const;
 const productIds = ['renewberry', 'blog', 'mirror'] as const;
+
+const accessRequestBody = v.object({
+  /** In-app path the member was refused, e.g. `/audit`. */
+  path: v.string({ min: 1, max: 200 }),
+  reason: v.optional(v.string({ max: 500 })),
+});
 
 /** How long an invite link stays usable. */
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
@@ -220,10 +228,14 @@ export function registerTeamRoutes(r: Router) {
       if (!target) throw new HttpError(404, 'not_found', 'Not found');
       if (target.id === ctx.principal!.memberId && patch.role && patch.role !== target.role)
         throw new HttpError(403, 'self_demotion', 'Ask another Owner to change your role');
+      if (target.id === ctx.principal!.memberId && patch.status && patch.status !== target.status)
+        throw new HttpError(403, 'self_demotion', 'Ask another Owner to change your status');
+      // Demoting or deactivating the last active Owner would leave nobody to administer the
+      // workspace (FINDING B-7).
       if (
         target.role === 'Owner' &&
-        patch.role &&
-        patch.role !== 'Owner' &&
+        target.status === 'active' &&
+        ((patch.role && patch.role !== 'Owner') || (patch.status && patch.status !== 'active')) &&
         [...db.members.values()].filter((m) => m.role === 'Owner' && m.status === 'active')
           .length === 1
       ) {
@@ -233,7 +245,11 @@ export function registerTeamRoutes(r: Router) {
       if (patch.role) target.role = patch.role as RoleName;
       if (patch.products) target.products = patch.products as ProductId[];
       if (patch.status) target.status = patch.status;
+      db.members.save(target.id);
       const revoked = revokeAllFor(target.id);
+      // CYBER-010: deactivation also cuts PATs and JIT grants immediately, not only on next use.
+      if (patch.status === 'deactivated' && before.status !== 'deactivated')
+        revokeStandingAccess(target.id, ctx.principal!.memberId, 'member_inactive', ctx.requestId);
       audit.append({
         actor: ctx.principal!.memberId,
         action: 'team.updated',
@@ -242,6 +258,50 @@ export function registerTeamRoutes(r: Router) {
         requestId: ctx.requestId,
       });
       return { id: target.id, role: target.role, products: target.products, status: target.status };
+    },
+  );
+
+  // "Request access" on the web app's no-access page: audited, and every member who
+  // can manage the team is notified. Granting stays a role/product change on the
+  // member's page (step-up). Repeats collapse into the same unread notification.
+  r.add(
+    'POST',
+    '/api/access/requests',
+    {
+      summary: 'Ask the admins for access to an area of the app',
+      tag: 'team',
+      responses: [401, 422],
+    },
+    authenticate,
+    (ctx) => {
+      const p = ctx.principal!;
+      const body = parse(accessRequestBody, ctx.body);
+      if (!body.path.startsWith('/'))
+        throw new HttpError(422, 'validation_failed', 'path must be an in-app path');
+      const me = db.members.get(p.memberId);
+      const reason = body.reason?.trim();
+      audit.append({
+        actor: p.memberId,
+        action: 'access.requested',
+        target: `${body.path}${reason ? ` · ${reason}` : ''}`,
+        requestId: ctx.requestId,
+      });
+      let notified = 0;
+      for (const m of db.members.values()) {
+        if (m.status !== 'active' || m.id === p.memberId) continue;
+        if (!can(asPrincipal(m), 'Administration', 'manage')) continue;
+        const n = notify({
+          memberId: m.id,
+          kind: 'approval',
+          title: `${me?.name ?? p.memberId} requested access to ${body.path}`,
+          body: reason || 'No reason given.',
+          link: `/team/${p.memberId}`,
+          refId: `access:${p.memberId}:${body.path}`,
+          actor: p.memberId,
+        });
+        if (n) notified++;
+      }
+      return { requested: body.path, notified };
     },
   );
 

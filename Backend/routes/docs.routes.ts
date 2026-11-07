@@ -11,7 +11,7 @@
 import type { Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
-import { assertProduct, canSeeProduct, requireArea } from '../auth/rbac.ts';
+import { assertProduct, canSeeProduct, hasOwnerPowers, requireArea } from '../auth/rbac.ts';
 import { randomToken } from '../security/crypto.ts';
 import { audit } from '../audit/auditLog.ts';
 import { db } from '../store/db.ts';
@@ -34,7 +34,7 @@ const updateBody = v.object({
 function readable(p: Principal, d: ProjectDoc) {
   return (
     canSeeProduct(p, d.product) &&
-    (d.visibility !== 'restricted' || d.editors.includes(p.memberId) || p.role === 'Owner')
+    (d.visibility !== 'restricted' || d.editors.includes(p.memberId) || hasOwnerPowers(p))
   );
 }
 
@@ -114,6 +114,7 @@ export function registerDocRoutes(r: Router) {
       d.updatedBy = ctx.principal!.memberId;
       d.updatedAt = new Date().toISOString();
       if (!d.editors.includes(d.updatedBy)) d.editors.push(d.updatedBy);
+      db.docs.save(d.id);
       audit.append({
         actor: d.updatedBy,
         action: 'doc.updated',

@@ -1,22 +1,28 @@
 /**
- * Token-bucket rate limiting, keyed by IP and (when known) by session.
+ * Token-bucket rate limiting with a pluggable store.
  *
  * Automated, AI-driven attacks are cheap to scale; per-identity limits make
- * credential stuffing and API scraping expensive. Auth endpoints get a much
- * tighter bucket than the rest of the API.
+ * credential stuffing and API scraping expensive. Three layers:
  *
- * This in-memory store is per-process. Behind a load balancer, back it with
- * a shared store (e.g. Redis) using the same interface.
+ *  - `apiLimiter`  — every request, keyed by client IP (and session/PAT when known).
+ *  - `authLimiter` — auth routes, keyed by IP **and** by the account named in
+ *    the request body (`email`), so rotating IPs does not buy more guesses
+ *    against one account, and one IP cannot spray many accounts.
+ *  - `accountLimiter` — after authentication on second-factor routes (TOTP,
+ *    step-up, passkey, enrollment), keyed by member id across all sessions
+ *    and IPs. This is what bounds TOTP guessing.
+ *
+ * Storage: the default `MemoryRateLimitStore` is per process. Behind a load
+ * balancer with more than one backend replica, install a shared store at boot
+ * with `setRateLimitStore()` — anything implementing `RateLimitStore` (Redis
+ * `EVAL` of the same token-bucket math, a Postgres row with `FOR UPDATE`, …).
+ * See docs/security/CONTROLS.md → "Rate limiting".
  */
 
-import type { Middleware } from '../lib/http.ts';
+import { createHash } from 'node:crypto';
+import type { Ctx, Middleware } from '../lib/http.ts';
 import { config } from '../config/env.ts';
 import { HttpError } from '../types.ts';
-
-interface Bucket {
-  tokens: number;
-  updated: number;
-}
 
 export interface LimitOptions {
   /** Bucket size — the burst allowance. */
@@ -27,31 +33,132 @@ export interface LimitOptions {
   name: string;
 }
 
-const buckets = new Map<string, Bucket>();
-
-function take(
-  key: string,
-  opts: LimitOptions,
-): { ok: boolean; retryAfter: number; remaining: number } {
-  const now = Date.now();
-  const b = buckets.get(key) ?? { tokens: opts.capacity, updated: now };
-  b.tokens = Math.min(opts.capacity, b.tokens + ((now - b.updated) / 1000) * opts.refillPerSec);
-  b.updated = now;
-  if (b.tokens < 1) {
-    buckets.set(key, b);
-    return { ok: false, retryAfter: Math.ceil((1 - b.tokens) / opts.refillPerSec), remaining: 0 };
-  }
-  b.tokens -= 1;
-  buckets.set(key, b);
-  return { ok: true, retryAfter: 0, remaining: Math.floor(b.tokens) };
+export interface TakeResult {
+  ok: boolean;
+  /** Seconds until one token is available (0 when ok). */
+  retryAfter: number;
+  remaining: number;
 }
 
-export function rateLimit(opts: LimitOptions): Middleware {
-  return (ctx, next) => {
-    const keys = [`${opts.name}:ip:${ctx.ip}`];
-    if (ctx.principal) keys.push(`${opts.name}:sess:${ctx.principal.sessionId}`);
-    for (const key of keys) {
-      const r = take(key, opts);
+export interface BucketView {
+  key: string;
+  tokens: number;
+  updated: string;
+}
+
+/**
+ * Storage contract for rate-limit buckets. `take` must be atomic per key
+ * (read-refill-decrement-write in one step) for a shared store to be correct.
+ */
+export interface RateLimitStore {
+  readonly name: string;
+  take(key: string, opts: LimitOptions): TakeResult | Promise<TakeResult>;
+  /** Most-drained buckets, for the console. May return [] for remote stores. */
+  snapshot(limit: number): BucketView[];
+}
+
+interface Bucket {
+  tokens: number;
+  updated: number;
+}
+
+/** Shared token-bucket arithmetic, exported so remote stores compute identically. */
+export function refillAndTake(
+  b: Bucket | undefined,
+  opts: LimitOptions,
+  now: number,
+): { bucket: Bucket; result: TakeResult } {
+  const cur = b ?? { tokens: opts.capacity, updated: now };
+  const tokens = Math.min(
+    opts.capacity,
+    cur.tokens + ((now - cur.updated) / 1000) * opts.refillPerSec,
+  );
+  if (tokens < 1)
+    return {
+      bucket: { tokens, updated: now },
+      result: { ok: false, retryAfter: Math.ceil((1 - tokens) / opts.refillPerSec), remaining: 0 },
+    };
+  return {
+    bucket: { tokens: tokens - 1, updated: now },
+    result: { ok: true, retryAfter: 0, remaining: Math.floor(tokens - 1) },
+  };
+}
+
+export class MemoryRateLimitStore implements RateLimitStore {
+  readonly name = 'memory';
+  private buckets = new Map<string, Bucket>();
+  private maxKeys: number;
+
+  constructor(maxKeys = 100_000) {
+    this.maxKeys = maxKeys;
+    setInterval(() => this.evictIdle(10 * 60_000), 60_000).unref();
+  }
+
+  take(key: string, opts: LimitOptions): TakeResult {
+    const { bucket, result } = refillAndTake(this.buckets.get(key), opts, Date.now());
+    // Bounded memory under a key-spraying attack: drop the oldest entry first.
+    if (!this.buckets.has(key) && this.buckets.size >= this.maxKeys) {
+      const oldest = this.buckets.keys().next().value;
+      if (oldest !== undefined) this.buckets.delete(oldest);
+    }
+    this.buckets.set(key, bucket);
+    return result;
+  }
+
+  snapshot(limit: number): BucketView[] {
+    return [...this.buckets.entries()]
+      .map(([key, b]) => ({
+        key,
+        tokens: Math.floor(b.tokens),
+        updated: new Date(b.updated).toISOString(),
+      }))
+      .sort((a, b) => a.tokens - b.tokens)
+      .slice(0, limit);
+  }
+
+  evictIdle(idleMs: number) {
+    const cutoff = Date.now() - idleMs;
+    for (const [k, b] of this.buckets) if (b.updated < cutoff) this.buckets.delete(k);
+  }
+}
+
+let store: RateLimitStore = new MemoryRateLimitStore();
+
+/** Installs a shared store (call once at boot, before the server listens). */
+export function setRateLimitStore(next: RateLimitStore) {
+  store = next;
+}
+
+export function rateLimitStoreName(): string {
+  return store.name;
+}
+
+/** Account identifiers are hashed so bucket keys (shown in the console) never contain emails. */
+function accountKey(value: string): string {
+  return createHash('sha256').update(value.trim().toLowerCase()).digest('base64url').slice(0, 16);
+}
+
+function bodyEmail(ctx: Ctx): string | undefined {
+  const b = ctx.body;
+  if (b && typeof b === 'object' && !Array.isArray(b)) {
+    const email = (b as Record<string, unknown>).email;
+    if (typeof email === 'string' && email.length > 0 && email.length <= 254) return email;
+  }
+  return undefined;
+}
+
+type KeyFn = (ctx: Ctx) => string[];
+
+/** Default keying (the original contract): client IP, plus the session/PAT when authenticated. */
+const ipAndSession: KeyFn = (ctx) => [
+  `ip:${ctx.ip}`,
+  ...(ctx.principal ? [`sess:${ctx.principal.sessionId}`] : []),
+];
+
+export function rateLimit(opts: LimitOptions, keysOf: KeyFn = ipAndSession): Middleware {
+  return async (ctx, next) => {
+    for (const key of keysOf(ctx)) {
+      const r = await store.take(`${opts.name}:${key}`, opts);
       ctx.res.setHeader('RateLimit-Remaining', String(r.remaining));
       if (!r.ok) {
         ctx.res.setHeader('Retry-After', String(r.retryAfter));
@@ -63,24 +170,36 @@ export function rateLimit(opts: LimitOptions): Middleware {
 }
 
 /** Broad limit for the whole API. */
-export const apiLimiter = rateLimit({ name: 'api', ...config.rateLimits.api });
-/** Tight limit for sign-in, MFA and password reset. */
-export const authLimiter = rateLimit({ name: 'auth', ...config.rateLimits.auth });
+export const apiLimiter = rateLimit({ name: 'api', ...config.rateLimits.api }, ipAndSession);
+
+/**
+ * Auth routes: per IP, plus per account when the body names one (sign-in,
+ * recovery). Runs before authentication, so it cannot rely on a principal.
+ */
+export const authLimiter = rateLimit({ name: 'auth', ...config.rateLimits.auth }, (ctx) => {
+  const email = bodyEmail(ctx);
+  return [`ip:${ctx.ip}`, ...(email ? [`acct:${accountKey(email)}`] : [])];
+});
+
+/**
+ * Per-member limit for second-factor and credential checks. Place it after
+ * `authenticate`/`authenticatePartial`; it is keyed by member id so parallel
+ * sessions or IPs share one budget.
+ */
+export const accountLimiter = rateLimit({ name: 'acct', ...config.accountRateLimit }, (ctx) =>
+  ctx.principal ? [`member:${ctx.principal.memberId}`] : [`ip:${ctx.ip}`],
+);
+
+/** Charges the per-account bucket for a member resolved inside a handler (passkey sign-in). */
+export async function chargeAccount(memberId: string) {
+  const r = await store.take(`acct:member:${memberId}`, {
+    name: 'acct',
+    ...config.accountRateLimit,
+  });
+  if (!r.ok) throw new HttpError(429, 'rate_limited', 'Too many requests — slow down');
+}
 
 /** Snapshot of the busiest buckets, for the console. */
 export function limiterStats() {
-  return [...buckets.entries()]
-    .map(([key, b]) => ({
-      key,
-      tokens: Math.floor(b.tokens),
-      updated: new Date(b.updated).toISOString(),
-    }))
-    .sort((a, b) => a.tokens - b.tokens)
-    .slice(0, 50);
+  return store.snapshot(50);
 }
-
-// Evict idle buckets so memory stays bounded.
-setInterval(() => {
-  const cutoff = Date.now() - 10 * 60_000;
-  for (const [k, b] of buckets) if (b.updated < cutoff) buckets.delete(k);
-}, 60_000).unref();

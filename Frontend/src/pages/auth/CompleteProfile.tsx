@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -12,6 +12,9 @@ import {
   PartyPopperIcon,
   ShieldCheckIcon,
 } from 'lucide-react';
+import { api } from '../../api/client';
+import { clearReturnTo, peekReturnTo } from '../../utils/authRoutes';
+import { errorMessage } from '../../components/work/apiState';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import { ProfileIllustration } from '../../components/illustrations/ProfileIllustration';
 import { useAuth, type Profile } from '../../contexts/AuthContext';
@@ -75,14 +78,25 @@ export function CompleteProfile() {
   const [email, setEmail] = useState<'instant' | 'daily' | 'off'>('instant');
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
-  const codes = useMemo(
-    () =>
-      Array.from(
-        { length: 8 },
-        (_, i) => `${((4821 + i * 1373) % 9000) + 1000}-${((7319 + i * 2087) % 9000) + 1000}`,
-      ),
-    [],
-  );
+  const [busy, setBusy] = useState(false);
+  // Real one-time codes from the server (hashed there, shown only here, once).
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [codesError, setCodesError] = useState('');
+  const [codesAttempt, setCodesAttempt] = useState(0);
+  useEffect(() => {
+    if (step !== 3 || codes) return;
+    let alive = true;
+    setCodesError('');
+    api<{ codes: string[] }>('/api/auth/backup-codes', { method: 'POST' })
+      .then((r) => alive && setCodes(r.codes))
+      .catch(
+        (e: unknown) =>
+          alive && setCodesError(errorMessage(e, 'Backup codes could not be generated.')),
+      );
+    return () => {
+      alive = false;
+    };
+  }, [step, codes, codesAttempt]);
   if (!session || !role) return null;
 
   const initials =
@@ -105,12 +119,18 @@ export function CompleteProfile() {
     if (step === 1 && days.length === 0) return setError('Pick at least one working day.');
     if (step === 2 && p.skills.length === 0)
       return setError('Pick at least one skill so work can be routed to you.');
+    if (step === 3 && !codes) return setError('Wait for your backup codes, or try again.');
     if (step === 3 && !saved) return setError('Confirm you’ve stored your backup codes.');
     setStep((s) => s + 1);
   };
 
-  const finish = () => {
-    completeProfile(p);
+  const finish = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    const r = await completeProfile(p);
+    setBusy(false);
+    if (!r.ok) return setError(r.error ?? 'Your profile could not be saved. Try again.');
     try {
       localStorage.setItem(
         `devhq.profile.${me.id}`,
@@ -129,7 +149,9 @@ export function CompleteProfile() {
       /* storage unavailable */
     }
     toast.success(`Welcome, ${p.displayName.split(' ')[0]}`);
-    navigate(role.home, { replace: true });
+    const back = peekReturnTo();
+    clearReturnTo();
+    navigate(back ?? role.home, { replace: true });
   };
 
   return (
@@ -351,7 +373,7 @@ export function CompleteProfile() {
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard?.writeText(codes.join('\n'));
+                      if (codes) void navigator.clipboard?.writeText(codes.join('\n'));
                       toast.success('Backup codes copied');
                     }}
                     className="inline-flex items-center gap-1 text-[12px] font-medium text-accent hover:underline"
@@ -359,11 +381,35 @@ export function CompleteProfile() {
                     <CopyIcon className="h-3.5 w-3.5" /> Copy
                   </button>
                 </div>
-                <ul className="grid grid-cols-2 gap-1.5 rounded-lg border border-line bg-sunken/40 p-3 font-mono text-[12.5px] text-ink sm:grid-cols-4">
-                  {codes.map((c) => (
-                    <li key={c}>{c}</li>
-                  ))}
-                </ul>
+                {codesError ? (
+                  <p
+                    role="alert"
+                    className="rounded-md bg-bad-soft px-2.5 py-1.5 text-[12px] text-bad"
+                  >
+                    {codesError}{' '}
+                    <button
+                      type="button"
+                      className="font-semibold underline"
+                      onClick={() => setCodesAttempt((n) => n + 1)}
+                    >
+                      Try again
+                    </button>
+                  </p>
+                ) : !codes ? (
+                  <p role="status" className="text-[12.5px] text-muted">
+                    Generating your backup codes…
+                  </p>
+                ) : (
+                  <ul className="grid grid-cols-2 gap-1.5 rounded-lg border border-line bg-sunken/40 p-3 font-mono text-[12.5px] text-ink sm:grid-cols-4">
+                    {codes.map((c) => (
+                      <li key={c}>{c}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-[11.5px] text-muted">
+                  Use one on the sign-in code screen if you lose your authenticator. They are shown
+                  only now; you can generate a new set from Security at any time.
+                </p>
                 <label className="flex items-start gap-2 text-[12.5px] text-ink">
                   <input
                     type="checkbox"
@@ -470,11 +516,21 @@ export function CompleteProfile() {
                 : 'by email as they happen'}
             .
           </p>
+          {error && (
+            <p
+              role="alert"
+              aria-live="assertive"
+              className="mx-auto mt-3 w-fit rounded-md bg-bad-soft px-2.5 py-1.5 text-[12px] font-medium text-bad"
+            >
+              {error}
+            </p>
+          )}
           <button
-            onClick={finish}
-            className="mx-auto mt-4 flex h-9 items-center gap-1.5 rounded-md bg-ink px-4 text-[13px] font-semibold text-white hover:bg-ink/90"
+            onClick={() => void finish()}
+            disabled={busy}
+            className="mx-auto mt-4 flex h-9 items-center gap-1.5 rounded-md bg-ink px-4 text-[13px] font-semibold text-white hover:bg-ink/90 disabled:opacity-60"
           >
-            Enter DevHQ <ArrowRightIcon className="h-4 w-4" />
+            {busy ? 'Saving…' : 'Enter DevHQ'} <ArrowRightIcon className="h-4 w-4" />
           </button>
         </section>
       )}

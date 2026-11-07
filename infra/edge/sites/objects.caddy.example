@@ -1,0 +1,26 @@
+# Public host for S3 presigned URLs (STORAGE lane), e.g. files.devhq.example.
+#
+# Browsers upload/download directly to object storage with presigned URLs, so
+# the S3 endpoint embedded in those URLs must be reachable from the internet.
+# MinIO itself is never published; this site proxies to it instead.
+#
+# Enable:
+#   1. DNS: A/AAAA record for $S3_PUBLIC_HOST -> this host.
+#   2. cp infra/edge/sites/objects.caddy.example infra/edge/sites/objects.caddy
+#   3. Set S3_PUBLIC_HOST in .env and the backend's public S3 endpoint
+#      (requested from STORAGE: presign against https://$S3_PUBLIC_HOST).
+#   4. Uncomment the `objects_net` attachment for edge + minio in
+#      docker-compose.yml, then `make up`.
+#
+# Presigned signatures cover the Host header, so it is passed through as-is.
+{$S3_PUBLIC_HOST} {
+	header Strict-Transport-Security "{$HSTS_VALUE:max-age=63072000; includeSubDomains; preload}"
+	request_body {
+		max_size 100MB
+	}
+	reverse_proxy minio:9000 {
+		header_up Host {host}
+		header_up X-Forwarded-For {remote_host}
+		header_up -Forwarded
+	}
+}

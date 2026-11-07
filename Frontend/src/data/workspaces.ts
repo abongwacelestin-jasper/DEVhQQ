@@ -1,4 +1,8 @@
-import type { ModuleKey, Workspace, WorkspaceTemplate } from '../types/workspace';
+/**
+ * Workspace presentation data only: the module catalogue and creation templates.
+ * Workspaces themselves come from `GET /api/workspaces` (WorkspaceContext).
+ */
+import type { ModuleKey, WorkspaceTemplate } from '../types/workspace';
 
 export const moduleCatalog: {
   key: ModuleKey;
@@ -63,44 +67,5 @@ export const workspaceTemplates: WorkspaceTemplate[] = [
     name: 'Early startup',
     description: 'Just tasks and code to start — add more later.',
     modules: ['projects', 'engineering'],
-  },
-];
-
-export const workspaces: Workspace[] = [
-  {
-    id: 'ws1',
-    name: 'Tech Organization',
-    slug: 'techorg',
-    color: '#4F46E5',
-    members: 12,
-    products: 3,
-    template: 'product',
-    modules: ['projects', 'engineering', 'delivery', 'operations', 'assistant'],
-    role: 'Owner',
-    mfaRequired: true,
-  },
-  {
-    id: 'ws2',
-    name: 'Northwind Labs',
-    slug: 'northwind',
-    color: '#0E7490',
-    members: 28,
-    products: 7,
-    template: 'agency',
-    modules: ['projects', 'engineering', 'delivery'],
-    role: 'Project manager',
-    mfaRequired: true,
-  },
-  {
-    id: 'ws3',
-    name: 'Kestrel Health',
-    slug: 'kestrel',
-    color: '#B45309',
-    members: 41,
-    products: 4,
-    template: 'regulated',
-    modules: ['projects', 'engineering', 'delivery', 'operations', 'automation', 'assistant'],
-    role: 'Developer',
-    mfaRequired: true,
   },
 ];

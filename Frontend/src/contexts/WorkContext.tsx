@@ -10,7 +10,6 @@ import type {
   TaskListResponse,
 } from '../api/types';
 import { useAuth } from './AuthContext';
-import { currentUserId } from '../data/team';
 import {
   NOW,
   formatDay,
@@ -57,7 +56,8 @@ interface WorkValue {
   subtasks: Subtask[];
   timeLogs: TimeLog[];
   createTask: (input: NewTaskInput) => Promise<string>;
-  updateTask: (key: string, patch: TaskPatch, note?: string) => void;
+  /** Optimistic; resolves true once the API accepted it, false if it was refused or nothing changed. */
+  updateTask: (key: string, patch: TaskPatch, note?: string) => Promise<boolean>;
   addComment: (key: string, text: string) => void;
   addSubtask: (key: string, title: string) => void;
   toggleSubtask: (id: string) => void;
@@ -100,13 +100,16 @@ function toTask(t: ApiTask): Task {
   };
 }
 
-const tempId = (prefix: string) => `${prefix}${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+const tempId = (prefix: string) =>
+  `${prefix}${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 
 const WorkContext = createContext<WorkValue | null>(null);
 
 export function WorkProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
   const memberId = session?.memberId ?? null;
+  /** Optimistic rows are attributed to the session's member; the server's resync is authoritative. */
+  const me = memberId ?? '';
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<TaskEvent[]>([]);
@@ -159,17 +162,20 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     [reload],
   );
 
-  const record = useCallback((e: Omit<TaskEvent, 'id' | 'at' | 'actor'>) => {
-    setEvents((list) => [
-      ...list,
-      {
-        ...e,
-        id: tempId('ev'),
-        at: nowISO(),
-        actor: currentUserId,
-      },
-    ]);
-  }, []);
+  const record = useCallback(
+    (e: Omit<TaskEvent, 'id' | 'at' | 'actor'>) => {
+      setEvents((list) => [
+        ...list,
+        {
+          ...e,
+          id: tempId('ev'),
+          at: nowISO(),
+          actor: me,
+        },
+      ]);
+    },
+    [me],
+  );
 
   const createTask = useCallback(
     async (input: NewTaskInput) => {
@@ -202,13 +208,13 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateTask = useCallback(
-    (key: string, patch: TaskPatch, note?: string) => {
+    (key: string, patch: TaskPatch, note?: string): Promise<boolean> => {
       const current = tasks.find((t) => t.key === key);
-      if (!current) return;
+      if (!current) return Promise.resolve(false);
       const changed = (Object.keys(patch) as (keyof TaskPatch)[]).filter(
         (field) => patch[field] !== undefined && patch[field] !== current[field],
       );
-      if (!changed.length) return;
+      if (!changed.length) return Promise.resolve(false);
 
       changed.forEach((field) => {
         const from = current[field];
@@ -235,8 +241,12 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
           field === 'due' ? toApiDate(String(patch.due)) : patch[field],
         ]),
       );
-      api<ApiTask>(`/api/tasks/${encodeURIComponent(key)}`, { method: 'PATCH', body }).catch((e) =>
-        failed('Saving the change', e),
+      return api<ApiTask>(`/api/tasks/${encodeURIComponent(key)}`, { method: 'PATCH', body }).then(
+        () => true,
+        (e) => {
+          failed('Saving the change', e);
+          return false;
+        },
       );
     },
     [tasks, record, failed],
@@ -246,7 +256,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     (key: string, text: string) => {
       setComments((l) => [
         ...l,
-        { id: tempId('tc'), taskKey: key, author: currentUserId, text, at: nowISO() },
+        { id: tempId('tc'), taskKey: key, author: me, text, at: nowISO() },
       ]);
       setTasks((l) => l.map((t) => (t.key === key ? { ...t, comments: t.comments + 1 } : t)));
       record({
@@ -259,7 +269,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
         body: { text },
       }).catch((e) => failed('Posting the comment', e));
     },
-    [record, failed],
+    [record, failed, me],
   );
 
   const addSubtask = useCallback(
@@ -285,7 +295,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
             ? {
                 ...x,
                 done,
-                doneBy: done ? currentUserId : undefined,
+                doneBy: done ? me : undefined,
                 doneAt: done ? nowISO() : undefined,
               }
             : x,
@@ -302,14 +312,14 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
         body: { done },
       }).catch((e) => failed('Updating the subtask', e));
     },
-    [subtasks, record, failed],
+    [subtasks, record, failed, me],
   );
 
   const logTime = useCallback(
     (key: string, minutes: number, note?: string) => {
       setTimeLogs((l) => [
         ...l,
-        { id: tempId('tl'), taskKey: key, member: currentUserId, minutes, at: nowISO(), note },
+        { id: tempId('tl'), taskKey: key, member: me, minutes, at: nowISO(), note },
       ]);
       record({ taskKey: key, kind: 'time', to: String(minutes), note });
       api<ApiTimeLog>(`/api/tasks/${encodeURIComponent(key)}/time`, {
@@ -317,7 +327,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
         body: { minutes, note },
       }).catch((e) => failed('Logging time', e));
     },
-    [record, failed],
+    [record, failed, me],
   );
 
   const lastActivity = useCallback(

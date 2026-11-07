@@ -3330,7 +3330,7 @@
             <div class="empty">Checking for development demo accounts…</div>
           </div>
           <div id="login-footer" class="tiny quiet" style="margin-top: 14px">
-            Session tokens stay in memory and are cleared when you sign out or close this page.
+            Your session lives in an HttpOnly cookie this page cannot read; sign out to end it.
           </div>
         </section>
       </div>
@@ -5389,6 +5389,7 @@ Secrets are never returned by this endpoint; configuration visibility requires s
     <script>
       'use strict';
       (function () {
+        // Signed-in marker only ('cookie' when a session cookie is set) — never a credential.
         var token = '';
         var pendingToken = '';
         var member = null;
@@ -6978,9 +6979,10 @@ Secrets are never returned by this endpoint; configuration visibility requires s
           if (target.origin !== window.location.origin || !target.pathname.startsWith('/api/')) {
             throw new Error("Requests are restricted to this server's /api/ routes.");
           }
+          // Authentication rides on the HttpOnly session cookie only; this page
+          // never sees a session token (authToken is kept for call-site compatibility).
+          void authToken;
           var headers = { Accept: 'application/json', 'X-DevHQ-Client': 'console' };
-          var activeToken = authToken === undefined ? token : authToken;
-          if (activeToken) headers.Authorization = 'Bearer ' + activeToken;
           var options = { method: method || 'GET', headers: headers, credentials: 'same-origin' };
           if (body !== undefined) {
             headers['Content-Type'] = 'application/json';
@@ -7125,9 +7127,9 @@ Secrets are never returned by this endpoint; configuration visibility requires s
           setLoginError('');
           try {
             var result = await request('/api/auth/demo', 'POST', { role: role }, '');
-            if (!result.ok || !result.body || !result.body.token)
+            if (!result.ok || !result.body || !result.body.ok)
               throw new Error(messageOf(result));
-            token = result.body.token;
+            token = 'cookie';
             member = result.body.member || null;
             showApp(true);
           } catch (error) {
@@ -7147,9 +7149,8 @@ Secrets are never returned by this endpoint; configuration visibility requires s
               { email: $('email').value.trim(), password: $('password').value },
               '',
             );
-            if (!result.ok || !result.body || !result.body.token)
-              throw new Error(messageOf(result));
-            pendingToken = result.body.token;
+            if (!result.ok || !result.body) throw new Error(messageOf(result));
+            pendingToken = 'cookie';
             $('signin-form').hidden = true;
             $('mfa-form').hidden = false;
             $('mfa-code').focus();
@@ -7172,9 +7173,9 @@ Secrets are never returned by this endpoint; configuration visibility requires s
               { code: $('mfa-code').value },
               pendingToken,
             );
-            if (!result.ok || !result.body || !result.body.token)
+            if (!result.ok || !result.body || !result.body.ok)
               throw new Error(messageOf(result));
-            token = result.body.token;
+            token = 'cookie';
             pendingToken = '';
             member = result.body.member || null;
             showApp(true);
@@ -9694,9 +9695,8 @@ Secrets are never returned by this endpoint; configuration visibility requires s
             var result = await request('/api/auth/step-up', 'POST', {
               code: $('stepup-code').value,
             });
-            if (!result.ok || !result.body || !result.body.token)
+            if (!result.ok || !result.body || !result.body.ok)
               throw new Error(messageOf(result));
-            token = result.body.token;
             $('stepup-code').value = '';
             $('stepup-result').textContent =
               'Verified. Sensitive operations are enabled for the server-defined step-up window.';
@@ -9754,7 +9754,6 @@ Secrets are never returned by this endpoint; configuration visibility requires s
             var response = await fetch('/api/_events', {
               headers: {
                 Accept: 'text/event-stream',
-                Authorization: 'Bearer ' + token,
                 'X-DevHQ-Client': 'console',
               },
               credentials: 'same-origin',

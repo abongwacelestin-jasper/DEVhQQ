@@ -8,6 +8,7 @@ import { firstName, memberById } from '../utils/status';
 import { formatDay, formatTime } from '../utils/date';
 import type { Incident, IncidentEvent } from '../types/operations';
 import type { ProductId } from '../types/portfolio';
+import { onServerEvents } from '../components/engineering/data/events';
 
 export interface DeclareInput {
   title: string;
@@ -26,6 +27,14 @@ interface IncidentValue {
   declareOpen: boolean;
   setDeclareOpen: (v: boolean) => void;
   reload: () => Promise<void>;
+  /** True until the first load settles. */
+  loading: boolean;
+  /** The last load failure; rows stay as they were. */
+  error: Error | null;
+  /** The last failed write (403/422 …), for inline display. */
+  writeError: unknown;
+  /** ISO timestamps from the API, keyed by incident id (startedAt/resolvedAt). */
+  times: Record<string, { startedAt: string; resolvedAt?: string }>;
 }
 
 const IncidentContext = createContext<IncidentValue | null>(null);
@@ -72,45 +81,85 @@ export function IncidentProvider({ children }: { children: React.ReactNode }) {
   const memberId = session?.memberId ?? null;
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [declareOpen, setDeclareOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [writeError, setWriteError] = useState<unknown>(null);
+  const [times, setTimes] = useState<IncidentValue['times']>({});
+
+  const remember = useCallback((rows: ApiIncident[]) => {
+    setTimes((t) => {
+      const next = { ...t };
+      rows.forEach((i) => {
+        next[i.id] = { startedAt: i.startedAt, resolvedAt: i.resolvedAt };
+      });
+      return next;
+    });
+  }, []);
 
   const reload = useCallback(async () => {
     const rows = await api<ApiIncident[]>('/api/incidents');
     setIncidents(rows.map(toIncident));
-  }, []);
+    remember(rows);
+    setError(null);
+  }, [remember]);
 
   useEffect(() => {
     if (!memberId) {
       setIncidents([]);
+      setLoading(false);
       return;
     }
     let alive = true;
-    reload().catch((e) => {
-      if (!alive) return;
-      toast.error("Couldn't load incidents", {
-        description: e instanceof Error ? e.message : 'The incidents API did not respond.',
+    setLoading(true);
+    reload()
+      .catch((e) => {
+        if (!alive) return;
+        setError(e instanceof Error ? e : new Error(String(e)));
+        toast.error("Couldn't load incidents", {
+          description: e instanceof Error ? e.message : 'The incidents API did not respond.',
+        });
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
       });
-    });
     return () => {
       alive = false;
     };
   }, [memberId, reload]);
 
+  // Other members declare and update incidents; the event stream says when to re-read.
+  useEffect(() => {
+    if (!memberId) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const off = onServerEvents(['incident'], () => {
+      clearTimeout(t);
+      t = setTimeout(() => void reload().catch(() => undefined), 300);
+    });
+    return () => {
+      clearTimeout(t);
+      off();
+    };
+  }, [memberId, reload]);
+
   const patch = useCallback(
     async (id: string, body: Record<string, unknown>, action = 'Updating the incident') => {
+      setWriteError(null);
       try {
         const updated = await api<ApiIncident>(`/api/incidents/${encodeURIComponent(id)}`, {
           method: 'PATCH',
           body,
         });
         setIncidents((l) => l.map((i) => (i.id === id ? toIncident(updated) : i)));
+        remember([updated]);
       } catch (e) {
+        setWriteError(e);
         toast.error(`${action} failed`, {
           description: e instanceof Error ? e.message : 'The incidents API did not respond.',
         });
         void reload().catch(() => undefined);
       }
     },
-    [reload],
+    [reload, remember],
   );
 
   const addEvent = useCallback(
@@ -139,6 +188,7 @@ export function IncidentProvider({ children }: { children: React.ReactNode }) {
           },
         });
         setIncidents((l) => [toIncident(created), ...l]);
+        remember([created]);
         return created.id;
       } catch (e) {
         toast.error('Could not declare the incident', {
@@ -147,7 +197,7 @@ export function IncidentProvider({ children }: { children: React.ReactNode }) {
         throw e;
       }
     },
-    [],
+    [remember],
   );
 
   const setStatus = useCallback(
@@ -183,8 +233,31 @@ export function IncidentProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ incidents, declare, setStatus, addEvent, declareOpen, setDeclareOpen, reload }),
-    [incidents, declare, setStatus, addEvent, declareOpen, reload],
+    () => ({
+      incidents,
+      declare,
+      setStatus,
+      addEvent,
+      declareOpen,
+      setDeclareOpen,
+      reload,
+      loading,
+      error,
+      writeError,
+      times,
+    }),
+    [
+      incidents,
+      declare,
+      setStatus,
+      addEvent,
+      declareOpen,
+      reload,
+      loading,
+      error,
+      writeError,
+      times,
+    ],
   );
   return <IncidentContext.Provider value={value}>{children}</IncidentContext.Provider>;
 }

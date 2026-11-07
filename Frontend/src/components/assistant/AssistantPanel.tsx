@@ -1,125 +1,132 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { toast } from 'sonner';
 import {
   ArrowUpIcon,
-  CircleCheckIcon,
+  CircleStopIcon,
+  CpuIcon,
+  ExternalLinkIcon,
   FileSearchIcon,
   HistoryIcon,
-  LightbulbIcon,
-  LockIcon,
   MessageSquareIcon,
+  RotateCcwIcon,
   ShieldCheckIcon,
   SparklesIcon,
+  TriangleAlertIcon,
   XIcon,
-  ZapIcon,
 } from 'lucide-react';
 import { Segmented } from '../ui/Segmented';
 import { AssistantIllustration } from './AssistantIllustration';
+import { askAssistant, isStreamError, type AskScope } from './askAssistant';
+import { RichText, safeHref } from '../messaging/RichText';
+import { DemoBadge, Unavailable } from '../work/Unavailable';
+import { errorMessage, isAbort, isUnavailable } from '../work/apiState';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
 import { useProductFilter } from '../../contexts/ProductFilterContext';
 import { useDateRange } from '../../contexts/DateRangeContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { useReauth } from '../../contexts/ReauthContext';
-import { assistantAnswers, type AssistantAction, type AssistantAnswer } from '../../data/assistant';
+import {
+  sourceKindLabel,
+  sourceRoute,
+  suggestedPrompts,
+  type AssistantAnswer,
+  type AssistantSource,
+} from '../../data/assistant';
 import { formatTime } from '../../utils/date';
+
+type TurnState = 'loading' | 'streaming' | 'done' | 'error' | 'unavailable' | 'cancelled';
 
 interface Turn {
   id: string;
   question: string;
-  answer: AssistantAnswer;
   at: Date;
-  ready: boolean;
+  state: TurnState;
+  /** Streamed text so far, then the final answer. */
+  text: string;
+  result?: AssistantAnswer;
+  error?: string;
 }
 
 type View = 'chat' | 'sources' | 'history';
 
-/** Ask DevHQ — permission-aware Q&A over records. Answers are pre-written previews. */
+const ASSISTANT_UNAVAILABLE = 'Assistant unavailable — configure the ML service';
+
+/** Error codes a stream may send when the ML service isn't reachable or configured. */
+const UNCONFIGURED = new Set(['integration_unconfigured', 'ml_unavailable', 'service_unavailable']);
+
+/** Ask DevHQ — permission-aware answers from the ML service, with cited sources. */
 export function AssistantPanel() {
   const { assistantOpen, setAssistantOpen } = useWorkspaceUI();
   const { selected, allowedProducts } = useProductFilter();
   const { label } = useDateRange();
-  const { role, canDo } = useAuth();
-  const { requestReauth } = useReauth();
-  const navigate = useNavigate();
+  const { role } = useAuth();
   const [input, setInput] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
   const [view, setView] = useState<View>('chat');
-  const [done, setDone] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const pending = turns.find((t) => !t.ready);
-  useEffect(() => {
-    if (!pending) return;
-    const t = setTimeout(
-      () => setTurns((l) => l.map((x) => (x.id === pending.id ? { ...x, ready: true } : x))),
-      800,
-    );
-    return () => clearTimeout(t);
-  }, [pending]);
+  const pending = turns.find((t) => t.state === 'loading' || t.state === 'streaming');
+  const lastDone = [...turns].reverse().find((t) => t.state === 'done' && t.result);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns]);
 
+  const cancel = useCallback(() => abortRef.current?.abort(), []);
+
   useEffect(() => {
     if (!assistantOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setAssistantOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Esc cancels an answer in flight first; a second Esc closes the panel.
+      if (abortRef.current) cancel();
+      else setAssistantOpen(false);
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [assistantOpen, setAssistantOpen]);
+  }, [assistantOpen, setAssistantOpen, cancel]);
+
+  // Unmounting never leaves a request running.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const sources = useMemo(() => {
-    const map = new Map<string, AssistantAnswer['facts'][number]['cite']>();
-    turns
-      .filter((t) => t.ready)
-      .forEach((t) => t.answer.facts.forEach((f) => map.set(f.cite.to, f.cite)));
+    const map = new Map<string, AssistantSource>();
+    turns.forEach((t) => t.result?.sources.forEach((s) => map.set(`${s.kind}:${s.id}`, s)));
     return [...map.values()];
   }, [turns]);
 
-  const ask = (q: string) => {
-    if (!q.trim() || pending) return;
-    const lower = q.toLowerCase();
-    const match =
-      assistantAnswers.find((a) => a.keywords.some((k) => lower.includes(k))) ??
-      assistantAnswers[0];
-    setTurns((l) => [
-      ...l,
-      { id: `t${Date.now()}`, question: q.trim(), answer: match, at: new Date(), ready: false },
-    ]);
+  const scope: AskScope = useMemo(
+    () => (selected === 'all' ? {} : { product: selected }),
+    [selected],
+  );
+
+  const patch = (id: string, p: Partial<Turn>) =>
+    setTurns((l) => l.map((t) => (t.id === id ? { ...t, ...p } : t)));
+
+  const ask = (raw: string) => {
+    const q = raw.trim();
+    if (!q || pending) return;
+    const id = `t${Date.now()}`;
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setTurns((l) => [...l, { id, question: q, at: new Date(), state: 'loading', text: '' }]);
     setInput('');
     setView('chat');
-  };
-
-  const go = (to: string) => {
-    setAssistantOpen(false);
-    navigate(to);
-  };
-
-  const authorise = (a: AssistantAction) => {
-    const key = a.label;
-    const finish = () => {
-      setDone((s) => new Set(s).add(key));
-      toast.success('Authorised', { description: `${a.label} · recorded in the audit log` });
-    };
-    if (a.production) {
-      if (!canDo('deploy:approve')) {
-        toast.error('Not permitted', {
-          description: `${role?.label ?? 'Your role'} can’t authorise production actions.`,
-        });
-        return;
-      }
-      requestReauth({
-        title: a.label,
-        description: `${a.requirement}. The assistant never runs this on its own.`,
-        actionLabel: 'Verify & authorise',
-        onConfirm: finish,
+    askAssistant(q, scope, ctrl.signal, (text) => patch(id, { state: 'streaming', text }))
+      .then((result) => patch(id, { state: 'done', text: result.answer, result }))
+      .catch((e: unknown) => {
+        if (isAbort(e) || ctrl.signal.aborted) return patch(id, { state: 'cancelled' });
+        if (isUnavailable(e) || (isStreamError(e) && UNCONFIGURED.has(e.code)))
+          return patch(id, { state: 'unavailable' });
+        patch(id, { state: 'error', error: errorMessage(e, 'The assistant did not respond.') });
+      })
+      .finally(() => {
+        if (abortRef.current === ctrl) abortRef.current = null;
       });
-    } else finish();
   };
 
-  const scope =
+  const scopeLabel =
     selected === 'all'
       ? `${allowedProducts.length} products`
       : allowedProducts.find((p) => p.id === selected)?.name;
@@ -153,7 +160,11 @@ export function AssistantPanel() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-[13px] font-semibold text-ink">Ask DevHQ</h2>
-                  <p className="text-[11px] text-muted">Preview · pre-written answers</p>
+                  <p className="truncate text-[11px] text-muted">
+                    {lastDone?.result
+                      ? `Answered by ${lastDone.result.model}`
+                      : 'Answers from the DevHQ ML service'}
+                  </p>
                 </div>
                 <button
                   onClick={() => setAssistantOpen(false)}
@@ -165,7 +176,7 @@ export function AssistantPanel() {
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
                 <span className="rounded-full border border-line px-2 py-0.5 font-medium text-ink">
-                  {scope}
+                  {scopeLabel}
                 </span>
                 <span className="rounded-full border border-line px-2 py-0.5 font-medium text-ink">
                   {label}
@@ -191,6 +202,7 @@ export function AssistantPanel() {
               ref={scrollRef}
               className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3 scroll-thin"
               aria-live="polite"
+              aria-busy={!!pending}
             >
               {view === 'sources' &&
                 (sources.length === 0 ? (
@@ -198,18 +210,8 @@ export function AssistantPanel() {
                 ) : (
                   <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
                     {sources.map((s) => (
-                      <li key={s.to}>
-                        <button
-                          onClick={() => go(s.to)}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-sunken/60"
-                        >
-                          <span className="w-16 shrink-0 rounded bg-sunken px-1.5 py-0.5 text-center text-[10.5px] font-semibold text-ink">
-                            {s.kind}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-accent">
-                            {s.label}
-                          </span>
-                        </button>
+                      <li key={`${s.kind}:${s.id}`}>
+                        <SourceLink source={s} onNavigate={() => setAssistantOpen(false)} wide />
                       </li>
                     ))}
                   </ul>
@@ -224,7 +226,8 @@ export function AssistantPanel() {
                       <li key={t.id}>
                         <button
                           onClick={() => ask(t.question)}
-                          className="flex w-full items-center gap-2 rounded-md border border-line px-2.5 py-1.5 text-left hover:border-line-strong"
+                          disabled={!!pending}
+                          className="flex w-full items-center gap-2 rounded-md border border-line px-2.5 py-1.5 text-left hover:border-line-strong disabled:opacity-50"
                         >
                           <MessageSquareIcon className="h-3.5 w-3.5 shrink-0 text-muted" />
                           <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
@@ -246,8 +249,8 @@ export function AssistantPanel() {
                     Answers from your records only
                   </h3>
                   <p className="mt-0.5 text-[12px] text-muted">
-                    Facts link to their source. Suggestions are labelled. Nothing runs without your
-                    explicit authorisation.
+                    Answers cite the docs, tasks and incidents they came from and only use records
+                    your role can already see. The assistant never takes actions on its own.
                   </p>
                 </div>
               )}
@@ -258,112 +261,26 @@ export function AssistantPanel() {
                     <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-ink px-3 py-1.5 text-[12.5px] text-white">
                       {t.question}
                     </p>
-                    {!t.ready ? (
-                      <div className="mt-3 space-y-1.5" aria-label="Reading records">
-                        <p className="text-[11px] text-muted">
-                          Reading tasks, pull requests, deployments…
-                        </p>
-                        {[80, 92, 64].map((w) => (
-                          <div
-                            key={w}
-                            className="h-2.5 animate-pulse rounded bg-sunken"
-                            style={{ width: `${w}%` }}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <motion.div
-                        initial={{ opacity: 0, y: 4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-                        className="mt-2.5 space-y-2.5"
-                      >
-                        <p className="text-[12.5px] font-medium leading-relaxed text-ink">
-                          {t.answer.summary}
-                        </p>
-                        <Block icon={CircleCheckIcon} title="Verified facts" tone="text-ok">
-                          <ul className="space-y-1">
-                            {t.answer.facts.map((f) => (
-                              <li
-                                key={f.text}
-                                className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md bg-sunken/70 px-2.5 py-1.5 text-[12px] text-ink"
-                              >
-                                <span>{f.text}</span>
-                                <button
-                                  onClick={() => go(f.cite.to)}
-                                  className="rounded border border-line bg-white px-1.5 py-0.5 font-mono text-[10.5px] text-accent hover:border-accent/40"
-                                >
-                                  {f.cite.label}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </Block>
-                        <Block
-                          icon={LightbulbIcon}
-                          title="Suggestions · not verified"
-                          tone="text-warn"
-                        >
-                          <ul className="space-y-1 border-l-2 border-warn/30 pl-2.5">
-                            {t.answer.suggestions.map((s) => (
-                              <li key={s} className="text-[12px] text-ink">
-                                {s}
-                              </li>
-                            ))}
-                          </ul>
-                        </Block>
-                        {t.answer.actions.length > 0 && (
-                          <Block
-                            icon={ZapIcon}
-                            title="Actions · need your authorisation"
-                            tone="text-accent"
-                          >
-                            <ul className="space-y-1">
-                              {t.answer.actions.map((a) => {
-                                const ok = done.has(a.label);
-                                return (
-                                  <li
-                                    key={a.label}
-                                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-line px-2.5 py-1.5"
-                                  >
-                                    <span className="min-w-0">
-                                      <span className="block truncate text-[12px] font-medium text-ink">
-                                        {a.label}
-                                      </span>
-                                      <span className="flex items-center gap-1 text-[11px] text-muted">
-                                        {a.production && <LockIcon className="h-3 w-3 text-bad" />}
-                                        {a.requirement}
-                                      </span>
-                                    </span>
-                                    <button
-                                      disabled={ok}
-                                      onClick={() => authorise(a)}
-                                      className={`h-7 rounded-md px-2 text-[11.5px] font-semibold ${ok ? 'bg-ok-soft text-ok' : a.production ? 'bg-bad text-white hover:bg-bad/90' : 'bg-ink text-white hover:bg-ink/90'}`}
-                                    >
-                                      {ok ? 'Authorised' : a.production ? 'Verify' : 'Authorise'}
-                                    </button>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </Block>
-                        )}
-                      </motion.div>
-                    )}
+                    <TurnBody
+                      turn={t}
+                      onRetry={() => ask(t.question)}
+                      retryDisabled={!!pending}
+                      onNavigate={() => setAssistantOpen(false)}
+                    />
                   </div>
                 ))}
             </div>
 
             <div className="border-t border-line px-3 pb-3 pt-2">
               <div className="mb-2 flex gap-1.5 overflow-x-auto scroll-thin">
-                {assistantAnswers.map((a) => (
+                {suggestedPrompts.map((q) => (
                   <button
-                    key={a.id}
-                    onClick={() => ask(a.question)}
+                    key={q}
+                    onClick={() => ask(q)}
                     disabled={!!pending}
                     className="shrink-0 rounded-full border border-line px-2.5 py-1 text-[11.5px] text-ink hover:border-line-strong disabled:opacity-50"
                   >
-                    {a.question}
+                    {q}
                   </button>
                 ))}
               </div>
@@ -381,14 +298,26 @@ export function AssistantPanel() {
                   aria-label="Ask a question"
                   className="h-10 min-w-0 flex-1 bg-transparent text-[12.5px] text-ink outline-none placeholder:text-subtle"
                 />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || !!pending}
-                  className="rounded-md bg-ink p-1.5 text-white disabled:bg-sunken disabled:text-subtle"
-                  aria-label="Send"
-                >
-                  <ArrowUpIcon className="h-4 w-4" />
-                </button>
+                {pending ? (
+                  <button
+                    type="button"
+                    onClick={cancel}
+                    className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11.5px] font-medium text-ink hover:bg-sunken"
+                    aria-label="Cancel answer (Esc)"
+                    title="Cancel (Esc)"
+                  >
+                    <CircleStopIcon className="h-3.5 w-3.5" /> Cancel
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!input.trim()}
+                    className="rounded-md bg-ink p-1.5 text-white disabled:bg-sunken disabled:text-subtle"
+                    aria-label="Send"
+                  >
+                    <ArrowUpIcon className="h-4 w-4" />
+                  </button>
+                )}
               </form>
             </div>
           </motion.aside>
@@ -398,25 +327,163 @@ export function AssistantPanel() {
   );
 }
 
-function Block({
-  icon: Icon,
-  title,
-  tone,
-  children,
+function TurnBody({
+  turn: t,
+  onRetry,
+  retryDisabled,
+  onNavigate,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  tone: string;
-  children: React.ReactNode;
+  turn: Turn;
+  onRetry: () => void;
+  retryDisabled: boolean;
+  onNavigate: () => void;
 }) {
+  if (t.state === 'loading')
+    return (
+      <div className="mt-3 space-y-1.5" role="status" aria-label="Reading records">
+        <p className="text-[11px] text-muted">Reading the records you can see…</p>
+        {[80, 92, 64].map((w) => (
+          <div
+            key={w}
+            className="h-2.5 animate-pulse rounded bg-sunken"
+            style={{ width: `${w}%` }}
+          />
+        ))}
+      </div>
+    );
+
+  if (t.state === 'unavailable')
+    return (
+      <div className="mt-2.5 rounded-lg border border-line">
+        <Unavailable
+          compact
+          title={ASSISTANT_UNAVAILABLE}
+          detail="Set ML_SERVICE_URL and ML_SERVICE_TOKEN on the backend, then ask again."
+          onRetry={retryDisabled ? undefined : onRetry}
+        />
+      </div>
+    );
+
+  if (t.state === 'error')
+    return (
+      <div
+        role="alert"
+        className="mt-2.5 flex items-start gap-2 rounded-md bg-bad-soft px-2.5 py-2 text-[12px] text-bad"
+      >
+        <TriangleAlertIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 flex-1">{t.error}</span>
+        <button
+          onClick={onRetry}
+          disabled={retryDisabled}
+          className="inline-flex shrink-0 items-center gap-1 font-semibold hover:underline disabled:opacity-50"
+        >
+          <RotateCcwIcon className="h-3 w-3" /> Retry
+        </button>
+      </div>
+    );
+
+  if (t.state === 'cancelled' && !t.text)
+    return (
+      <p className="mt-2 flex items-center gap-2 text-[11.5px] text-muted">
+        Cancelled.
+        <button
+          onClick={onRetry}
+          disabled={retryDisabled}
+          className="font-semibold text-accent hover:underline disabled:opacity-50"
+        >
+          Ask again
+        </button>
+      </p>
+    );
+
+  const r = t.result;
   return (
-    <section>
-      <h4 className={`mb-1 flex items-center gap-1 text-[11.5px] font-semibold ${tone}`}>
-        <Icon className="h-3.5 w-3.5" /> {title}
-      </h4>
-      {children}
-    </section>
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+      className="mt-2.5 space-y-2.5"
+    >
+      <p className="whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-ink">
+        <RichText text={t.text} />
+        {t.state === 'streaming' && (
+          <span
+            className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-ink/60 align-middle"
+            aria-hidden
+          />
+        )}
+      </p>
+      {t.state === 'cancelled' && (
+        <p className="text-[11px] text-muted">Cancelled — partial answer.</p>
+      )}
+      {r && r.sources.length > 0 && (
+        <section>
+          <h4 className="mb-1 flex items-center gap-1 text-[11.5px] font-semibold text-ok">
+            <FileSearchIcon className="h-3.5 w-3.5" /> Sources
+          </h4>
+          <ul className="flex flex-wrap gap-1">
+            {r.sources.map((s) => (
+              <li key={`${s.kind}:${s.id}`}>
+                <SourceLink source={s} onNavigate={onNavigate} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {r && (
+        <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+          <CpuIcon className="h-3 w-3" aria-hidden />
+          <span className="font-mono">{r.model}</span>
+          {r.source === 'heuristic' && (
+            <span className="rounded bg-sunken px-1 font-semibold text-ink">Heuristic</span>
+          )}
+          {r.source === 'demo' && <DemoBadge />}
+          {r.sources.length === 0 && <span>· no records cited — treat as unverified</span>}
+        </p>
+      )}
+    </motion.div>
   );
+}
+
+function SourceLink({
+  source: s,
+  onNavigate,
+  wide = false,
+}: {
+  source: AssistantSource;
+  onNavigate: () => void;
+  wide?: boolean;
+}) {
+  const kind = sourceKindLabel[s.kind] ?? s.kind;
+  const route = sourceRoute(s);
+  const external = !route && s.url ? safeHref(s.url) : null;
+  const inner = (
+    <>
+      <span
+        className={`shrink-0 rounded bg-sunken px-1.5 py-0.5 text-center text-[10.5px] font-semibold text-ink ${wide ? 'w-16' : ''}`}
+      >
+        {kind}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[12px] text-accent">{s.title || s.id}</span>
+      {external && <ExternalLinkIcon className="h-3 w-3 shrink-0 text-muted" aria-hidden />}
+    </>
+  );
+  const cls = wide
+    ? 'flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-sunken/60'
+    : 'flex max-w-[260px] items-center gap-1.5 rounded border border-line bg-white px-1.5 py-0.5 hover:border-accent/40';
+  if (route)
+    return (
+      <Link to={route} onClick={onNavigate} className={cls}>
+        {inner}
+      </Link>
+    );
+  if (external)
+    return (
+      <a href={external} target="_blank" rel="noopener noreferrer" className={cls}>
+        {inner}
+      </a>
+    );
+  return <span className={cls}>{inner}</span>;
 }
 
 function Empty({

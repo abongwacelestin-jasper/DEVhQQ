@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
 import { useWork } from '../contexts/WorkContext';
-import { currentUserId, members } from '../data/team';
-import { nowISO } from '../utils/date';
+import { useDirectory } from '../components/team/useDirectory';
+import { useNotifications } from '../components/work/useNotifications';
 
-export type EmailMode = 'instant' | 'daily' | 'off';
-export type EmailKind = 'assigned' | 'unassigned' | 'test';
-
-export interface EmailPrefs {
-  mode: EmailMode;
-  onAssign: boolean;
-  onUnassign: boolean;
-  onDue: boolean;
-}
+export type EmailKind = 'assigned' | 'unassigned';
 
 export interface AssignmentEmail {
   id: string;
@@ -23,49 +16,48 @@ export interface AssignmentEmail {
   note?: string;
 }
 
-const PREFS = 'devhq.email-prefs';
-const defaultPrefs: EmailPrefs = { mode: 'instant', onAssign: true, onUnassign: true, onDue: true };
-
-function readPrefs(): EmailPrefs {
-  try {
-    const v = JSON.parse(localStorage.getItem(PREFS) ?? 'null');
-    return v && typeof v === 'object' && ['instant', 'daily', 'off'].includes(v.mode)
-      ? { ...defaultPrefs, ...v }
-      : defaultPrefs;
-  } catch {
-    return defaultPrefs;
-  }
-}
-
 function readSet(key: string): string[] {
   try {
-    const v = JSON.parse(localStorage.getItem(key) ?? '[]');
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+    const v: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
   } catch {
     return [];
   }
 }
 
-/** Assignment notifications for the signed-in member, derived from the task history, plus simulated email delivery. */
+/**
+ * Assignments made to the signed-in member, derived from the task history the
+ * API records. Read marks are a per-browser convenience; opening an item also
+ * marks the matching server notification (`kind: 'assignment'`, link
+ * `/tasks/<key>`) read so the inbox badge agrees.
+ *
+ * Email is a server concern: the backend has no per-member email preference
+ * endpoint, only an operator-configured digest of unread notifications
+ * (`MAIL_DIGEST_MINUTES`). So the UI shows no email toggle at all.
+ */
 export function useAssignmentEmails() {
   const { tasks, events } = useWork();
-  const me = currentUserId;
-  const myEmail = members.find((m) => m.id === me)?.email ?? 'you@techorg.io';
+  const { session } = useAuth();
+  const { memberById } = useDirectory();
+  const inbox = useNotifications();
+  const me = session?.memberId ?? '';
   const readKey = `devhq.inbox-read.${me}`;
-  const [prefs, setPrefsState] = useState<EmailPrefs>(readPrefs);
   const [read, setRead] = useState<string[]>(() => readSet(readKey));
-  const [tests, setTests] = useState<AssignmentEmail[]>([]);
 
   useEffect(() => {
-    localStorage.setItem(readKey, JSON.stringify(read));
+    setRead(readSet(readKey));
+  }, [readKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(readKey, JSON.stringify(read));
+    } catch {
+      /* storage unavailable — read marks last for this page */
+    }
   }, [read, readKey]);
 
-  const setPrefs = useCallback((p: EmailPrefs) => {
-    setPrefsState(p);
-    localStorage.setItem(PREFS, JSON.stringify(p));
-  }, []);
-
   const emails = useMemo(() => {
+    if (!me) return [];
     const out: AssignmentEmail[] = [];
     const viaEvent = new Set<string>();
     events.forEach((e) => {
@@ -108,56 +100,57 @@ export function useAssignmentEmails() {
         });
       }
     });
-    return [...out, ...tests].sort((a, b) => b.at.localeCompare(a.at));
-  }, [events, tasks, tests, me]);
+    return out.sort((a, b) => b.at.localeCompare(a.at));
+  }, [events, tasks, me]);
+
+  const { items: serverItems, markRead: markServerRead } = inbox;
+  /** Clears server-side assignment notifications for these task keys (no-op when unavailable). */
+  const syncServer = useCallback(
+    (keys: string[]) => {
+      const links = new Set(keys.map((k) => `/tasks/${encodeURIComponent(k)}`));
+      const ids = serverItems
+        .filter((n) => n.kind === 'assignment' && !n.read && links.has(n.link))
+        .map((n) => n.id);
+      if (ids.length) void markServerRead(ids);
+    },
+    [serverItems, markServerRead],
+  );
 
   const markRead = useCallback(
-    (id: string) => setRead((l) => (l.includes(id) ? l : [...l, id])),
-    [],
+    (id: string) => {
+      setRead((l) => (l.includes(id) ? l : [...l, id]));
+      const item = emails.find((e) => e.id === id);
+      if (item) syncServer([item.taskKey]);
+    },
+    [emails, syncServer],
   );
   const markUnread = useCallback((id: string) => setRead((l) => l.filter((x) => x !== id)), []);
-  const markAllRead = useCallback(() => setRead(emails.map((e) => e.id)), [emails]);
-
-  const sendTest = useCallback(() => {
-    const t = tasks.find((x) => x.assignee === me) ?? tasks[0];
-    setTests((l) => [
-      {
-        id: `test${Date.now()}`,
-        kind: 'test',
-        taskKey: t.key,
-        actor: me,
-        at: nowISO(),
-        note: 'Test email from your notification settings',
-      },
-      ...l,
-    ]);
-    toast.success('Test email sent', { description: `Delivered to ${myEmail}` });
-  }, [tasks, me, myEmail]);
-
-  const willEmail = (e: AssignmentEmail) =>
-    prefs.mode !== 'off' &&
-    (e.kind === 'test' || (e.kind === 'assigned' ? prefs.onAssign : prefs.onUnassign));
+  const markAllRead = useCallback(() => {
+    setRead(emails.map((e) => e.id));
+    syncServer(emails.map((e) => e.taskKey));
+  }, [emails, syncServer]);
 
   return {
+    me,
+    myEmail: me ? memberById(me).email : '',
     emails,
-    prefs,
-    setPrefs,
     read,
     markRead,
     markUnread,
     markAllRead,
-    sendTest,
-    myEmail,
-    willEmail,
   };
 }
 
-/** Mounted once in the app shell: announces new assignment emails as they're "sent". */
+/** Mounted once in the app shell: announces new assignments as the task history records them. */
 export function useAssignmentNotifier() {
   const { events } = useWork();
+  const { session } = useAuth();
   const seen = useRef<number | null>(null);
-  const me = currentUserId;
-  const mine = events.filter((e) => e.kind === 'assignee' && e.to === me && e.actor !== me);
+  const me = session?.memberId ?? '';
+  const mine = useMemo(
+    () => events.filter((e) => e.kind === 'assignee' && !!me && e.to === me && e.actor !== me),
+    [events, me],
+  );
 
   useEffect(() => {
     if (seen.current === null) {
@@ -166,18 +159,8 @@ export function useAssignmentNotifier() {
     }
     if (mine.length > seen.current) {
       const latest = mine[mine.length - 1];
-      const prefs = readPrefs();
-      const email = members.find((m) => m.id === me)?.email;
-      if (prefs.mode === 'instant' && prefs.onAssign)
-        toast(`${latest.taskKey} assigned to you`, { description: `Email sent to ${email}` });
-      else
-        toast(`${latest.taskKey} assigned to you`, {
-          description:
-            prefs.mode === 'daily'
-              ? 'Included in tomorrow’s digest'
-              : 'Email notifications are off',
-        });
+      toast(`${latest.taskKey} assigned to you`, { description: 'See Assigned to me' });
     }
     seen.current = mine.length;
-  }, [mine.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mine]);
 }

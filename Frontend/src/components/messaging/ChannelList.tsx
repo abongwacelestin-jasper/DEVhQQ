@@ -1,3 +1,4 @@
+import type React from 'react';
 import { Link } from 'react-router-dom';
 import {
   HashIcon,
@@ -10,10 +11,10 @@ import {
 import { Avatar } from '../ui/Avatar';
 import { ProductMark } from '../ui/ProductMark';
 import { useMessaging } from '../../contexts/MessagingContext';
-import { useAuth } from '../../contexts/AuthContext';
 import { useProductFilter } from '../../contexts/ProductFilterContext';
 import { relative } from '../../utils/date';
 import type { Channel } from '../../types/messaging';
+import type { ChatChannel } from './types';
 
 export type ListView = 'all' | 'unread' | 'mentions' | 'dms' | 'projects';
 
@@ -28,17 +29,42 @@ interface ChannelListProps {
 
 /** Left column: searchable, filterable conversations grouped by kind with unread and mention counts. */
 export function ChannelList({ activeId, q, view, product, onChange, onNew }: ChannelListProps) {
-  const { visible, messages, unread, mentions } = useMessaging();
-  const { session } = useAuth();
+  const { me, visible, messages, unread, mentions } = useMessaging();
   const { allowedProducts } = useProductFilter();
-  const me = session?.memberId ?? 'm1';
 
-  const last = (id: string) =>
-    [...messages].reverse().find((m) => m.channelId === id && !m.threadOf);
-  const dmPeer = (c: Channel) => c.members.find((x) => x !== me) ?? me;
+  /** Newest loaded top-level message, else the server's `lastMessage` summary. */
+  const last = (c: ChatChannel) => {
+    const loaded = [...messages].reverse().find((m) => m.channelId === c.id && !m.threadOf);
+    if (!loaded) return c.lastMessage;
+    if (!c.lastMessage) return loaded;
+    return loaded.at >= c.lastMessage.at ? loaded : c.lastMessage;
+  };
+  const lastAt = (c: ChatChannel) => {
+    const l = last(c)?.at ?? '';
+    return c.lastMessageAt && c.lastMessageAt > l ? c.lastMessageAt : l;
+  };
+  const dmPeer = (c: Channel) => c.members.find((x) => x !== me) ?? me ?? '';
+
+  /** Arrow keys move between conversations; Home/End jump to the ends. */
+  const onListKey = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    const links = Array.from(e.currentTarget.querySelectorAll<HTMLAnchorElement>('a[data-conv]'));
+    if (!links.length) return;
+    e.preventDefault();
+    const at = links.indexOf(document.activeElement as HTMLAnchorElement);
+    const next =
+      e.key === 'Home'
+        ? 0
+        : e.key === 'End'
+          ? links.length - 1
+          : e.key === 'ArrowDown'
+            ? Math.min(links.length - 1, at + 1)
+            : Math.max(0, at < 0 ? 0 : at - 1);
+    links[next]?.focus();
+  };
 
   const list = visible
-    .filter((c) => (c.kind !== 'dm' ? true : c.members.includes(me)))
+    .filter((c) => (c.kind !== 'dm' ? true : !!me && c.members.includes(me)))
     .filter(
       (c) =>
         !q ||
@@ -46,7 +72,8 @@ export function ChannelList({ activeId, q, view, product, onChange, onNew }: Cha
         c.topic.toLowerCase().includes(q.toLowerCase()) ||
         messages.some(
           (m) => m.channelId === c.id && m.text.toLowerCase().includes(q.toLowerCase()),
-        ),
+        ) ||
+        !!c.lastMessage?.text.toLowerCase().includes(q.toLowerCase()),
     )
     .filter((c) => !product || c.product === product)
     .filter((c) =>
@@ -60,9 +87,9 @@ export function ChannelList({ activeId, q, view, product, onChange, onNew }: Cha
               ? c.kind === 'project'
               : true,
     )
-    .sort((a, b) => (last(b.id)?.at ?? '').localeCompare(last(a.id)?.at ?? ''));
+    .sort((a, b) => lastAt(b).localeCompare(lastAt(a)));
 
-  const groups: { title: string; items: Channel[] }[] = [
+  const groups: { title: string; items: ChatChannel[] }[] = [
     {
       title: 'Channels',
       items: list.filter((c) => c.kind === 'channel' || c.kind === 'announcement'),
@@ -103,14 +130,14 @@ export function ChannelList({ activeId, q, view, product, onChange, onNew }: Cha
         </label>
         <div
           className="flex items-center gap-1 overflow-x-auto scroll-thin"
-          role="tablist"
+          role="group"
           aria-label="Conversation filter"
         >
           {views.map((v) => (
             <button
               key={v.id}
-              role="tab"
-              aria-selected={view === v.id}
+              type="button"
+              aria-pressed={view === v.id}
               onClick={() => onChange('view', v.id === 'all' ? '' : v.id)}
               className={`h-6 shrink-0 rounded-full px-2.5 text-[11.5px] font-medium transition-colors duration-150 ${view === v.id ? 'bg-ink text-white' : 'bg-sunken text-ink hover:bg-line'}`}
             >
@@ -136,7 +163,12 @@ export function ChannelList({ activeId, q, view, product, onChange, onNew }: Cha
       <nav
         className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5 scroll-thin"
         aria-label="Conversations"
+        aria-describedby="conv-keys-hint"
+        onKeyDown={onListKey}
       >
+        <p id="conv-keys-hint" className="sr-only">
+          Use the up and down arrow keys to move between conversations.
+        </p>
         {groups.length === 0 && (
           <p className="px-2 py-6 text-center text-[12.5px] text-muted">
             No conversations match these filters.
@@ -147,15 +179,17 @@ export function ChannelList({ activeId, q, view, product, onChange, onNew }: Cha
             <h2 className="px-2 pb-1 pt-1.5 text-[11px] font-semibold text-muted">{g.title}</h2>
             <ul className="space-y-px">
               {g.items.map((c) => {
-                const l = last(c.id);
-                const n = c.members.includes(me) ? unread(c.id) : 0;
+                const l = last(c);
+                const notMember = !me || !c.members.includes(me);
+                const n = notMember ? 0 : unread(c.id);
                 const at = mentions(c.id);
                 const active = c.id === activeId;
-                const notMember = !c.members.includes(me);
                 return (
                   <li key={c.id}>
                     <Link
+                      data-conv
                       to={`/messages/${c.id}`}
+                      aria-label={`${c.kind === 'dm' ? c.name : `#${c.name}`}${n ? `, ${n} unread` : ''}${at ? `, ${at} mentions` : ''}`}
                       aria-current={active ? 'page' : undefined}
                       className={`grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-2 py-1.5 transition-colors duration-150 ${active ? 'bg-ink text-white' : 'hover:bg-sunken'}`}
                     >
@@ -201,11 +235,11 @@ export function ChannelList({ activeId, q, view, product, onChange, onNew }: Cha
                         </span>
                       </span>
                       <span className="flex flex-col items-end gap-0.5">
-                        {l && (
+                        {lastAt(c) && (
                           <span
                             className={`text-[10.5px] tabular-nums ${active ? 'text-white/60' : 'text-muted'}`}
                           >
-                            {relative(new Date(l.at)).replace(' ago', '')}
+                            {relative(new Date(lastAt(c))).replace(' ago', '')}
                           </span>
                         )}
                         {at > 0 ? (

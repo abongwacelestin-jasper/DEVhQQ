@@ -6,7 +6,16 @@ interface LanguageValue {
   setLang: (l: Lang) => void;
   /** Looks up a key in the active language, then the fallback, then English. `{name}` placeholders are filled from vars. */
   t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string;
+  /** Translates an English page heading: `page.<heading>` first, then the matching nav label. */
+  heading: (english: string) => string;
 }
+
+/** English nav label → its translation key, so page titles reuse the nav vocabulary. */
+const navKeyByLabel = new Map(
+  Object.entries(translations.en)
+    .filter(([k]) => k.startsWith('nav.'))
+    .map(([k, label]) => [label, k] as const),
+);
 
 const KEY = 'devhq.lang';
 const LanguageContext = createContext<LanguageValue | null>(null);
@@ -32,7 +41,18 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     [lang],
   );
 
-  const value = useMemo(() => ({ lang, setLang, t }), [lang, t]);
+  const heading = useCallback(
+    (english: string) => {
+      if (lang === 'en') return english;
+      const own = translations[lang][`page.${english}`];
+      if (own) return own;
+      const nav = navKeyByLabel.get(english);
+      return (nav && translations[lang][nav]) || english;
+    },
+    [lang],
+  );
+
+  const value = useMemo(() => ({ lang, setLang, t, heading }), [lang, t, heading]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 

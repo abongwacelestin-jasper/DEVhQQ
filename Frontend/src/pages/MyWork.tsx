@@ -1,15 +1,17 @@
+import { useLanguage } from '../contexts/LanguageContext';
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
 import {
+  AtSignIcon,
   BellIcon,
+  CheckCheckIcon,
   CheckIcon,
-  KeyRoundIcon,
+  InboxIcon,
   PlusIcon,
   RocketIcon,
   ShieldCheckIcon,
-  UndoIcon,
 } from 'lucide-react';
 import { Panel } from '../components/ui/Panel';
 import { ProductMark } from '../components/ui/ProductMark';
@@ -17,87 +19,62 @@ import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { Modal } from '../components/ui/Modal';
 import { ChecklistIllustration } from '../components/illustrations/ChecklistIllustration';
 import { EmptyIllustration } from '../components/illustrations/EmptyIllustration';
 import { useReauth } from '../contexts/ReauthContext';
 import { useWork } from '../contexts/WorkContext';
 import { useDateRange } from '../contexts/DateRangeContext';
-import { useProductFilter } from '../contexts/ProductFilterContext';
 import { useWorkspaceUI } from '../contexts/WorkspaceUIContext';
-import { approvals as initialApprovals, mentions, projects } from '../data/work';
-import { currentUserId } from '../data/team';
+import { useProductFilter } from '../contexts/ProductFilterContext';
 import { useAuth } from '../contexts/AuthContext';
-import { firstName, memberById, priorityMeta, taskStatusMeta } from '../utils/status';
+import { priorityMeta, taskStatusMeta } from '../utils/status';
+import { useDeployments } from '../hooks/useDeployments';
+import { useDirectory } from '../components/team/useDirectory';
+import { useNotifications, type ApiNotification } from '../components/work/useNotifications';
+import { DemoBadge, Unavailable } from '../components/work/Unavailable';
 import { NOW, addDays, formatDateTime, parseWhen, relative, startOfDay } from '../utils/date';
 import { describeEvent, formatMinutes } from '../utils/taskEvents';
-import type { Approval, Task, TaskStatus } from '../types/work';
-
-const kindIcon: Record<Approval['kind'], React.ComponentType<{ className?: string }>> = {
-  deploy: RocketIcon,
-  access: KeyRoundIcon,
-  release: UndoIcon,
-};
-
-const prefs = [
-  {
-    id: 'assigned',
-    label: 'Tasks assigned to me',
-    desc: 'When a task is assigned or reassigned',
-    on: true,
-  },
-  { id: 'reviews', label: 'Review requests', desc: 'Pull requests waiting on my review', on: true },
-  { id: 'due', label: 'Due-date reminders', desc: '24 hours before a task is due', on: true },
-  {
-    id: 'incidents',
-    label: 'SEV1 & SEV2 incidents',
-    desc: 'Across all products I can access',
-    on: true,
-  },
-  { id: 'deploys', label: 'Failed deployments', desc: 'Production and staging only', on: true },
-  {
-    id: 'portfolio',
-    label: 'Portfolio digest',
-    desc: 'Weekly summary every Monday 09:00',
-    on: true,
-  },
-  {
-    id: 'comments',
-    label: 'Every comment',
-    desc: 'Usually noisy — mentions are always delivered',
-    on: false,
-  },
-];
+import type { Task, TaskStatus } from '../types/work';
+import type { Deployment } from '../types/operations';
 
 type Scope = 'mine' | 'by-me' | 'reviewing';
 
 export function MyWork() {
+  const { heading } = useLanguage();
   const { requestReauth } = useReauth();
   const { tasks, events, timeLogs, updateTask } = useWork();
   const { inRange, label } = useDateRange();
   const { matchesTask } = useProductFilter();
   const { openCreateTask } = useWorkspaceUI();
-  const { canDo } = useAuth();
+  const { canDo, session } = useAuth();
+  const me = session?.memberId ?? '';
   const canApprove = canDo('deploy:approve');
-  const [pending, setPending] = useState(() => (canApprove ? initialApprovals : []));
-  const [settings, setSettings] = useState<Record<string, boolean>>(
-    Object.fromEntries(prefs.map((p) => [p.id, p.on])),
-  );
-  const [prefsOpen, setPrefsOpen] = useState(false);
+  const { deployments, approve, loading: deploysLoading } = useDeployments();
+  const inbox = useNotifications();
   const [scope, setScope] = useState<Scope>('mine');
+
+  // Two-person rule: the server refuses self-approval, so a requester never sees their own request here.
+  const pending = useMemo(
+    () =>
+      canApprove
+        ? deployments.filter((d) => d.status === 'awaiting-approval' && d.author !== me)
+        : [],
+    [canApprove, deployments, me],
+  );
+  const mentions = useMemo(() => inbox.items.filter((n) => n.kind === 'mention'), [inbox.items]);
 
   const assignedByMe = useMemo(() => {
     const keys = new Set<string>();
     events
-      .filter((e) => e.kind === 'assignee' && e.actor === currentUserId && e.to !== currentUserId)
+      .filter((e) => e.kind === 'assignee' && e.actor === me && e.to !== me)
       .forEach((e) => keys.add(e.taskKey));
-    return tasks.filter((t) => keys.has(t.key) && t.assignee !== currentUserId);
-  }, [events, tasks]);
+    return tasks.filter((t) => keys.has(t.key) && t.assignee !== me);
+  }, [events, tasks, me]);
 
   const lists: Record<Scope, Task[]> = {
-    mine: tasks.filter((t) => t.assignee === currentUserId),
+    mine: tasks.filter((t) => t.assignee === me),
     'by-me': assignedByMe,
-    reviewing: tasks.filter((t) => t.reviewer === currentUserId),
+    reviewing: tasks.filter((t) => t.reviewer === me),
   };
   const scoped = lists[scope].filter((t) => matchesTask(t));
   const today = startOfDay(NOW);
@@ -136,10 +113,10 @@ export function MyWork() {
   ].filter((g) => g.items.length > 0);
 
   const myEvents = events
-    .filter((e) => e.actor === currentUserId && inRange(new Date(e.at)))
+    .filter((e) => e.actor === me && inRange(new Date(e.at)))
     .sort((a, b) => b.at.localeCompare(a.at));
   const loggedMin = timeLogs
-    .filter((l) => l.member === currentUserId && inRange(new Date(l.at)))
+    .filter((l) => l.member === me && inRange(new Date(l.at)))
     .reduce((s, l) => s + l.minutes, 0);
   const mine = lists.mine;
 
@@ -160,19 +137,14 @@ export function MyWork() {
     { label: `Logged · ${label.toLowerCase()}`, value: formatMinutes(loggedMin), tone: 'text-ink' },
   ];
 
-  const resolve = (a: Approval, approved: boolean) => {
-    setPending((list) => list.filter((x) => x.id !== a.id));
-    toast(approved ? 'Approved' : 'Declined', {
-      description: `${a.title} · recorded in the audit log with your name and time`,
-    });
-  };
-
   return (
     <div className="space-y-3.5">
       <section className="grid items-center gap-3 overflow-hidden rounded-lg border border-line bg-accent-soft/40 px-3.5 py-3 md:grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
         <ChecklistIllustration className="hidden h-[84px] w-auto md:block" />
         <div className="min-w-0">
-          <h1 className="text-[17px] font-semibold tracking-tight text-ink">My work</h1>
+          <h1 className="text-[17px] font-semibold tracking-tight text-ink">
+            {heading('My work')}
+          </h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
             Approvals, tasks and mentions that need you. Open work always shows; completed work and
             activity follow the date range.
@@ -182,17 +154,16 @@ export function MyWork() {
               size="sm"
               variant="primary"
               icon={<PlusIcon className="h-3.5 w-3.5" />}
-              onClick={() => openCreateTask({ assignee: currentUserId })}
+              onClick={() => openCreateTask({ assignee: me })}
             >
               New task for me
             </Button>
-            <Button
-              size="sm"
-              icon={<BellIcon className="h-3.5 w-3.5" />}
-              onClick={() => setPrefsOpen(true)}
+            <Link
+              to="/inbox"
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-line-strong bg-white px-2.5 text-[12px] font-medium text-ink hover:bg-sunken/60"
             >
-              Notification settings
-            </Button>
+              <BellIcon className="h-3.5 w-3.5" /> Assigned to me
+            </Link>
           </div>
         </div>
         <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-5 md:col-span-2 xl:col-span-1">
@@ -212,76 +183,34 @@ export function MyWork() {
               title="Waiting on your approval"
               meta={<span className="tabular-nums">{pending.length} pending</span>}
             >
-              {pending.length === 0 ? (
+              {deploysLoading && pending.length === 0 ? (
+                <p className="px-3.5 py-3 text-[12.5px] text-muted">Loading deployments…</p>
+              ) : pending.length === 0 ? (
                 <div className="flex items-center gap-3 px-3.5 py-3">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ok-soft text-ok">
                     <CheckIcon className="h-4 w-4" />
                   </span>
                   <p className="text-[12.5px] text-ink">
-                    All approvals handled. New requests appear here.
+                    No deployments are waiting on you. Requests from others appear here.
                   </p>
                 </div>
               ) : (
                 <ul className="divide-y divide-line">
                   <AnimatePresence initial={false}>
-                    {pending.map((a) => {
-                      const Icon = kindIcon[a.kind];
-                      return (
-                        <motion.li
-                          key={a.id}
-                          layout
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-                          className="grid grid-cols-[28px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 overflow-hidden px-3.5 py-2 md:grid-cols-[28px_minmax(0,1fr)_150px_48px_auto]"
-                        >
-                          <span
-                            className={`flex h-7 w-7 items-center justify-center rounded-md ${a.kind === 'release' ? 'bg-bad-soft text-bad' : 'bg-sunken text-ink'}`}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                          </span>
-                          <div className="min-w-0">
-                            <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink">
-                              <ProductMark product={a.product} size="sm" />
-                              <span className="truncate">{a.title}</span>
-                            </p>
-                            <p className="truncate text-[11.5px] text-muted">{a.detail}</p>
-                          </div>
-                          <span className="col-start-2 flex min-w-0 items-center gap-1.5 text-[12px] text-ink md:col-start-auto">
-                            <Avatar id={a.requestedBy} size="xs" />
-                            <span className="truncate">{memberById(a.requestedBy).name}</span>
-                          </span>
-                          <span className="hidden text-right text-[11.5px] tabular-nums text-muted md:block">
-                            {a.ago}
-                          </span>
-                          <div className="col-start-2 flex gap-1.5 md:col-start-auto">
-                            <Button size="sm" onClick={() => resolve(a, false)}>
-                              Decline
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant={a.kind === 'release' ? 'danger' : 'primary'}
-                              icon={
-                                a.kind === 'release' ? (
-                                  <ShieldCheckIcon className="h-3.5 w-3.5" />
-                                ) : undefined
-                              }
-                              onClick={() =>
-                                a.kind === 'access'
-                                  ? resolve(a, true)
-                                  : requestReauth({
-                                      title: a.title,
-                                      description: a.detail,
-                                      actionLabel: 'Verify & approve',
-                                      onConfirm: () => resolve(a, true),
-                                    })
-                              }
-                            >
-                              {a.kind === 'release' ? 'Approve · MFA' : 'Approve'}
-                            </Button>
-                          </div>
-                        </motion.li>
-                      );
-                    })}
+                    {pending.map((d) => (
+                      <ApprovalRow
+                        key={d.id}
+                        deployment={d}
+                        onApprove={() =>
+                          requestReauth({
+                            title: `Approve ${d.env} deploy`,
+                            description: `${d.sha} will be handed to ${d.provider}.`,
+                            actionLabel: 'Verify & approve',
+                            onConfirm: () => void approve(d.id),
+                          })
+                        }
+                      />
+                    ))}
                   </AnimatePresence>
                 </ul>
               )}
@@ -351,7 +280,7 @@ export function MyWork() {
             meta={<span>{label}</span>}
             action={
               <Link
-                to={`/activity?member=${currentUserId}`}
+                to={`/activity?member=${me}`}
                 className="font-medium text-accent hover:underline"
               >
                 All
@@ -390,75 +319,34 @@ export function MyWork() {
             )}
           </Panel>
 
-          <Panel title="Mentions" meta={<span>{mentions.length} new</span>}>
-            <ul className="divide-y divide-line">
-              {mentions.map((m) => (
-                <li key={m.id} className="grid grid-cols-[24px_minmax(0,1fr)] gap-2.5 px-3.5 py-2">
-                  <Avatar id={m.author} size="sm" />
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-[11.5px] text-muted">
-                      <span className="font-semibold text-ink">{firstName(m.author)}</span>
-                      <span>on</span>
-                      <Link
-                        to={
-                          m.target.startsWith('INC')
-                            ? `/incidents/${m.target}`
-                            : `/tasks/${m.target}`
-                        }
-                        className="font-mono font-medium text-accent hover:underline"
-                      >
-                        {m.target}
-                      </Link>
-                      <span className="ml-auto tabular-nums">{m.ago}</span>
-                    </p>
-                    <p className="mt-0.5 text-[12.5px] text-ink">{m.text}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+          <InboxPanel inbox={inbox} />
+
+          <Panel
+            title="Mentions"
+            meta={
+              inbox.status === 'ready' ? (
+                <span>{mentions.filter((m) => !m.read).length} new</span>
+              ) : undefined
+            }
+          >
+            {inbox.status === 'unavailable' ? (
+              <Unavailable
+                compact
+                title="Mentions aren't available"
+                detail="The collaboration service isn't deployed on this server."
+              />
+            ) : inbox.status === 'ready' && mentions.length === 0 ? (
+              <p className="px-3.5 py-3 text-[12.5px] text-muted">No one has mentioned you yet.</p>
+            ) : (
+              <NotificationList
+                items={mentions.slice(0, 8)}
+                onOpen={(n) => void inbox.markRead([n.id])}
+                icon={AtSignIcon}
+              />
+            )}
           </Panel>
         </div>
       </div>
-
-      <Modal
-        open={prefsOpen}
-        onClose={() => setPrefsOpen(false)}
-        title="Notification settings"
-        description="Event-driven and quiet by default. Mentions are always delivered."
-        footer={
-          <Button
-            variant="primary"
-            onClick={() => {
-              setPrefsOpen(false);
-              toast.success('Notification settings saved');
-            }}
-          >
-            Done
-          </Button>
-        }
-      >
-        <ul className="-mx-4 -my-3.5 divide-y divide-line">
-          {prefs.map((p) => (
-            <li key={p.id} className="flex items-center gap-3 px-4 py-2.5">
-              <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-medium text-ink">{p.label}</p>
-                <p className="text-[11.5px] text-muted">{p.desc}</p>
-              </div>
-              <button
-                role="switch"
-                aria-checked={settings[p.id]}
-                aria-label={p.label}
-                onClick={() => setSettings((s) => ({ ...s, [p.id]: !s[p.id] }))}
-                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-150 ${settings[p.id] ? 'bg-accent' : 'bg-line-strong'}`}
-              >
-                <span
-                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150 ${settings[p.id] ? 'translate-x-[18px]' : 'translate-x-0.5'}`}
-                />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Modal>
     </div>
   );
 }
@@ -473,6 +361,9 @@ function MyTaskRow({
   onStatus: (s: TaskStatus) => void;
 }) {
   const { events } = useWork();
+  const { memberById } = useDirectory();
+  const { allowedProjects: projects } = useProductFilter();
+  const firstName = (id: string) => memberById(id).name.split(' ')[0];
   const project = projects.find((p) => p.id === task.projectId);
   const assigned = [...events]
     .reverse()
@@ -541,5 +432,199 @@ function MyTaskRow({
         {task.due}
       </span>
     </li>
+  );
+}
+
+function ApprovalRow({
+  deployment: d,
+  onApprove,
+}: {
+  deployment: Deployment;
+  onApprove: () => void;
+}) {
+  const { memberById } = useDirectory();
+  return (
+    <motion.li
+      layout
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+      className="grid grid-cols-[28px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 overflow-hidden px-3.5 py-2 md:grid-cols-[28px_minmax(0,1fr)_150px_48px_auto]"
+    >
+      <span
+        className={`flex h-7 w-7 items-center justify-center rounded-md ${d.env === 'production' ? 'bg-bad-soft text-bad' : 'bg-sunken text-ink'}`}
+      >
+        <RocketIcon className="h-3.5 w-3.5" />
+      </span>
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink">
+          <ProductMark product={d.product} size="sm" />
+          <span className="truncate">
+            Deploy {d.message} to {d.env}
+          </span>
+        </p>
+        <p className="truncate text-[11.5px] text-muted">
+          <span className="font-mono">{d.sha}</span> · {d.provider}
+        </p>
+      </div>
+      <span className="col-start-2 flex min-w-0 items-center gap-1.5 text-[12px] text-ink md:col-start-auto">
+        <Avatar id={d.author} size="xs" />
+        <span className="truncate">{memberById(d.author).name}</span>
+      </span>
+      <span className="hidden text-right text-[11.5px] tabular-nums text-muted md:block">
+        {d.ago}
+      </span>
+      <div className="col-start-2 flex gap-1.5 md:col-start-auto">
+        <Link
+          to={`/deployments/${d.id}`}
+          className="inline-flex h-7 items-center rounded-md border border-line-strong px-2.5 text-[12px] font-medium text-ink hover:bg-sunken/60"
+        >
+          Details
+        </Link>
+        <Button
+          size="sm"
+          variant={d.env === 'production' ? 'danger' : 'primary'}
+          icon={<ShieldCheckIcon className="h-3.5 w-3.5" />}
+          onClick={onApprove}
+        >
+          Approve
+        </Button>
+      </div>
+    </motion.li>
+  );
+}
+
+function InboxPanel({ inbox }: { inbox: ReturnType<typeof useNotifications> }) {
+  const unreadItems = inbox.items.filter((n) => !n.read);
+  return (
+    <Panel
+      title="Inbox"
+      meta={
+        inbox.status === 'ready' ? (
+          <span className="flex items-center gap-1.5">
+            {inbox.demo && <DemoBadge />}
+            <span className="tabular-nums">{inbox.unread} unread</span>
+          </span>
+        ) : undefined
+      }
+      action={
+        inbox.status === 'ready' && inbox.unread > 0 ? (
+          <button
+            onClick={() => void inbox.markRead('all')}
+            className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+          >
+            <CheckCheckIcon className="h-3 w-3" aria-hidden /> Mark all read
+          </button>
+        ) : undefined
+      }
+    >
+      {inbox.status === 'loading' ? (
+        <p className="px-3.5 py-3 text-[12.5px] text-muted">Loading notifications…</p>
+      ) : inbox.status === 'unavailable' ? (
+        <Unavailable
+          compact
+          title="Notifications aren't available"
+          detail="The collaboration service isn't deployed on this server."
+          onRetry={() => void inbox.reload()}
+        />
+      ) : inbox.status === 'error' ? (
+        <Unavailable
+          compact
+          title="Couldn't load notifications"
+          detail={inbox.error ?? undefined}
+          onRetry={() => void inbox.reload()}
+        />
+      ) : inbox.items.length === 0 ? (
+        <div className="flex items-center gap-2 px-3.5 py-3 text-[12.5px] text-muted">
+          <InboxIcon className="h-4 w-4" aria-hidden /> You're all caught up.
+        </div>
+      ) : (
+        <>
+          <NotificationList
+            items={(unreadItems.length ? unreadItems : inbox.items).slice(0, 8)}
+            onOpen={(n) => void inbox.markRead([n.id])}
+            icon={BellIcon}
+          />
+          {inbox.hasMore && (
+            <button
+              onClick={() => void inbox.loadMore()}
+              className="w-full border-t border-line py-1.5 text-[11.5px] font-medium text-muted hover:text-ink"
+            >
+              Load older
+            </button>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/** Notification links are in-app paths only; anything else renders as plain text. */
+const inAppPath = (link?: string) => (link && /^\/(?!\/)/.test(link) ? link : undefined);
+
+function NotificationList({
+  items,
+  onOpen,
+  icon: Icon,
+}: {
+  items: ApiNotification[];
+  onOpen: (n: ApiNotification) => void;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  const { members, memberById } = useDirectory();
+  // The server stores mentions as `@memberId`; show the member's name instead.
+  const known = new Set(members.map((m) => m.id));
+  const names = (text: string) =>
+    text.replace(/@([A-Za-z0-9][\w-]{0,39})/g, (whole, id: string) =>
+      known.has(id) ? `@${memberById(id).name}` : whole,
+    );
+  return (
+    <ul className="divide-y divide-line" aria-live="polite">
+      {items.map((n) => {
+        const to = inAppPath(n.link);
+        const body = (
+          <>
+            <p className="flex items-center gap-1.5 text-[11.5px] text-muted">
+              {!n.read && (
+                <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-label="Unread" />
+              )}
+              {n.actor && (
+                <span className="font-semibold text-ink">
+                  {memberById(n.actor).name.split(' ')[0]}
+                </span>
+              )}
+              <span className="ml-auto tabular-nums" title={formatDateTime(new Date(n.at))}>
+                {relative(new Date(n.at))}
+              </span>
+            </p>
+            <p className={`mt-0.5 text-[12.5px] ${n.read ? 'text-muted' : 'text-ink'}`}>
+              {names(n.title)}
+            </p>
+            {n.body && (
+              <p className="mt-0.5 line-clamp-2 text-[12px] text-muted">{names(n.body)}</p>
+            )}
+          </>
+        );
+        return (
+          <li key={n.id} className="grid grid-cols-[24px_minmax(0,1fr)] gap-2.5 px-3.5 py-2">
+            {n.actor ? (
+              <Avatar id={n.actor} size="sm" />
+            ) : (
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sunken text-muted">
+                <Icon className="h-3 w-3" />
+              </span>
+            )}
+            {to ? (
+              <Link to={to} onClick={() => onOpen(n)} className="min-w-0 hover:opacity-80">
+                {body}
+              </Link>
+            ) : (
+              <button type="button" onClick={() => onOpen(n)} className="min-w-0 text-left">
+                {body}
+              </button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }

@@ -28,6 +28,8 @@ export interface Member {
   passwordHash: string;
   /** Base32 TOTP secret, encrypted at rest in a real deployment. */
   totpSecret?: string;
+  /** One-time backup codes (SHA-256 hashes only); see security/backupCodes.ts. */
+  backupCodes?: { hash: string; usedAt?: string }[];
   passkeys: PasskeyCredential[];
   failedLogins: number;
   lockedUntil?: number;
@@ -35,6 +37,26 @@ export interface Member {
   inviteTokenHash?: string;
   /** Epoch ms after which the invite link stops working. */
   inviteExpiresAt?: number;
+  /** Onboarding: when the member signed the NDA version in `ndaVersion` (full record in domain/collab). */
+  ndaSignedAt?: string;
+  ndaVersion?: string;
+  /** Onboarding profile — required before a member who needs onboarding reaches the `ready` stage. */
+  profile?: {
+    displayName: string;
+    timezone: string;
+    hoursFrom: string;
+    hoursTo: string;
+    skills: string[];
+    notify: string[];
+    completedAt: string;
+  };
+  /** Offboarding summary; the checklist lives in domain/collab. */
+  offboarding?: {
+    id: string;
+    status: 'pending' | 'accepted' | 'withdrawn' | 'completed';
+    startedAt: string;
+    completedAt?: string;
+  };
 }
 
 export interface PasskeyCredential {

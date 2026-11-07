@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
 import {
   ChevronRightIcon,
   CircleCheckIcon,
@@ -16,21 +15,51 @@ import { Button } from '../components/ui/Button';
 import { SecurityIllustration } from '../components/illustrations/SecurityIllustration';
 import { ApiTokens } from '../components/security/ApiTokens';
 import { SecurityFramework } from '../components/security/SecurityFramework';
+import { SessionsPanel } from '../components/security/SessionsPanel';
+import { TotpEnrollment } from '../components/security/TotpEnrollment';
+import { BackupCodes } from '../components/security/BackupCodes';
 import { useReauth } from '../contexts/ReauthContext';
-import { accessGrants, securityChecks, securityPolicies, signIns } from '../data/security';
+import { api } from '../api/client';
+import { listSignIns } from '../api/auth/endpoints';
+import type { ApiGrant, ApiSignIn } from '../api/types';
+import { securityChecks, securityPolicies } from '../data/security';
 import { memberById } from '../utils/status';
-import type { AccessGrant } from '../types/security';
 
-const resultMeta = {
-  success: { label: 'Success', tone: 'ok' as const },
-  blocked: { label: 'Blocked · new country', tone: 'bad' as const },
-  'mfa-failed': { label: 'MFA failed', tone: 'warn' as const },
+const resultMeta: Record<ApiSignIn['result'], { label: string; tone: 'ok' | 'bad' | 'warn' }> = {
+  success: { label: 'Success', tone: 'ok' },
+  blocked: { label: 'Blocked by risk policy', tone: 'bad' },
+  failed: { label: 'Failed', tone: 'warn' },
+  challenged: { label: 'Second factor pending', tone: 'warn' },
 };
+
+function when(iso: string | number) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 
 export function SecurityCenter() {
   const { requestReauth } = useReauth();
   const [policies, setPolicies] = useState(securityPolicies);
-  const [grants, setGrants] = useState<AccessGrant[]>(accessGrants);
+  const [grants, setGrants] = useState<ApiGrant[]>([]);
+  const [signIns, setSignIns] = useState<ApiSignIn[] | null>(null);
+
+  const loadGrants = useCallback(async () => {
+    try {
+      const list = await api<ApiGrant[]>('/api/access/grants');
+      setGrants(list.filter((g) => g.status === 'active' || g.status === 'pending'));
+    } catch {
+      setGrants([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadGrants();
+    listSignIns(50)
+      .then(setSignIns)
+      .catch(() => setSignIns([]));
+  }, [loadGrants]);
   const pass = securityChecks.filter((c) => c.status === 'pass').length;
   const score = Math.round(
     ((pass + securityChecks.filter((c) => c.status === 'warn').length * 0.5) /
@@ -38,6 +67,7 @@ export function SecurityCenter() {
       100,
   );
 
+  // Policies are not yet stored by the server: toggles stay in this view and say so.
   const togglePolicy = (id: string) => {
     const p = policies.find((x) => x.id === id);
     if (!p || p.locked) return;
@@ -113,7 +143,10 @@ export function SecurityCenter() {
       <SecurityFramework />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Organization policies">
+        <Panel
+          title="Organization policies"
+          meta={<span>Preview · not yet enforced by the server</span>}
+        >
           <ul className="divide-y divide-line">
             {policies.map((p) => (
               <li key={p.id} className="flex items-center gap-3 px-3.5 py-2.5">
@@ -144,25 +177,37 @@ export function SecurityCenter() {
         </Panel>
 
         <div className="space-y-4">
-          <Panel title="Production access" meta={<span>{grants.length} active grants</span>}>
+          <Panel title="Production access" meta={<span>{grants.length} open grants</span>}>
+            {grants.length === 0 && (
+              <p className="px-3.5 py-3 text-[12px] text-muted">No active just-in-time grants.</p>
+            )}
             <ul className="divide-y divide-line">
               {grants.map((g) => (
                 <li key={g.id} className="flex items-center gap-2.5 px-3.5 py-2">
-                  <Link to={`/team/${g.member}`}>
-                    <Avatar id={g.member} size="sm" />
+                  <Link to={`/team/${g.memberId}`}>
+                    <Avatar id={g.memberId} size="sm" />
                   </Link>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12.5px] font-medium text-ink">
-                      {memberById(g.member).name}{' '}
+                      {memberById(g.memberId).name}{' '}
                       <span className="font-normal text-muted">· {g.scope}</span>
                     </p>
                     <p className="truncate text-[11.5px] text-muted">
-                      {g.reason} · approved by {memberById(g.approvedBy).name.split(' ')[0]}
+                      {g.reason}
+                      {g.approvedBy
+                        ? ` · approved by ${memberById(g.approvedBy).name.split(' ')[0]}`
+                        : ' · awaiting approval'}
                     </p>
                   </div>
                   <StatusBadge
-                    tone={g.expires === 'Standing' ? 'neutral' : 'warn'}
-                    label={g.expires === 'Standing' ? 'Standing' : `Until ${g.expires}`}
+                    tone={g.status === 'pending' ? 'neutral' : 'warn'}
+                    label={
+                      g.status === 'pending'
+                        ? 'Pending'
+                        : g.expiresAt
+                          ? `Until ${when(g.expiresAt)}`
+                          : 'Active'
+                    }
                   />
                   <Button
                     size="sm"
@@ -171,10 +216,15 @@ export function SecurityCenter() {
                     onClick={() =>
                       requestReauth({
                         title: 'Revoke production access',
-                        description: `${memberById(g.member).name} loses this access immediately.`,
+                        description: `${memberById(g.memberId).name} loses this access immediately.`,
                         actionLabel: 'Verify & revoke',
                         successMessage: 'Access revoked',
-                        onConfirm: () => setGrants((l) => l.filter((x) => x.id !== g.id)),
+                        onConfirm: async () => {
+                          await api(`/api/access/grants/${encodeURIComponent(g.id)}/revoke`, {
+                            method: 'POST',
+                          });
+                          await loadGrants();
+                        },
                       })
                     }
                   >
@@ -188,20 +238,14 @@ export function SecurityCenter() {
             </p>
           </Panel>
           <ApiTokens />
+          <TotpEnrollment />
+          <BackupCodes />
         </div>
       </div>
 
-      <Panel
-        title="Sign-in activity"
-        meta={
-          <button
-            onClick={() => toast.success('Export started')}
-            className="font-medium text-accent hover:underline"
-          >
-            Export
-          </button>
-        }
-      >
+      <SessionsPanel />
+
+      <Panel title="Sign-in activity" meta={<span>From the server sign-in log</span>}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[620px] text-[12.5px]">
             <thead>
@@ -214,20 +258,40 @@ export function SecurityCenter() {
               </tr>
             </thead>
             <tbody>
-              {signIns.map((s) => (
+              {signIns === null && (
+                <tr>
+                  <td colSpan={5} className="px-3.5 py-3 text-muted">
+                    Loading sign-ins…
+                  </td>
+                </tr>
+              )}
+              {signIns?.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-3.5 py-3 text-muted">
+                    No sign-ins recorded yet.
+                  </td>
+                </tr>
+              )}
+              {signIns?.map((s) => (
                 <tr key={s.id} className="border-b border-line last:border-0">
                   <td className="px-3.5 py-2">
-                    <Link
-                      to={`/team/${s.member}`}
-                      className="flex items-center gap-2 font-medium text-ink hover:underline"
-                    >
-                      <Avatar id={s.member} size="xs" />
-                      {memberById(s.member).name}
-                    </Link>
+                    {s.memberId === 'unknown' ? (
+                      <span className="text-muted">Unknown account</span>
+                    ) : (
+                      <Link
+                        to={`/team/${s.memberId}`}
+                        className="flex items-center gap-2 font-medium text-ink hover:underline"
+                      >
+                        <Avatar id={s.memberId} size="xs" />
+                        {memberById(s.memberId).name}
+                      </Link>
+                    )}
                   </td>
-                  <td className="px-3 py-2 font-mono text-[11.5px] text-muted">{s.when}</td>
+                  <td className="px-3 py-2 font-mono text-[11.5px] text-muted">{when(s.at)}</td>
                   <td className="px-3 py-2 text-ink">{s.method}</td>
-                  <td className="px-3 py-2 text-muted">{s.location}</td>
+                  <td className="px-3 py-2 text-muted">
+                    {[s.location?.city, s.location?.country].filter(Boolean).join(', ') || s.ip}
+                  </td>
                   <td className="px-3.5 py-2">
                     <StatusBadge {...resultMeta[s.result]} dot />
                   </td>
