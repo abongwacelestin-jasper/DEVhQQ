@@ -110,6 +110,7 @@ const handlerRule: Record<string, string> = {
   'POST /api/auth/totp/enroll': 'your own account only',
   'POST /api/auth/passkeys/options': 'your own account only',
   'DELETE /api/auth/passkeys/:credentialId': 'your own passkeys only',
+  'POST /api/auth/password': 'your own account only; current password required',
   'POST /api/offboarding/:memberId':
     'yourself (resignation), or Administration ≥ `manage` for anyone else',
   'PATCH /api/offboarding/:memberId':

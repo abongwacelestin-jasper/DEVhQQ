@@ -209,8 +209,20 @@ export const navSections: NavSection[] = [
   },
 ];
 
-/** Reserved for the upcoming Sessions and Settings pages. */
-export const accountIcons = { MonitorSmartphoneIcon, SettingsIcon };
+/**
+ * Personal pages in the account menu. Every role can reach them (`common`
+ * areas in data/roles.ts), so they are not in the sidebar sections.
+ */
+export const accountEntries: NavEntry[] = [
+  { to: '/settings', label: 'Settings', short: 'Settings', area: 'settings', icon: SettingsIcon },
+  {
+    to: '/sessions',
+    label: 'Sessions & devices',
+    short: 'Sessions',
+    area: 'sessions',
+    icon: MonitorSmartphoneIcon,
+  },
+];
 
 export const allNavEntries = navSections.flatMap((s) => s.items);
 

@@ -5,7 +5,6 @@ import {
   ChevronDownIcon,
   LockIcon,
   LogOutIcon,
-  MonitorSmartphoneIcon,
   MoonIcon,
   RepeatIcon,
   ShieldCheckIcon,
@@ -20,6 +19,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { memberById } from '../../utils/status';
+import { accountEntries } from '../../data/navigation';
 import type { Lang } from '../../data/translations';
 
 const langs: { value: Lang; label: string }[] = [
@@ -148,10 +148,13 @@ export function TopbarProfileMenu() {
 
             <div className="border-t border-line p-1">
               <Item icon={UserIcon} label="My profile" onClick={() => go(`/team/${me.id}`)} />
+              {accountEntries.map((e) => (
+                <Item key={e.to} icon={e.icon} label={e.label} onClick={() => go(e.to)} />
+              ))}
               {can('security') && (
                 <Item
-                  icon={MonitorSmartphoneIcon}
-                  label="Sessions & security"
+                  icon={ShieldCheckIcon}
+                  label="Security center"
                   onClick={() => go('/security')}
                 />
               )}

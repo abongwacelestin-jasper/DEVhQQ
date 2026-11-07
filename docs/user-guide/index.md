@@ -42,6 +42,29 @@ requires re-verification after 15 idle minutes. Sensitive actions (approving a
 deploy, changing a role, requesting production access) open a
 **re-verification** dialog first — see [Step-up](../concepts/step-up.md).
 
+## Your settings and sessions
+
+Every role has two personal pages in the account menu (your avatar, top
+right; on a phone, **More → Account**):
+
+- **Settings** (`/settings`)
+  - **Profile and preferences:** display name, title, pronouns, short bio,
+    timezone, working hours and days, skills, which events notify you and how
+    email is delivered (instant, daily digest or off). **Save profile** stores
+    them on the server (`PATCH /api/onboarding/profile`), so they follow you to
+    every device; the page confirms only after the server accepted the change.
+    Theme and language apply immediately and are remembered in this browser.
+  - **Security:** **Change password** asks for your current password and a new
+    one that meets the [password policy](../api/authentication.md#changing-your-password).
+    You may be asked to re-verify first. Changing it signs out every other
+    session; this browser stays signed in. The same section sets up or
+    replaces your authenticator app and generates one-time backup codes.
+- **Sessions & devices** (`/sessions`) lists every browser and device signed
+  in to your account: device, location and IP, sign-in method and when it was
+  last seen, with **This browser** on the current one. **Revoke** ends one
+  session; **Sign out everywhere else** ends all of them except this one;
+  **Sign out everywhere** also ends this one. Each needs re-verification.
+
 ## What you can see
 
 The navigation shows a page only if your role's server permissions allow it
@@ -67,6 +90,7 @@ integration is not configured.
 | Repositories, Pull requests, Code security, CI | API — GitHub App data; labelled **demo** outside production when GitHub is not configured. |
 | Monitors, Integrations | API — real checks and outbound webhooks; seeded demo monitors are labelled and never probed. |
 | Team, Member detail, Audit log | API — directory, roles, invites, deactivation, access review, offboarding, member audit trail. |
+| Settings, Sessions & devices | API — profile (`/api/onboarding/profile`), password change, authenticator, backup codes, your sessions; theme and language are kept in the browser. |
 | Security Center | API for sessions, passkeys, authenticator, personal access tokens, sign-ins and grants; the policy and check list is presentation data (`Frontend/src/data/security.ts`). |
 | IDE & dev tools | the IDE list is presentation data; Codespaces through the API when configured. |
 | Assistant panel | `POST /api/assistant/ask`; unavailable without the models service and an API key. |

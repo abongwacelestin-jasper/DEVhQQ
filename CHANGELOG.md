@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Settings** (`/settings`) and **Sessions & devices** (`/sessions`) for every role, in the
+  account menu. Settings edits the profile, availability, skills and notification choices
+  (server-backed), theme and language, and holds password change, authenticator and backup
+  codes. Sessions lists your sessions and revokes one or all others.
+- `POST /api/auth/password`: change password with the current one (session only, step-up,
+  password policy, rate limited, audited); revokes your other sessions and rotates this one.
+- `POST /api/auth/sign-out-others`: revoke every session except the current one.
+- The onboarding profile stores title, pronouns, bio, working days and email delivery
+  (previously kept only in the browser's localStorage).
+
 ## [2.0.0] - 2026-11-07
 
 Major version: browser sessions are cookie-only, so clients that read the session

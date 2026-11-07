@@ -13,6 +13,7 @@ import { Avatar } from '../ui/Avatar';
 import { ProductMark } from '../ui/ProductMark';
 import { WorkspaceMark } from './WorkspaceSwitcher';
 import { useNavEntries } from '../../hooks/useNavEntries';
+import { accountEntries } from '../../data/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useProductFilter } from '../../contexts/ProductFilterContext';
@@ -30,7 +31,11 @@ export function MoreSheet({
   onClose: () => void;
   returnFocus?: React.RefObject<HTMLButtonElement>;
 }) {
-  const { sections } = useNavEntries();
+  const { sections: navSections } = useNavEntries();
+  const sections = useMemo(
+    () => [...navSections, { title: 'Account', items: accountEntries }],
+    [navSections],
+  );
   const { session, role, signOut, can } = useAuth();
   const { current } = useWorkspace();
   const { allowedProducts } = useProductFilter();

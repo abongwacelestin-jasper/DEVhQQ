@@ -11,7 +11,7 @@ Every error the API raises has a stable machine-readable `code`. Branch on
 `code`, never on `message` (messages are for people and may change). The
 envelope and client guidance are in [Errors](errors.md).
 
-**128 codes** from **343 call sites**. The status column lists every
+**130 codes** from **347 call sites**. The status column lists every
 status a code is raised with; most codes have exactly one.
 
 | Code | Status | Example message | Raised in |
@@ -60,6 +60,7 @@ status a code is raised with; most codes have exactly one.
 | `files_disabled` | 403 | Files are off in this channel | `routes/messaging.routes.ts` |
 | `forbidden` | 403 | Requires manage on Administration _(+23 more)_ | `auth/jit.ts`, `auth/rbac.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/files.routes.ts`, `routes/messaging.routes.ts`, `routes/offboarding.routes.ts`, `routes/team.routes.ts`, `routes/workspaces.routes.ts` |
 | `github_forbidden` | 403 | _(computed at runtime)_ | `integrations/github/client.ts` |
+| `invalid_current_password` | 403 | Your current password is incorrect | `routes/auth.routes.ts` |
 | `reactions_disabled` | 403 | Reactions are off in this channel | `routes/messaging.routes.ts` |
 | `risk_blocked` | 403 | Sign-in blocked by location risk policy — contact an Owner | `routes/auth.routes.ts` |
 | `self_approval` | 403 | You can’t approve your own access _(+2 more)_ | `auth/jit.ts`, `routes/operations.routes.ts`, `routes/pulls.routes.ts` |
@@ -121,13 +122,14 @@ status a code is raised with; most codes have exactly one.
 | `name_mismatch` | 422 | Type your full name exactly as on your profile: ${m.name} | `routes/onboarding.routes.ts` |
 | `no_change` | 422 | Nothing to update | `routes/monitors.routes.ts`, `routes/operations.routes.ts` |
 | `operator_unknown` | 422 | Unknown operator "${op}" | `lib/query.ts` |
+| `password_unchanged` | 422 | Choose a password different from your current one. | `routes/auth.routes.ts` |
 | `reason_required` | 422 | Give a reason of at least 10 characters | `auth/jit.ts` |
 | `scope_exceeds_role` | 422 | Your role (${role}) does not grant: ${over.join(', ')} | `security/pats.ts` |
 | `scope_invalid` | 422 | Unknown scope | `auth/jit.ts` |
 | `size_mismatch` | 422 | Uploaded size does not match the request | `routes/files.routes.ts` |
 | `type_mismatch` | 422 | File content does not match its declared type | `routes/files.routes.ts` |
 | `unresolvable_target` | 422 | Destination host could not be resolved | `routes/integrations.routes.ts` |
-| `validation_failed` | 422 | text is required _(+42 more)_ | `lib/validate.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/integrations.routes.ts`, `routes/locations.routes.ts`, `routes/messaging.routes.ts`, `routes/monitors.routes.ts`, `routes/notifications.routes.ts`, `routes/offboarding.routes.ts`, `routes/onboarding.routes.ts`, `routes/pulls.routes.ts`, `routes/system.routes.ts`, `routes/team.routes.ts`, `routes/tokens.routes.ts`, `routes/webhooks.routes.ts`, `routes/workspaces.routes.ts`, `security/pats.ts` |
+| `validation_failed` | 422 | text is required _(+43 more)_ | `lib/validate.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/integrations.routes.ts`, `routes/locations.routes.ts`, `routes/messaging.routes.ts`, `routes/monitors.routes.ts`, `routes/notifications.routes.ts`, `routes/offboarding.routes.ts`, `routes/onboarding.routes.ts`, `routes/pulls.routes.ts`, `routes/system.routes.ts`, `routes/team.routes.ts`, `routes/tokens.routes.ts`, `routes/webhooks.routes.ts`, `routes/workspaces.routes.ts`, `security/pats.ts` |
 | `weak_password` | 422 | _(computed at runtime)_ | `routes/auth.routes.ts`, `routes/recovery.routes.ts` |
 | `locked` | 423 | Too many attempts — try again later | `routes/auth.routes.ts` |
 | `rate_limited` | 429 | GitHub rate limit reached _(+4 more)_ | `domain/collab/limits.ts`, `integrations/github/client.ts`, `routes/assistant.routes.ts`, `routes/codespaces.routes.ts`, `security/rateLimit.ts` |
