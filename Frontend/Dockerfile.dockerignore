@@ -1,0 +1,22 @@
+# Context filter for Frontend/Dockerfile (build context = repository root).
+*
+!package.json
+!package-lock.json
+!.npmrc
+!Frontend/
+!Backend/package.json
+!Models/package.json
+!infra/nginx/
+
+**/.git
+**/node_modules
+**/dist
+**/.vite
+**/.env
+**/.env.*
+**/.audit
+**/.backups
+**/*.log
+**/coverage
+**/.DS_Store
+Frontend/Dockerfile*
