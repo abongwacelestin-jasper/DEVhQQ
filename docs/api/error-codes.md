@@ -11,7 +11,7 @@ Every error the API raises has a stable machine-readable `code`. Branch on
 `code`, never on `message` (messages are for people and may change). The
 envelope and client guidance are in [Errors](errors.md).
 
-**136 codes** from **358 call sites**. The status column lists every
+**134 codes** from **356 call sites**. The status column lists every
 status a code is raised with; most codes have exactly one.
 
 | Code | Status | Example message | Raised in |
@@ -33,7 +33,6 @@ status a code is raised with; most codes have exactly one.
 | `origin_mismatch` | 400 | Origin mismatch _(+1 more)_ | `auth/webauthn.ts` |
 | `reset_invalid` | 400 | This reset link is no longer valid | `routes/recovery.routes.ts` |
 | `rp_mismatch` | 400 | RP ID mismatch | `auth/webauthn.ts` |
-| `turnstile_required` | 400 | Complete the security check, then try again | `security/turnstile.ts` |
 | `user_not_present` | 400 | User presence required | `auth/webauthn.ts` |
 | `user_not_verified` | 400 | User verification required | `auth/webauthn.ts` |
 | `account_inactive` | 401 | Account is not active | `middleware/authenticate.ts`, `routes/auth.routes.ts`, `security/pats.ts` |
@@ -73,7 +72,6 @@ status a code is raised with; most codes have exactly one.
 | `step_up_unavailable` | 403 | Personal access tokens cannot perform step-up actions — use an interactive session | `auth/rbac.ts` |
 | `stickers_disabled` | 403 | Stickers are off in this channel | `routes/messaging.routes.ts` |
 | `threads_disabled` | 403 | Threads are off in this channel | `routes/messaging.routes.ts` |
-| `turnstile_failed` | 403 | The security check failed — try it again | `security/turnstile.ts` |
 | `not_found` | 404 | Not found _(+21 more)_ | `auth/jit.ts`, `auth/rbac.ts`, `domain/collab/access.ts`, `domain/engineering/store.ts`, `integrations/github/client.ts`, `lib/http.ts`, `routes/auth.routes.ts`, `routes/backups.routes.ts`, `routes/ci.routes.ts`, `routes/codespaces.routes.ts`, `routes/doc-collab.routes.ts`, `routes/docs.routes.ts`, `routes/files.routes.ts`, `routes/incident-actions.routes.ts`, `routes/insights.routes.ts`, `routes/integrations.routes.ts`, `routes/messaging.routes.ts`, `routes/monitors.routes.ts`, `routes/offboarding.routes.ts`, `routes/onboarding.routes.ts`, `routes/operations.routes.ts`, `routes/projects.routes.ts`, `routes/pulls.routes.ts`, `routes/system.routes.ts`, `routes/tasks.routes.ts`, `routes/team.routes.ts`, `routes/tokens.routes.ts`, `routes/webhooks.routes.ts`, `routes/workspaces.routes.ts` |
 | `method_not_allowed` | 405 | Method not allowed on this route | `lib/http.ts` |
 | `already_linked` | 409 | ${existing.name} is linked to ${existing.product} | `routes/repos.routes.ts` |
@@ -147,10 +145,10 @@ status a code is raised with; most codes have exactly one.
 | `assistant_unavailable` | 503 | The assistant is unavailable right now — try again later | `routes/assistant.routes.ts` |
 | `integration_unconfigured` | 503 | ML service is not configured _(+10 more)_ | `domain/engineering/secrets.ts`, `integrations/github/client.ts`, `integrations/github/config.ts`, `integrations/github/webhook.ts`, `routes/assistant.routes.ts`, `routes/files.routes.ts`, `routes/github.routes.ts`, `routes/insights.routes.ts` |
 | `ml_unavailable` | 503 | The ML service could not complete training | `routes/insights.routes.ts` |
+| `rate_limit_unavailable` | 503 | Sign-in checks are temporarily unavailable — retry shortly | `security/rateLimitRedis.ts` |
 | `scan_unavailable` | 503 | Malware scanning is unavailable; try again shortly | `routes/files.routes.ts` |
 | `storage_unavailable` | 503 | Object storage request failed | `routes/files.routes.ts` |
 | `stream_capacity` | 503 | Realtime is at capacity — retry shortly | `domain/collab/realtime.ts` |
-| `turnstile_unavailable` | 503 | The security check is unavailable right now — try again in a minute | `security/turnstile.ts` |
 | `upstream_timeout` | 504 | _(computed at runtime)_ | `integrations/github/client.ts`, `routes/codespaces.routes.ts` |
 
 `internal` is the router's catch-all: any exception that is not an

@@ -52,6 +52,7 @@ import { check as assistant } from './checks/assistant-prompt-injection.ts';
 import { check as envFailOpen } from './checks/env-failopen.ts';
 import { check as jitAccess } from './checks/jit-production-access.ts';
 import { check as turnstile } from './checks/turnstile-bot-check.ts';
+import { check as rlReplicas } from './checks/ratelimit-two-instances.ts';
 
 const CHECKS: Check[] = [
   enumeration,
@@ -85,6 +86,7 @@ const CHECKS: Check[] = [
   assistant,
   envFailOpen,
   turnstile,
+  rlReplicas,
 ];
 
 interface Row {

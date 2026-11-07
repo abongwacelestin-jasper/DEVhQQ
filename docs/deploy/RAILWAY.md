@@ -363,7 +363,8 @@ All of the shared runtime settings by reference (`NODE_ENV`, `APP_ORIGIN`,
 | `DATABASE_MIGRATION_URL` | same with `devhq_migrator:${{shared.MIGRATOR_DB_PASSWORD}}` (pre-deploy only) |
 | `DATABASE_SSL` | `disable` (private network) |
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | `${{shared.R2_BACKEND_ACCESS_KEY_ID}}`, `${{shared.R2_BACKEND_SECRET_ACCESS_KEY}}` |
-| `REDIS_URL` | `${{Redis.REDIS_URL}}` (provisioned now; no code reads it until the queue wave) |
+| `REDIS_URL` | `${{Redis.REDIS_URL}}`: shared rate limits, event fan-out and job leases ([Scaling](#11-scaling)). Plain `redis://` on the private network; use `rediss://` for an external Redis |
+| `EXPECT_REPLICAS` | unset (1). Set it to the replica count *before* raising replicas: above 1, the backend refuses to boot without Redis and fails readiness while Redis is down |
 | `ML_SERVICE_URL` | `http://${{models.RAILWAY_PRIVATE_DOMAIN}}:8000` |
 | `ML_SERVICE_TOKEN` | `${{shared.ML_SERVICE_TOKEN}}` |
 | `MAIL_TRANSPORT`, `SMTP_*`, `MAIL_DIGEST_MINUTES` | see [Mail](#mail-resend) |
@@ -561,19 +562,54 @@ load with the modules, which is one more reason the long-running worker waits;
 the one-shot run finishes in seconds, before they first fire, and its
 database role could not write anyway.
 
-To switch to phase 2 when cross-instance invalidation (Redis) lands: set
-`JOBS_IN_PROCESS=0` on the backend, `WORKER_LOOP_ENABLED=1` on the worker,
-connect the worker's source (or `setup.sh --with-worker`), deploy both. The
-queue wave replaces the timers in `worker.ts` with Redis consumers.
+Every periodic run now takes a lease first (`Backend/lib/scheduler.ts`,
+`SET <prefix>lock:<job>:<slot> NX PX` in Redis): the daily backup, each
+digest interval and each monitor check runs in exactly one process, whichever
+of the API replicas and workers with that job enabled wins. If Redis cannot
+answer, the run is skipped and retried within the same slot; a missed run is
+preferred to a double run. The daily API backup is aligned to UTC days, so a
+redeploy no longer resets its timer.
+
+Leases stop double *runs*, not stale *caches*. Switch to phase 2 only when
+the data layer serves the collections these jobs read and write from Postgres
+on demand (monitors, monitor history, incidents, notifications, members and
+the module-level sweeps listed above, see
+[Known limits](../operations/known-limits.md#periodic-jobs-run-where-jobs_in_process-says-and-the-worker-waits)).
+Then set `JOBS_IN_PROCESS=0` on the backend (optional with Redis: the lease
+already prevents double runs), `WORKER_LOOP_ENABLED=1` on the worker, connect
+the worker's source (or `setup.sh --with-worker`), and deploy both.
 
 ## 11. Scaling
 
-**Keep `backend` at one replica until the Redis/data-layer wave lands.**
-This is not a tuning preference: with two replicas each process serves reads
-from its own in-memory copy, so users would see different data depending on
-which replica answers, and writes would overwrite each other. Rate limits,
-realtime streams and the event bus are per process too. `numReplicas: 1` is
-in `backend.railway.json`; do not raise it in the dashboard.
+**Keep `backend` at one replica until the data layer is shared.** With
+`REDIS_URL` set, the stateless parts are already replica-safe: rate-limit
+buckets, the `/api/_events` bus, the `/api/stream` realtime hub (messages and
+notifications) and job leases are shared through Redis. What is not: each
+process still serves reads from its own in-memory copy of the collections, so
+users would see different data depending on which replica answers, and writes
+would overwrite each other. Sessions are part of that: one created on replica
+A is unknown to replica B. `numReplicas: 1` is in `backend.railway.json`; do
+not raise it in the dashboard.
+
+Raise replicas above 1 only when **all** of these hold:
+
+1. The data layer serves members, sessions, tasks, notifications and every
+   other collection that changes at runtime from Postgres on demand (or
+   invalidates across processes), so no replica serves a stale copy. Sessions
+   use `Backend/auth/sessionStore.ts` (Postgres or the Redis implementation).
+2. The backend volume is gone. A Railway volume attaches to one replica only
+   and forces stop-then-start deploys. It holds the local audit JSONL copy,
+   which is redundant once `audit_entries` and the R2 archive are the record.
+3. `REDIS_URL` is set and `GET /api/ready` reports `"redis": "up"`.
+4. `EXPECT_REPLICAS` is set to the new count on the backend, so a replica
+   without Redis refuses to boot and a Redis outage fails readiness.
+
+Then raise `numReplicas` in `backend.railway.json` (config as code) and
+deploy. With more than one replica, a Redis outage refuses sign-in, recovery
+and second-factor checks (`503 rate_limit_unavailable`) and skips periodic
+jobs. Everything else keeps working: the general API limiter falls back to
+per-replica buckets, and events reach clients on the publishing replica only.
+See [Rate limiting](../security/CONTROLS.md#when-redis-is-down).
 
 - **Deploys are stop-then-start** for the backend because of its volume, so
   there is a short gap (typically 20–60 s: the new process hydrates, then
@@ -586,7 +622,9 @@ in `backend.railway.json`; do not raise it in the dashboard.
 - `models` can be scaled vertically; it has no shared state besides R2.
 - `cron`: one run at a time (Railway skips a run if the previous one is
   still going).
-- Postgres: vertical (plan limits); Redis: not used yet.
+- Postgres: vertical (plan limits). Redis: small; keys expire (rate-limit
+  buckets after a full refill, job leases after two intervals), pub/sub holds
+  nothing. Redis 7 or later.
 
 ## 12. Backups and restore
 

@@ -8,9 +8,21 @@ limit is, why, and what to do about it.
 Every backend process loads all collections into memory at boot and serves
 reads from there ([ADR 0003](../architecture/adr/0003-postgres-jsonb-collections.md)).
 There is no cross-instance invalidation yet, so two replicas would each see
-only their own writes and diverge. Rate-limit buckets, the event bus and the
-realtime streams are per process too. Stay at one replica (the
-Compose default) and scale vertically.
+only their own writes and diverge, and a session created on one replica is
+unknown to the other. Stay at one replica (the Compose default) and scale
+vertically.
+
+With `REDIS_URL` set, the stateless parts are already shared
+([ADR 0009](../architecture/adr/0009-redis-for-shared-runtime-state.md)):
+rate-limit buckets, the event bus behind `/api/_events`, the realtime hub
+behind `/api/stream`, and periodic-job leases. Without `REDIS_URL` all four
+are per process, as before. The conditions for more than one replica are in
+[Railway: Scaling](../deploy/RAILWAY.md#11-scaling).
+
+Pub/sub is fire-and-forget. A replica that is disconnected from Redis when an
+event is published does not receive it; SSE clients replay recent events by
+`Last-Event-ID` from whichever replica they reconnect to, best effort (each
+replica keeps the last 500 events it saw).
 One-shot commands that write data (`bootstrap-owner`) must run with the
 backend stopped for the same reason. See the
 [runbook scaling notes](../deploy/RUNBOOK.md#5-scaling-notes).
@@ -24,7 +36,14 @@ service runs `worker.ts --once backup,drill`, and Compose has
 `make backup` for database dumps. Monitors and digests write collections, so
 they must stay in the API process until cross-instance invalidation exists;
 `worker.ts` refuses its long-running mode in production unless
-`WORKER_LOOP_ENABLED=1`. See [Railway: Jobs](../deploy/RAILWAY.md#10-jobs-where-each-periodic-job-runs).
+`WORKER_LOOP_ENABLED=1`. Each run takes a lease first (Redis `SET NX PX` with
+`REDIS_URL`), so a job never runs twice even when several processes have it
+enabled. A lease does not stop the worker from writing over rows the API
+holds in memory. `WORKER_LOOP_ENABLED=1` becomes safe once the data layer
+serves monitors, monitor history, incidents, notifications and members from
+Postgres on demand, and moves the module-level sweeps (sessions, JIT grants,
+tokens) off in-memory state. While Redis is unreachable, runs are skipped,
+not run unguarded. See [Railway: Jobs](../deploy/RAILWAY.md#10-jobs-where-each-periodic-job-runs).
 
 ## R2 bucket locks are not S3 Object Lock COMPLIANCE
 

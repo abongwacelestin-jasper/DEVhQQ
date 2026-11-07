@@ -130,4 +130,4 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 Usually Compose or edge settings (read by `docker-compose.yml`, the Caddyfile
 or scripts, not by the Node/Python code).
 
-`ACME_EMAIL` · `DEVHQ_DOMAIN` · `DEVHQ_IMAGE_PREFIX` · `DEVHQ_SECRETS_GID` · `DEVHQ_TAG` · `EDGE_BIND` · `EDGE_HTTPS_PORT` · `EDGE_HTTP_PORT` · `EDGE_MAX_BODY_SIZE` · `HSTS_VALUE` · `MINIO_ENABLE_SSE` · `S3_PUBLIC_HOST` · `WORKER_JOBS`
+`ACME_EMAIL` · `DEVHQ_DOMAIN` · `DEVHQ_IMAGE_PREFIX` · `DEVHQ_SECRETS_GID` · `DEVHQ_TAG` · `EDGE_BIND` · `EDGE_HTTPS_PORT` · `EDGE_HTTP_PORT` · `EDGE_MAX_BODY_SIZE` · `EXPECT_REPLICAS` · `HSTS_VALUE` · `MINIO_ENABLE_SSE` · `REDIS_COMMAND_TIMEOUT_MS` · `REDIS_KEY_PREFIX` · `REDIS_URL` · `S3_PUBLIC_HOST` · `WORKER_JOBS`
