@@ -191,7 +191,7 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
 | `GET` | `/api/audit` | Audit trail, newest first (limit, sensitive=1, actor, action) | session | Administration ≥ view | 401 403 429 | [security.routes.ts:18](../../Backend/routes/security.routes.ts#L18) |
-| `GET` | `/api/audit/verify` | Recompute and verify the audit hash chain | session | Administration ≥ view | 401 403 429 | [security.routes.ts:37](../../Backend/routes/security.routes.ts#L37) |
+| `GET` | `/api/audit/verify` | Recompute and verify the audit hash chain across boots | session | Administration ≥ view | 401 403 429 | [security.routes.ts:37](../../Backend/routes/security.routes.ts#L37) |
 | `GET` | `/api/security/posture` | Live security posture across the six pillars | session | Administration ≥ view | 401 403 429 | [security.routes.ts:46](../../Backend/routes/security.routes.ts#L46) |
 | `GET` | `/api/security/rate-limits` | Most-drained rate-limit buckets | session | Administration ≥ view | 401 403 429 | [security.routes.ts:78](../../Backend/routes/security.routes.ts#L78) |
 

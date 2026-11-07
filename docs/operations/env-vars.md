@@ -36,7 +36,7 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `DATABASE_SSL` | `db/pool.ts` |  |  |  | yes |
 | `DATABASE_SSL_CA` | `db/pool.ts` |  |  |  | yes |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | `db/pool.ts` |  |  |  |  |
-| `DATABASE_URL` | `db/boot.ts`<br>`db/migrate.ts`<br>`db/smoke-pg.ts`<br>`scripts/smoke.ts` |  |  | yes | yes |
+| `DATABASE_URL` | `db/boot.ts`<br>`db/migrate.ts`<br>`db/smoke-pg.ts`<br>`scripts/smoke.ts`<br>`scripts/verify-audit.ts` |  |  | yes | yes |
 | `DATA_ENCRYPTION_KEY` | `config/env.ts`<br>`domain/engineering/secrets.ts`<br>`resilience/encryption.ts` |  |  | yes | yes |
 | `DATA_ENCRYPTION_KEYS_PREVIOUS` | `config/env.ts` |  |  |  | yes |
 | `DEMO_DISABLED` | `store/db.ts` |  |  |  | yes |

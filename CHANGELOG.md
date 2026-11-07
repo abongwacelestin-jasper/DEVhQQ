@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **One audit chain across restarts.** Each boot verifies the durable store
+  (`audit_entries` with `DATABASE_URL`, else `AUDIT_LOG_FILE`) and continues it.
+  `seq` carries on and `prevHash` is the last stored hash, behind an
+  `audit.chain_resumed` marker. An unreadable or broken store is recorded as a
+  sensitive `audit.chain_discontinuity`; a boot never starts a fresh genesis
+  silently. `GET /api/audit/verify` now also re-reads the store across every
+  boot and returns `live`, `store` and `continuity` alongside `ok` and
+  `brokenAt`. Data written by v2.0.0 still verifies. See the ADR 0008 addendum.
+- `Backend/scripts/verify-audit.ts`: offline end-to-end verifier for the audit
+  file, a `row_to_json` export of `audit_entries`, archived batches, or the
+  database (`--database`); reports the first break.
+
+### Fixed
+
+- An audit entry appended by an event-bus subscriber could be stored before the
+  entry that triggered it (file, `audit_entries`, archive). Writes and bus
+  events now follow chain order.
+- `npm run smoke:pg` signs in as a `cli` client again (it got no body token
+  since v2.0.0's cookie-only sessions).
+
 ## [2.0.0] - 2026-11-07
 
 Major version: browser sessions are cookie-only, so clients that read the session
