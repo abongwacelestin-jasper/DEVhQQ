@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -12,6 +12,8 @@ import {
   PartyPopperIcon,
   ShieldCheckIcon,
 } from 'lucide-react';
+import { api } from '../../api/client';
+import { errorMessage } from '../../components/work/apiState';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import { ProfileIllustration } from '../../components/illustrations/ProfileIllustration';
 import { useAuth, type Profile } from '../../contexts/AuthContext';
@@ -76,14 +78,24 @@ export function CompleteProfile() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const codes = useMemo(
-    () =>
-      Array.from(
-        { length: 8 },
-        (_, i) => `${((4821 + i * 1373) % 9000) + 1000}-${((7319 + i * 2087) % 9000) + 1000}`,
-      ),
-    [],
-  );
+  // Real one-time codes from the server (hashed there, shown only here, once).
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [codesError, setCodesError] = useState('');
+  const [codesAttempt, setCodesAttempt] = useState(0);
+  useEffect(() => {
+    if (step !== 3 || codes) return;
+    let alive = true;
+    setCodesError('');
+    api<{ codes: string[] }>('/api/auth/backup-codes', { method: 'POST' })
+      .then((r) => alive && setCodes(r.codes))
+      .catch(
+        (e: unknown) =>
+          alive && setCodesError(errorMessage(e, 'Backup codes could not be generated.')),
+      );
+    return () => {
+      alive = false;
+    };
+  }, [step, codes, codesAttempt]);
   if (!session || !role) return null;
 
   const initials =
@@ -106,6 +118,7 @@ export function CompleteProfile() {
     if (step === 1 && days.length === 0) return setError('Pick at least one working day.');
     if (step === 2 && p.skills.length === 0)
       return setError('Pick at least one skill so work can be routed to you.');
+    if (step === 3 && !codes) return setError('Wait for your backup codes, or try again.');
     if (step === 3 && !saved) return setError('Confirm you’ve stored your backup codes.');
     setStep((s) => s + 1);
   };
@@ -357,7 +370,7 @@ export function CompleteProfile() {
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard?.writeText(codes.join('\n'));
+                      if (codes) void navigator.clipboard?.writeText(codes.join('\n'));
                       toast.success('Backup codes copied');
                     }}
                     className="inline-flex items-center gap-1 text-[12px] font-medium text-accent hover:underline"
@@ -365,11 +378,35 @@ export function CompleteProfile() {
                     <CopyIcon className="h-3.5 w-3.5" /> Copy
                   </button>
                 </div>
-                <ul className="grid grid-cols-2 gap-1.5 rounded-lg border border-line bg-sunken/40 p-3 font-mono text-[12.5px] text-ink sm:grid-cols-4">
-                  {codes.map((c) => (
-                    <li key={c}>{c}</li>
-                  ))}
-                </ul>
+                {codesError ? (
+                  <p
+                    role="alert"
+                    className="rounded-md bg-bad-soft px-2.5 py-1.5 text-[12px] text-bad"
+                  >
+                    {codesError}{' '}
+                    <button
+                      type="button"
+                      className="font-semibold underline"
+                      onClick={() => setCodesAttempt((n) => n + 1)}
+                    >
+                      Try again
+                    </button>
+                  </p>
+                ) : !codes ? (
+                  <p role="status" className="text-[12.5px] text-muted">
+                    Generating your backup codes…
+                  </p>
+                ) : (
+                  <ul className="grid grid-cols-2 gap-1.5 rounded-lg border border-line bg-sunken/40 p-3 font-mono text-[12.5px] text-ink sm:grid-cols-4">
+                    {codes.map((c) => (
+                      <li key={c}>{c}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-[11.5px] text-muted">
+                  Use one on the sign-in code screen if you lose your authenticator. They are shown
+                  only now; you can generate a new set from Security at any time.
+                </p>
                 <label className="flex items-start gap-2 text-[12.5px] text-ink">
                   <input
                     type="checkbox"

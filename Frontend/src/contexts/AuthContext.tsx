@@ -88,6 +88,8 @@ interface AuthValue {
   signInPassword: (email: string, password: string) => Promise<SignInResult>;
   signInPasskey: () => Promise<SignInResult>;
   verifyMfa: (code: string, trust: boolean) => Promise<boolean>;
+  /** Second factor with a one-time backup code; resolves with the codes left, or null if refused. */
+  verifyBackup: (code: string) => Promise<number | null>;
   signNda: (name: string, commitment?: NdaCommitment) => Promise<SignInResult>;
   completeProfile: (p: Profile) => Promise<SignInResult>;
   updateProfile: (p: Partial<Profile>) => Promise<SignInResult>;
@@ -254,6 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInPassword: signIn.signInPassword,
       signInPasskey: signIn.signInPasskey,
       verifyMfa: signIn.verifyMfa,
+      verifyBackup: signIn.verifyBackup,
       signNda: onboard.signNda,
       completeProfile: onboard.completeProfile,
       updateProfile: onboard.updateProfile,
@@ -287,6 +290,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn.signInPassword,
       signIn.signInPasskey,
       signIn.verifyMfa,
+      signIn.verifyBackup,
       signIn.confirmEnrollment,
       authEvents,
       sessions,

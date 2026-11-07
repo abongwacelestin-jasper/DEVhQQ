@@ -6,6 +6,7 @@
  */
 import { test, expect, uid } from '../support/fixtures';
 import { signInViaApi } from '../support/auth';
+import { apiSession } from '../support/api';
 
 test.describe('Developer journey', () => {
   test('My work lists my tasks and a task moves through every status @smoke', async ({ page }) => {
@@ -75,8 +76,8 @@ test.describe('Developer journey', () => {
     expect((await page.request.patch('/api/team/m12', { data: { role: 'Tester' } })).status()).toBe(403);
   });
 
-  test('“Request access” on the no-access page reaches an admin', async ({ page }) => {
-    test.fail(true, 'QA-010: request is only written to the tab’s local event list; no API call, no admin sees it');
+  test('“Request access” on the no-access page reaches an admin', async ({ page, baseURL }) => {
+    // QA-010 is fixed: the request is posted to /api/access/requests and admins are notified.
     await signInViaApi(page, 'developer', '/audit');
     const calls: string[] = [];
     page.on('request', (r) => r.method() !== 'GET' && r.url().includes('/api/') && calls.push(r.url()));
@@ -84,6 +85,10 @@ test.describe('Developer journey', () => {
     await page.getByRole('button', { name: 'Request access' }).click();
     await expect(page.getByText('Request sent')).toBeVisible();
     expect(calls, 'an API call records the request').not.toEqual([]);
+    const admin = await apiSession(baseURL!, 'admin');
+    const inbox = await (await admin.get('/api/notifications')).json();
+    expect(JSON.stringify(inbox), 'the Owner is notified').toContain('requested access to /audit');
+    await admin.dispose();
   });
 
   test('reads docs and edits one it is allowed to; the edit survives a reload', async ({ page }) => {

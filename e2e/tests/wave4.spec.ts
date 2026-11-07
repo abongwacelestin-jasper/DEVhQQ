@@ -198,7 +198,7 @@ test.describe('@wave4 engineering and ML (unconfigured integrations)', () => {
   test('the assistant says it is unavailable instead of inventing an answer', async ({ page }) => {
     await signInViaApi(page, 'admin');
     await page.getByRole('button', { name: 'Ask DevHQ' }).click();
-    test.fail(true, 'QA-031: the panel sends scope {products, range}; the API 422s and the raw validation message is shown');
+    // QA-031 is fixed: the panel sends the server's scope shape.
     const q = page.getByRole('textbox', { name: 'Ask a question' });
     await q.fill('What is blocking the RenewBerry release?');
     await q.press('Enter');

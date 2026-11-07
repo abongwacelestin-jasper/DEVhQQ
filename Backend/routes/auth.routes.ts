@@ -86,6 +86,12 @@ import {
 import { config } from '../config/env.ts';
 import { HttpError, type Member, type SignInRecord } from '../types.ts';
 import { randomToken } from '../security/crypto.ts';
+import {
+  BACKUP_CODE_COUNT,
+  consumeBackupCode,
+  generateBackupCodes,
+  remainingBackupCodes,
+} from '../security/backupCodes.ts';
 
 const MAX_FAILURES = 5;
 const LOCK_MS = 15 * 60_000;
@@ -96,6 +102,7 @@ const signInBody = v.object({
   password: v.string({ min: 1, max: 512, trim: false }),
 });
 const totpBody = v.object({ code: v.string({ pattern: /^\d{6}$/ }) });
+const backupBody = v.object({ code: v.string({ pattern: /^[A-Za-z0-9]{4}[\s-]?[A-Za-z0-9]{4}$/ }) });
 const demoBody = v.object({
   role: v.enumOf(demoAccounts.map((a) => a.key) as [string, ...string[]]),
 });
@@ -660,6 +667,87 @@ export function registerAuthRoutes(r: Router) {
         requestId: ctx.requestId,
       });
       return deliver(ctx, token, cookieAge, { ok: true, member: publicMember(member) });
+    },
+  );
+
+  r.add(
+    'POST',
+    '/api/auth/mfa/backup',
+    {
+      summary: 'Use a one-time backup code as the second factor (step 2 of 2)',
+      tag: 'auth',
+      auth: 'partial',
+      responses: [400, 401, 403, 422, 429],
+    },
+    authLimiter,
+    authenticatePartial,
+    accountLimiter,
+    (ctx) => {
+      const { code } = parse(backupBody, ctx.body);
+      const member = db.members.get(ctx.principal!.memberId)!;
+      const session = sessionOf(ctx);
+      if (!consumeBackupCode(member, code)) {
+        audit.append({
+          actor: member.id,
+          action: 'auth.mfa_failed',
+          target: 'backup code',
+          sensitive: true,
+          requestId: ctx.requestId,
+        });
+        throw new HttpError(401, 'mfa_invalid', 'Code is incorrect or already used');
+      }
+      const { token } = markVerified(session);
+      recordSignIn(member, ctx, 'password', 'success');
+      const remaining = remainingBackupCodes(member);
+      audit.append({
+        actor: member.id,
+        action: 'auth.mfa_ok',
+        target: `backup code · ${remaining} left`,
+        sensitive: true,
+        requestId: ctx.requestId,
+      });
+      return deliver(ctx, token, cookieAge, {
+        ok: true,
+        member: publicMember(member),
+        backupCodesRemaining: remaining,
+      });
+    },
+  );
+
+  r.add(
+    'GET',
+    '/api/auth/backup-codes',
+    { summary: 'How many unused backup codes you have', tag: 'auth', responses: [401, 403] },
+    authenticate,
+    requireSession,
+    (ctx) => ({ remaining: remainingBackupCodes(db.members.get(ctx.principal!.memberId)!) }),
+  );
+
+  r.add(
+    'POST',
+    '/api/auth/backup-codes',
+    {
+      summary: 'Generate a new set of one-time backup codes — returned once, replaces the old set (step-up)',
+      tag: 'auth',
+      responses: [401, 403, 429],
+    },
+    authLimiter,
+    authenticate,
+    requireSession,
+    requireStepUp(),
+    (ctx) => {
+      const member = db.members.get(ctx.principal!.memberId)!;
+      const replaced = remainingBackupCodes(member);
+      const codes = generateBackupCodes(member);
+      audit.append({
+        actor: member.id,
+        action: 'auth.backup_codes_generated',
+        target: `${BACKUP_CODE_COUNT} codes${replaced ? ` · ${replaced} unused replaced` : ''}`,
+        sensitive: true,
+        requestId: ctx.requestId,
+      });
+      ctx.status = 201;
+      return { codes, count: codes.length };
     },
   );
 

@@ -17,9 +17,14 @@ import type { AssistantAnswer } from '../../data/assistant';
  * disables streaming for the rest of the page's life.
  */
 
+/**
+ * Mirrors the server's `askBody.scope`: at most one product and/or one project.
+ * Omit both to ask across every product the caller can read (the server scopes
+ * the context to the caller either way). Unknown keys are refused with 422.
+ */
 export interface AskScope {
-  products?: string[];
-  range?: string;
+  product?: string;
+  projectId?: string;
 }
 
 let streamSupported = true;

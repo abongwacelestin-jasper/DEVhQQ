@@ -41,7 +41,7 @@ test.describe('Tester journey', () => {
   });
 
   test('passing a task takes it out of the queue', async ({ page }) => {
-    test.fail(true, 'QA-011: Pass only adds a comment; the task stays “In review” and can be passed again');
+    // QA-011 is fixed: Pass moves the task to Done (server-confirmed) and records a comment.
     await signInViaApi(page, 'tester', '/test-queue');
     const pass = page.getByRole('button', { name: 'Pass', exact: true });
     await expect(pass.first()).toBeVisible();
@@ -97,22 +97,27 @@ test.describe('Operations journey', () => {
     await expect(page.getByText(note)).toBeVisible();
   });
 
-  test('“Post update” and “Escalate” reach a real channel', async ({ page }) => {
-    test.fail(true, 'QA-013: both only append a local timeline row and toast; no status page, chat or page-out exists');
+  test('incident timeline notes and status changes are stored on the server', async ({ page }) => {
+    // QA-013 is closed: the local-only "Post update" / "Escalate" buttons were removed in wave 4;
+    // every remaining incident action is written through the API.
     await signInViaApi(page, 'operations', '/incidents');
-    const calls: string[] = [];
-    page.on('request', (r) => r.method() !== 'GET' && r.url().includes('/api/') && calls.push(r.url()));
     await page.getByRole('button', { name: 'Declare incident' }).click();
     const modal = page.getByRole('dialog', { name: 'Declare an incident' });
     await modal.getByRole('textbox', { name: /What’s happening/ }).fill(`Escalation check ${uid()}`);
     await modal.getByRole('textbox', { name: /^Impact/ }).fill('Internal check, no customer impact.');
     await modal.getByRole('button', { name: /^Declare SEV/ }).click();
     await expect(page).toHaveURL(/\/incidents\/[\w-]+$/);
-    calls.length = 0;
-    await page.getByRole('button', { name: 'Post update' }).click();
-    await page.getByRole('button', { name: 'Escalate' }).click();
-    await page.waitForTimeout(500);
-    expect(calls.length, 'post update + escalate call the API').toBeGreaterThanOrEqual(2);
+    const id = page.url().split('/').pop()!;
+    const note = `Paged the on-call ${uid()}`;
+    await page.getByRole('textbox', { name: 'Timeline note' }).fill(note);
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: /Mitigated/ }).click();
+    await expect
+      .poll(async () => (await (await page.request.get(`/api/incidents/${id}`)).json()).status)
+      .toBe('monitoring');
+    await page.reload();
+    await expect(page.getByText(note).first()).toBeVisible();
+    expect(JSON.stringify(await (await page.request.get(`/api/incidents/${id}`)).json())).toContain(note);
   });
 
   test('sees deployments across all three products', async ({ page }) => {

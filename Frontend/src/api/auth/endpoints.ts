@@ -51,6 +51,14 @@ export const signInDemoRole = (role: string) =>
 export const verifyTotp = (code: string) =>
   api<AuthenticatedResponse>('/api/auth/mfa/totp', { method: 'POST', body: { code }, ...silent });
 
+/** A one-time backup code as the second factor; burnt on success. */
+export const verifyBackupCode = (code: string) =>
+  api<AuthenticatedResponse & { backupCodesRemaining?: number }>('/api/auth/mfa/backup', {
+    method: 'POST',
+    body: { code },
+    ...silent,
+  });
+
 export const stepUpTotp = (code: string) =>
   api<StepUpResponse>('/api/auth/step-up', { method: 'POST', body: { code }, ...silent });
 

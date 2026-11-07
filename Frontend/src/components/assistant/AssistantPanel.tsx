@@ -97,11 +97,8 @@ export function AssistantPanel() {
   }, [turns]);
 
   const scope: AskScope = useMemo(
-    () => ({
-      products: selected === 'all' ? allowedProducts.map((p) => p.id) : [selected],
-      range: label,
-    }),
-    [selected, allowedProducts, label],
+    () => (selected === 'all' ? {} : { product: selected }),
+    [selected],
   );
 
   const patch = (id: string, p: Partial<Turn>) =>

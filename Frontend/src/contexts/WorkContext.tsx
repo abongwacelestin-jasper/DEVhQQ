@@ -56,7 +56,8 @@ interface WorkValue {
   subtasks: Subtask[];
   timeLogs: TimeLog[];
   createTask: (input: NewTaskInput) => Promise<string>;
-  updateTask: (key: string, patch: TaskPatch, note?: string) => void;
+  /** Optimistic; resolves true once the API accepted it, false if it was refused or nothing changed. */
+  updateTask: (key: string, patch: TaskPatch, note?: string) => Promise<boolean>;
   addComment: (key: string, text: string) => void;
   addSubtask: (key: string, title: string) => void;
   toggleSubtask: (id: string) => void;
@@ -207,13 +208,13 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateTask = useCallback(
-    (key: string, patch: TaskPatch, note?: string) => {
+    (key: string, patch: TaskPatch, note?: string): Promise<boolean> => {
       const current = tasks.find((t) => t.key === key);
-      if (!current) return;
+      if (!current) return Promise.resolve(false);
       const changed = (Object.keys(patch) as (keyof TaskPatch)[]).filter(
         (field) => patch[field] !== undefined && patch[field] !== current[field],
       );
-      if (!changed.length) return;
+      if (!changed.length) return Promise.resolve(false);
 
       changed.forEach((field) => {
         const from = current[field];
@@ -240,8 +241,12 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
           field === 'due' ? toApiDate(String(patch.due)) : patch[field],
         ]),
       );
-      api<ApiTask>(`/api/tasks/${encodeURIComponent(key)}`, { method: 'PATCH', body }).catch((e) =>
-        failed('Saving the change', e),
+      return api<ApiTask>(`/api/tasks/${encodeURIComponent(key)}`, { method: 'PATCH', body }).then(
+        () => true,
+        (e) => {
+          failed('Saving the change', e);
+          return false;
+        },
       );
     },
     [tasks, record, failed],

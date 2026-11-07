@@ -6,11 +6,13 @@
  * Needs fresh server state: with E2E_BASE_URL against a used server it reports
  * "already onboarded" as a failure on purpose.
  */
+import { request as playwrightRequest } from '@playwright/test';
 import { test, expect } from '../support/fixtures';
-import { personas } from '../support/personas';
+import { DEMO_PASSWORD, personas } from '../support/personas';
 import { demoButton } from '../support/auth';
 
 test('a first-time Tester signs the NDA and completes the profile on screen', async ({ page }) => {
+  let backupCodes: string[] = [];
   await page.goto('/sign-in');
   await demoButton(page, 'tester').click();
   await expect(page).toHaveURL(/\/onboarding\/nda$/);
@@ -46,8 +48,10 @@ test('a first-time Tester signs the NDA and completes the profile on screen', as
     if ((await skill.isVisible().catch(() => false)) && (await skill.getAttribute('aria-pressed')) !== 'true') await skill.click();
     const stored = page.getByRole('checkbox', { name: /stored these codes/ });
     if ((await stored.isVisible().catch(() => false)) && !(await stored.isChecked())) {
-      // QA-026: these "backup codes" are a fixed formula, identical for every member, never stored server-side.
-      test.info().annotations.push({ type: 'defect', description: `QA-026 backup codes shown: ${(await page.getByRole('listitem').filter({ hasText: /^\d{4}-\d{4}$/ }).allTextContents()).join(' ')}` });
+      // QA-026 is fixed: ten random codes from the server (hashed there), each usable once.
+      const items = page.getByRole('listitem').filter({ hasText: /^[a-z2-9]{4}-[a-z2-9]{4}$/ });
+      await expect(items).toHaveCount(10);
+      backupCodes = await items.allTextContents();
       await stored.check();
     }
     const btn = page.getByRole('button', { name: /^(Continue|Finish)/ });
@@ -58,5 +62,14 @@ test('a first-time Tester signs the NDA and completes the profile on screen', as
   await expect(page).toHaveURL(/\/test-queue$/);
   const ob = await (await page.request.get('/api/onboarding')).json();
   expect(ob.stage).toBe('ready');
+
+  // A backup code from that screen completes a real password sign-in, once.
+  expect(backupCodes).toHaveLength(10);
+  for (const attempt of [200, 401]) {
+    const api = await playwrightRequest.newContext({ baseURL: new URL(page.url()).origin });
+    expect((await api.post('/api/auth/sign-in', { data: { email: personas.tester.email, password: DEMO_PASSWORD } })).status()).toBe(200);
+    expect((await api.post('/api/auth/mfa/backup', { data: { code: backupCodes[0] } })).status()).toBe(attempt);
+    await api.dispose();
+  }
   expect(ob.nda.signed).toBe(true);
 });

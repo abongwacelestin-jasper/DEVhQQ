@@ -28,6 +28,8 @@ export interface Member {
   passwordHash: string;
   /** Base32 TOTP secret, encrypted at rest in a real deployment. */
   totpSecret?: string;
+  /** One-time backup codes (SHA-256 hashes only); see security/backupCodes.ts. */
+  backupCodes?: { hash: string; usedAt?: string }[];
   passkeys: PasskeyCredential[];
   failedLogins: number;
   lockedUntil?: number;

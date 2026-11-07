@@ -17,6 +17,7 @@ import { ApiTokens } from '../components/security/ApiTokens';
 import { SecurityFramework } from '../components/security/SecurityFramework';
 import { SessionsPanel } from '../components/security/SessionsPanel';
 import { TotpEnrollment } from '../components/security/TotpEnrollment';
+import { BackupCodes } from '../components/security/BackupCodes';
 import { useReauth } from '../contexts/ReauthContext';
 import { api } from '../api/client';
 import { listSignIns } from '../api/auth/endpoints';
@@ -238,6 +239,7 @@ export function SecurityCenter() {
           </Panel>
           <ApiTokens />
           <TotpEnrollment />
+          <BackupCodes />
         </div>
       </div>
 

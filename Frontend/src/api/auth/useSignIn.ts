@@ -14,6 +14,7 @@ import {
   passkeyCeremony,
   signInDemoRole,
   signInWithPassword,
+  verifyBackupCode,
   verifyTotp,
 } from './endpoints';
 import type { SessionState } from './useSessionState';
@@ -102,6 +103,23 @@ export function useSignIn(
     [hydrate, identityRef, log],
   );
 
+  /** Step 2 of 2 with a one-time backup code. Resolves with the codes left, or null if refused. */
+  const verifyBackup = useCallback(
+    async (code: string): Promise<number | null> => {
+      if (!identityRef.current) return null;
+      let left: number;
+      try {
+        left = (await verifyBackupCode(code)).backupCodesRemaining ?? 0;
+      } catch {
+        return null;
+      }
+      await hydrate({ method: identityRef.current?.method });
+      log('Verified MFA', 'Backup code', true);
+      return left;
+    },
+    [hydrate, identityRef, log],
+  );
+
   /**
    * Passkey as the whole sign-in (no session) or as the second factor (password-only session).
    * Resolves with an error message instead of throwing so screens can show it inline.
@@ -141,6 +159,7 @@ export function useSignIn(
     signInDemo,
     signInPassword,
     verifyMfa,
+    verifyBackup,
     signInPasskey,
     confirmEnrollment,
   };

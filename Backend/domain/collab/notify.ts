@@ -87,7 +87,7 @@ function viewerOf(m: Member) {
   return { memberId: m.id, role: m.role, products: m.products };
 }
 
-function asPrincipal(m: Member): Principal {
+export function asPrincipal(m: Member): Principal {
   return { ...viewerOf(m), sessionId: '', verifiedAt: 0, elevations: [] };
 }
 

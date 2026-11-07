@@ -58,14 +58,19 @@ export function TestQueue() {
   const queue = scoped.filter((t) => t.status === 'review');
   const bugs = scoped.filter((t) => t.type === 'bug' && t.status !== 'done');
 
-  const pass = (key: string) => {
+  // Announce only what the server accepted; a refusal is reported by WorkContext and rolled back.
+  const pass = async (key: string) => {
+    if (!(await updateTask(key, { status: 'done' }, 'QA passed on staging'))) return;
     addComment(key, 'QA passed on staging — acceptance criteria verified.');
     toast.success(`${key} passed testing`, {
-      description: 'Comment recorded with your name and time.',
+      description: 'Moved to Done; comment recorded with your name and time.',
     });
   };
-  const fail = (key: string) => {
-    updateTask(key, { status: 'in-progress' }, 'QA failed — sent back to the assignee');
+  const fail = async (key: string) => {
+    if (
+      !(await updateTask(key, { status: 'in-progress' }, 'QA failed — sent back to the assignee'))
+    )
+      return;
     toast.error(`${key} sent back`, { description: 'Status change recorded in the task history.' });
   };
 
