@@ -144,6 +144,9 @@ export function useSessionState() {
         return null;
       }
       const { identity: next } = result;
+      // Directory and capabilities don't depend on the onboarding answer: start them now, in
+      // parallel with it, instead of after it (one round trip less before the app has data).
+      if (next.verified) void loadDirectory();
       // Onboarding is part of "where am I": load it before adopting the session so routes never flash.
       const ob = next.verified ? await getOnboarding() : undefined;
       bindCurrentMember(next.member.id);
@@ -158,7 +161,6 @@ export function useSessionState() {
           ? { locked: true, lockedAt: l.lockedAt ?? new Date().toISOString() }
           : { locked: false },
       );
-      if (next.verified) void loadDirectory();
       return next;
     },
     [endLocalSession, loadDirectory],
