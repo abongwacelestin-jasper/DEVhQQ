@@ -178,8 +178,8 @@ export async function runInSandbox(
     if (path.endsWith('.json')) return `module.exports = ${model.getValue()};`;
     const getter =
       model.getLanguageId() === 'javascript'
-        ? monaco.languages.typescript.getJavaScriptWorker
-        : monaco.languages.typescript.getTypeScriptWorker;
+        ? monaco.typescript.getJavaScriptWorker
+        : monaco.typescript.getTypeScriptWorker;
     const worker = await getter();
     const client = await worker(model.uri);
     const out = (await client.getEmitOutput(model.uri.toString())) as EmitOutput;

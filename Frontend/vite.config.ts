@@ -10,30 +10,79 @@ import { SANDBOX_BOOTSTRAP } from './src/utils/codeRunner';
  * SPA itself needs:
  *  - the code sandbox's srcdoc bootstrap, allowed by hash (srcdoc frames inherit this policy),
  *  - `worker-src blob:` for sandbox and editor workers,
- *  - Google Fonts (index.css) and the Monaco loader on cdn.jsdelivr.net until both are self-hosted.
- * The edge should send the same policy as a header; this <meta> is the fallback
- * when the static host doesn't (frame-ancestors can only be enforced by a header).
+ *  - the few third-party origins listed in THIRD_PARTY below.
+ * Fonts and the Monaco editor are self-hosted (src/assets/fonts, monaco-editor in the
+ * bundle), so styles, fonts and editor code are 'self' only.
+ * The edge should send the same policy as a header (infra/frontend/Caddyfile, keep the
+ * two in step); this <meta> is the fallback when the static host doesn't
+ * (frame-ancestors can only be enforced by a header).
  */
 const sandboxHash = `'sha256-${createHash('sha256').update(SANDBOX_BOOTSTRAP).digest('base64')}'`;
-const MONACO_CDN = 'https://cdn.jsdelivr.net';
+
+// ── Third-party origins: the only place to add one ──────────────────────────
+// Cloudflare Turnstile (sign-in, forgot password, accept invite): the widget script
+// and its challenge iframe. Owned by the Turnstile change; mirrored in the Caddyfile.
+const TURNSTILE = 'https://challenges.cloudflare.com';
+const THIRD_PARTY = {
+  script: [TURNSTILE],
+  frame: [TURNSTILE],
+  img: ['https://avatars.githubusercontent.com'],
+  connect: ['https://api.github.com'],
+};
+const extra = (list: string[]) => (list.length ? ` ${list.join(' ')}` : '');
 
 function csp(mode: 'build' | 'dev'): string {
   const dev = mode === 'dev';
   return [
     "default-src 'self'",
     // Dev only: @vitejs/plugin-react injects an inline refresh preamble.
-    `script-src 'self' ${dev ? "'unsafe-inline'" : sandboxHash} ${MONACO_CDN}`,
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ${MONACO_CDN}`,
-    `font-src 'self' data: https://fonts.gstatic.com ${MONACO_CDN}`,
-    "img-src 'self' data: blob: https://avatars.githubusercontent.com",
-    `connect-src 'self' https://api.github.com ${MONACO_CDN}${dev ? ' ws://127.0.0.1:5173 ws://localhost:5173' : ''}`,
+    `script-src 'self' ${dev ? "'unsafe-inline'" : sandboxHash}${extra(THIRD_PARTY.script)}`,
+    // 'unsafe-inline' styles: Monaco, framer-motion and sonner set style attributes at runtime.
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
+    `img-src 'self' data: blob:${extra(THIRD_PARTY.img)}`,
+    `connect-src 'self'${extra(THIRD_PARTY.connect)}${dev ? ' ws://127.0.0.1:5173 ws://localhost:5173' : ''}`,
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
-    "frame-src 'self'",
+    `frame-src 'self'${extra(THIRD_PARTY.frame)}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
   ].join('; ');
+}
+
+/**
+ * Preloads the latin Inter file from index.html, so the text font is requested with
+ * the HTML instead of after the stylesheet is parsed. The name is content-hashed, so
+ * it is read from the bundle.
+ */
+function preloadCriticalFont(): Plugin {
+  return {
+    name: 'devhq-preload-font',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        const font = Object.keys(ctx.bundle ?? {}).find((f) =>
+          /inter-latin-wght-normal-[\w-]+\.woff2$/.test(f),
+        );
+        if (!font) return [];
+        return [
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'preload',
+              href: `/${font}`,
+              as: 'font',
+              type: 'font/woff2',
+              crossorigin: '',
+            },
+            injectTo: 'head',
+          },
+        ];
+      },
+    },
+  };
 }
 
 /** Fills the CSP <meta> in builds; in dev the policy is sent as a header instead (see server.headers). */
@@ -64,11 +113,43 @@ const devHeaders = {
 };
 
 // https://vitejs.dev/config/
+/**
+ * Chunk budget. Every chunk must stay under 500 kB (minified) except the Monaco
+ * editor and its language workers, which only load in the code workspace and
+ * are several MB by nature. Replaces Vite's blanket size warning (which cannot
+ * exempt them) with a check that fails the build, so a regression in the entry
+ * or a page chunk cannot slip through as a warning.
+ */
+const CHUNK_BUDGET = 500_000;
+function chunkBudget(): Plugin {
+  return {
+    name: 'devhq-chunk-budget',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      for (const c of Object.values(bundle)) {
+        if (c.type !== 'chunk' || c.code.length <= CHUNK_BUDGET) continue;
+        if (c.moduleIds.some((id) => id.includes('/node_modules/monaco-editor/'))) continue;
+        this.error(`${c.fileName} is ${c.code.length} bytes, over the ${CHUNK_BUDGET} budget`);
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), cspMeta()],
+  plugins: [react(), cspMeta(), preloadCriticalFont(), chunkBudget()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+    },
+  },
+  // Monaco's language workers (src/components/code/monacoLoader.ts) are module workers.
+  worker: { format: 'es', plugins: () => [chunkBudget()] },
+  build: {
+    // Enforced per chunk by chunkBudget() above; the editor's chunks are exempt there.
+    chunkSizeWarningLimit: 8_000,
+    rolldownOptions: {
+      // Build-speed diagnostics only (Monaco makes the build slower), not a size or code issue.
+      checks: { bundlerTimings: false },
     },
   },
   server: {
