@@ -10,7 +10,7 @@ import {
   MapPinIcon,
   ShieldCheckIcon,
 } from 'lucide-react';
-import { CodeInput } from './CodeInput';
+import { CodeInput, isCompleteCode } from './CodeInput';
 import { IdleClock } from './IdleClock';
 import { Avatar } from '../ui/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
@@ -57,7 +57,7 @@ export function LockScreen() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy || attempts >= 5) return;
-    if (code.length !== 6) {
+    if (!isCompleteCode(code)) {
       setInvalid(true);
       return;
     }
@@ -225,7 +225,7 @@ export function LockScreen() {
               <span className="font-medium text-bad">{passkeyError}</span>
             ) : invalid ? (
               <span className="font-medium text-bad">
-                {code.length && code.length < 6
+                {code.length && !isCompleteCode(code)
                   ? 'Enter all 6 digits.'
                   : `Code didn’t match · ${5 - attempts} left`}
               </span>

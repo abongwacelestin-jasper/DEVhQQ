@@ -26,7 +26,7 @@ export function safeHref(raw: string): string | null {
 
 // Order matters: code spans first so nothing inside them is formatted.
 const TOKEN =
-  /(`[^`\n]+`)|(\[[^\]\n]{1,200}\]\([^)\s]{1,2000}\))|(\*\*[^*\n]+\*\*)|(~~[^~\n]+~~)|((?:^|(?<=\s))[*_][^*_\n]+[*_](?=\s|$|[.,!?]))|(https?:\/\/[^\s<>()]+[^\s<>().,!?;:'"])|(mailto:[^\s<>()]+)|(@[A-Za-z][\w.-]*)|(\b(?:RB|BL|MA)-\d+\b)|(\bINC-\d+\b)|((?:^|(?<=\s))#\d{2,4}\b)/g;
+  /(`[^`\n]+`)|(\[[^\]\n]{1,200}\]\([^)\s]{1,2000}\))|(\*\*[^*\n]+\*\*)|(~~[^~\n]+~~)|((?:^|(?<=\s))[*_][^*_\n]+[*_](?=\s|$|[.,!?]))|(https?:\/\/[^\s<>()]+[^\s<>().,!?;:'"])|(mailto:[^\s<>()]+)|((?:^|(?<=[\s(]))@[A-Za-z][\w.-]*)|(\b(?:RB|BL|MA)-\d+\b)|(\bINC-\d+\b)|((?:^|(?<=\s))#\d{2,4}\b)/g;
 
 export interface RichTextOptions {
   /** Channel policy: when false, external links render as inert, struck-through text. */

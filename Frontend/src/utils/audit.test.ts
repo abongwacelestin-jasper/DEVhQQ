@@ -139,7 +139,7 @@ describe('exportAuditCsv', () => {
   // when the export is opened in Excel/Sheets (CSV/formula injection, OWASP).
   // Correct behaviour: cells starting with = + - @ (or tab/CR) are neutralised,
   // e.g. prefixed with a single quote.
-  it.fails('neutralises spreadsheet formulas in exported cells (F-FE-4)', async () => {
+  it('neutralises spreadsheet formulas in exported cells (F-FE-4)', async () => {
     exportAuditCsv([row('1', { target: '=HYPERLINK("http://evil.example","x")' })]);
     vi.useRealTimers();
     const lines = (await csvText()).split('\n');

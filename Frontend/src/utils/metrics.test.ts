@@ -107,7 +107,7 @@ describe('daysAgo', () => {
   // past two weeks, "Oct 2". Both return 0, so every API deployment is counted
   // as "today": DeployFrequencyChart puts them all in today's bar and the
   // overview's "failed in the last 7 days" counts failures of any age.
-  it.fails('understands the "Nd ago" labels produced by relative() (F-FE-1)', () => {
+  it('understands the "Nd ago" labels produced by relative() (F-FE-1)', () => {
     expect(daysAgo('3d ago')).toBe(3);
     expect(daysAgo(relative(addDays(NOW, -5)))).toBe(5);
     expect(daysAgo(relative(addDays(NOW, -20)))).toBeGreaterThanOrEqual(7);

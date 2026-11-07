@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowRightIcon, FingerprintIcon, LoaderCircleIcon, ShieldCheckIcon } from 'lucide-react';
 import { AuthLayout } from '../../components/auth/AuthLayout';
-import { CodeInput } from '../../components/auth/CodeInput';
+import { CodeInput, isCompleteCode } from '../../components/auth/CodeInput';
 import { SecurityIllustration } from '../../components/illustrations/SecurityIllustration';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDemoConfig } from '../../api/auth/useDemoConfig';
@@ -85,7 +85,7 @@ export function Verify() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    if (code.length !== 6) return setError('Enter all 6 digits.');
+    if (!isCompleteCode(code)) return setError('Enter all 6 digits.');
     setBusy(true);
     setError('');
     const ok = await verifyMfa(code, false);

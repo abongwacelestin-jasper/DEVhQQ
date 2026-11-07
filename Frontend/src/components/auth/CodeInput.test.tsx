@@ -127,7 +127,7 @@ describe('CodeInput', () => {
   // the middle collapses the gap: with "123456", clearing box 2 yields "13456"
   // and every later digit shifts one box left (box 2 now shows "3"). The user
   // sees digits they did not type move under the cursor.
-  it.fails('clearing a middle digit does not shift the digits after it (F-FE-6)', () => {
+  it('clearing a middle digit does not shift the digits after it (F-FE-6)', () => {
     render(<Harness initial="123456" />);
     fireEvent.change(screen.getByLabelText('Digit 2'), { target: { value: '' } });
     expect((screen.getByLabelText('Digit 3') as HTMLInputElement).value).toBe('3');

@@ -17,7 +17,7 @@ import {
   TerminalSquareIcon,
 } from 'lucide-react';
 import { useConsole } from '../../contexts/ConsoleContext';
-import { CodeInput } from '../../components/auth/CodeInput';
+import { CodeInput, isCompleteCode } from '../../components/auth/CodeInput';
 import { DevHQLogo } from '../../components/ui/DevHQLogo';
 import { ThemeToggle } from '../../components/layout/ThemeToggle';
 import { JsonView } from '../../components/console/JsonView';
@@ -162,7 +162,7 @@ export function ConsoleLogin() {
   );
 
   useEffect(() => {
-    if (step === 'code' && code.length === 6 && !busy) void submitCode(code);
+    if (step === 'code' && isCompleteCode(code) && !busy) void submitCode(code);
   }, [code, step, busy, submitCode]);
 
   const demoLogin = async (key: string) => {

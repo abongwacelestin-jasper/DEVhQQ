@@ -36,7 +36,11 @@ export function previousFingerprint(rows: AuditRow[], r: AuditRow) {
 }
 
 export function exportAuditCsv(rows: AuditRow[]) {
-  const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+  // Quote every cell, and neutralise spreadsheet formulas in user text (F-FE-4, OWASP CSV injection).
+  const esc = (s: string) => {
+    const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
   const csv = [
     'when,actor,action,target,area,source,sensitive,fingerprint',
     ...rows.map((r) =>

@@ -125,7 +125,7 @@ describe('buildSnippet', () => {
   // over the pretty-printed body, so the words true/false/null *inside string
   // values* are rewritten too: {"note":"true story"} becomes {"note": "True story"}.
   // The generated request then sends different data than the user typed.
-  it.fails('python: leaves the words true/false/null inside strings alone (F-FE-2)', () => {
+  it('python: leaves the words true/false/null inside strings alone (F-FE-2)', () => {
     const out = buildSnippet('python', { ...base, body: '{"note":"true or false, not null"}' });
     expect(out).toContain('"note": "true or false, not null"');
   });
@@ -133,7 +133,7 @@ describe('buildSnippet', () => {
   // FINDING F-FE-3: the PowerShell snippet wraps the URL in single quotes without
   // escaping, so a URL containing a quote (e.g. a search for "it's") produces a
   // broken command: -Uri 'http://…?q=it's'. PowerShell escapes ' as ''.
-  it.fails('powershell: escapes single quotes in the URL (F-FE-3)', () => {
+  it('powershell: escapes single quotes in the URL (F-FE-3)', () => {
     const out = buildSnippet('powershell', { ...base, url: "/api/tasks?q=it's" });
     expect(out).toContain("-Uri 'http://localhost:8080/api/tasks?q=it''s'");
   });

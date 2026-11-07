@@ -169,7 +169,7 @@ describe('RichText — mentions', () => {
   // assistant panel, AssistantPanel.tsx:411) "write to ada@example.com"
   // renders "@example.com" as a highlighted mention chip. Mentions should only
   // start at the beginning of a line or after whitespace, like #123 refs do.
-  it.fails('an email address is not split into text plus a mention', () => {
+  it('an email address is not split into text plus a mention', () => {
     const el = show('write to ada@example.com');
     expect(el.querySelector('span.font-medium')).toBeNull();
     expect(screen.getByText('write to ada@example.com')).toBeDefined();
