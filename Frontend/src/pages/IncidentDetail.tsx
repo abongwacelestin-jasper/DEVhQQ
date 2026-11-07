@@ -22,6 +22,7 @@ import { Button } from '../components/ui/Button';
 import { NotFound } from '../components/ui/NotFound';
 import { capitalize, incidentStatusTone, severityTone } from '../components/operations/IncidentRow';
 import { FirefighterIllustration } from '../components/illustrations/FirefighterIllustration';
+import { IncidentActions } from '../components/operations/IncidentActions';
 import { useIncidents } from '../contexts/IncidentContext';
 import { useReauth } from '../contexts/ReauthContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -337,9 +338,7 @@ export function IncidentDetail() {
         </Panel>
 
         <Panel title="Recovery">
-          <p className="px-3.5 py-2.5 text-[12px] text-muted">
-            Next steps aren’t recorded by the API yet. Use timeline notes to track actions.
-          </p>
+          <IncidentActions incidentId={incident.id} product={incident.product} />
           {deploy && !resolved && deploy.status !== 'rolled-back' && (
             <div className="border-t border-line px-3.5 py-2.5">
               <GuardedButton
