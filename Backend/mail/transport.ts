@@ -8,15 +8,43 @@
 
 import { logger } from '../lib/logger.ts';
 
+/**
+ * Category of a message: tagged at the provider (Resend `tags`) so bounces,
+ * complaints and volume can be read per email type. Lower-case, `[a-z0-9-]`.
+ */
+export type MailCategory =
+  | 'invite'
+  | 'password-reset'
+  | 'password-changed'
+  | 'sign-in-alert'
+  | 'mfa-enrolled'
+  | 'backup-codes-generated'
+  | 'backup-code-used'
+  | 'account-locked'
+  | 'access-request'
+  | 'task-assigned'
+  | 'incident'
+  | 'deployment-approval'
+  | 'offboarding-started'
+  | 'offboarding-completed'
+  | 'digest';
+
 export interface MailMessage {
   to: string;
   subject: string;
   text: string;
   html: string;
+  category?: MailCategory;
+  /**
+   * Deduplicates provider-side retries of the same logical message (Resend
+   * `Idempotency-Key`, kept 24 h). Derived from the event (e.g. the sign-in
+   * record id) when one exists; otherwise the transport generates one per send.
+   */
+  idempotencyKey?: string;
 }
 
 export interface MailTransport {
-  readonly name: 'console' | 'smtp' | 'memory';
+  readonly name: 'console' | 'smtp' | 'resend' | 'memory';
   send(msg: MailMessage): Promise<void>;
 }
 
@@ -36,6 +64,7 @@ export const consoleTransport: MailTransport = {
     logger.info('mail (console transport)', {
       to: maskEmail(msg.to),
       subject: msg.subject,
+      category: msg.category,
       text: redactSecrets(msg.text).slice(0, 2_000),
     });
   },

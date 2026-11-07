@@ -72,7 +72,7 @@ generate() {
 }
 
 GENERATED="session_secret data_encryption_key postgres_password app_db_password minio_root_user minio_root_password s3_access_key_id s3_secret_access_key models_s3_access_key_id models_s3_secret_access_key ml_service_token backup_encryption_key"
-EXTERNAL="session_secret_previous anthropic_api_key smtp_password github_app_private_key github_webhook_secret github_client_secret github_token"
+EXTERNAL="session_secret_previous anthropic_api_key smtp_password resend_api_key github_app_private_key github_webhook_secret github_client_secret github_token"
 
 if [[ "${1:-}" == "--rotate" ]]; then
   name=${2:?usage: gen-secrets.sh --rotate NAME}

@@ -13,6 +13,7 @@
  */
 
 import { hkdfSync } from 'node:crypto';
+import { loadMailConfig, mailEnvFromProcess, type MailConfig } from './mail.ts';
 
 export type NodeEnv = 'development' | 'test' | 'production';
 
@@ -73,6 +74,8 @@ export interface AppConfig {
   };
   /** Origins accepted in WebAuthn clientDataJSON. Same registrable domain as `rpId`. */
   webauthnOrigins: string[];
+  /** Transactional email: transport, sender and brand (config/mail.ts). */
+  mail: MailConfig;
 }
 
 function hexKey(name: string, raw: string): Buffer {
@@ -264,6 +267,7 @@ export function loadConfig(): AppConfig {
     storage: storageConfig(isProd),
     dataEncryption: loadDataEncryption(isProd, sessionSecret),
     webauthnOrigins,
+    mail: loadMailConfig(mailEnvFromProcess(), { isProd, appOrigin }),
   };
 }
 
@@ -293,6 +297,12 @@ export function publicConfig() {
       region: config.storage.region,
       buckets: config.storage.buckets,
     },
+    mail: {
+      transport: config.mail.transport,
+      from: config.mail.from,
+      appUrl: config.mail.brand.appUrl,
+      brand: config.mail.brand.name,
+    },
     secrets: {
       SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'dev fallback',
       SESSION_SECRET_PREVIOUS: config.sessionSecretPrevious ? 'set' : 'not set',
@@ -300,6 +310,7 @@ export function publicConfig() {
       S3_SECRET_ACCESS_KEY: config.storage.secretAccessKey ? 'set' : 'not set',
       DATA_ENCRYPTION_KEY: config.dataEncryption.source === 'env' ? 'set' : 'dev fallback',
       DATA_ENCRYPTION_KEYS_PREVIOUS: `${config.dataEncryption.previous.length} key(s)`,
+      RESEND_API_KEY: config.mail.resend.apiKey ? 'set' : 'not set',
     },
     node: process.version,
   };

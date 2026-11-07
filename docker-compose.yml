@@ -88,6 +88,18 @@ x-backend-env: &backend-env
   SMTP_USER: ${SMTP_USER:-}
   SMTP_FROM: ${SMTP_FROM:-}
   SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+  RESEND_API_KEY_FILE: /run/secrets/resend_api_key
+  MAIL_FROM: ${MAIL_FROM:-}
+  MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+  APP_URL: ${APP_URL:-}
+  BRAND_NAME: ${BRAND_NAME:-}
+  BRAND_LEGAL_NAME: ${BRAND_LEGAL_NAME:-}
+  BRAND_LOGO_URL: ${BRAND_LOGO_URL:-}
+  BRAND_PRIMARY_COLOR: ${BRAND_PRIMARY_COLOR:-}
+  BRAND_ACCENT_COLOR: ${BRAND_ACCENT_COLOR:-}
+  BRAND_SUPPORT_EMAIL: ${BRAND_SUPPORT_EMAIL:-}
+  BRAND_POSTAL_ADDRESS: ${BRAND_POSTAL_ADDRESS:-}
+  BRAND_WEBSITE_URL: ${BRAND_WEBSITE_URL:-}
   GITHUB_APP_ID: ${GITHUB_APP_ID:-}
   GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
   GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_private_key
@@ -104,6 +116,7 @@ x-backend-secrets: &backend-secrets
   - s3_secret_access_key
   - ml_service_token
   - smtp_password
+  - resend_api_key
   - github_app_private_key
   - github_webhook_secret
   - github_client_secret
@@ -414,6 +427,7 @@ secrets:
   ml_service_token:        { file: ./infra/secrets/ml_service_token }
   anthropic_api_key:       { file: ./infra/secrets/anthropic_api_key }
   smtp_password:           { file: ./infra/secrets/smtp_password }
+  resend_api_key:          { file: ./infra/secrets/resend_api_key }
   github_app_private_key:  { file: ./infra/secrets/github_app_private_key }
   github_webhook_secret:   { file: ./infra/secrets/github_webhook_secret }
   github_client_secret:    { file: ./infra/secrets/github_client_secret }
