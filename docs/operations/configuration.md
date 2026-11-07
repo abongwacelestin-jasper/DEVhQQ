@@ -24,7 +24,10 @@ With `NODE_ENV=production` the backend refuses to start when:
   `S3_ALLOW_HTTP=1`),
 - `MAIL_TRANSPORT=resend` without `RESEND_API_KEY` (or `RESEND_API_KEY_FILE`)
   or without `MAIL_FROM`, an unknown `MAIL_TRANSPORT`, or a non-`https://`
-  `APP_URL` / `BRAND_LOGO_URL` / `BRAND_WEBSITE_URL` (see [Email](email.md)).
+  `APP_URL` / `BRAND_LOGO_URL` / `BRAND_WEBSITE_URL` (see [Email](email.md)),
+- `TURNSTILE_MODE=on` without `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`
+  (or `TURNSTILE_SECRET_KEY_FILE`), or with a Cloudflare test key; an unknown
+  `TURNSTILE_MODE` refuses to boot in every environment.
 
 The models service refuses authenticated routes without an `ML_SERVICE_TOKEN`
 of at least 32 characters.
@@ -45,6 +48,7 @@ of at least 32 characters.
 | Limits | `MAX_BODY_BYTES` (256 KB) | Rate-limit numbers are constants; see [Rate limits](../api/rate-limits.md). |
 | ML bridge | `ML_SERVICE_URL`, `ML_SERVICE_TOKEN` | Without the URL every insight is `source: "heuristic"` and the assistant answers `503 integration_unconfigured`. |
 | Mail | `MAIL_TRANSPORT` (`resend` \| `smtp` \| `console`), `MAIL_FROM`, `MAIL_REPLY_TO`, `RESEND_API_KEY`, `RESEND_TIMEOUT_MS`, `RESEND_BASE_URL`, `APP_URL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_REQUIRE_TLS`, `MAIL_DIGEST_MINUTES` | `console` logs mail instead of sending it; production uses `resend`. Setup, DNS records and the email catalogue: [Email](email.md). |
+| Bot protection | `TURNSTILE_MODE` (`off` \| `on`; default `off`), `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, `TURNSTILE_FAIL_OPEN` (`0`), `TURNSTILE_EXEMPT_CLI` (`1`) | Cloudflare Turnstile on password sign-in, demo sign-in, the reset request and accept-invite. The site key is public (served by `GET /api/auth/config`); the secret supports `_FILE`. Tokens must come from `APP_ORIGIN`'s host with the form's action, and are single-use. Cloudflare unreachable → `503 turnstile_unavailable` unless `TURNSTILE_FAIL_OPEN=1` (incident switch, each pass audited). `TURNSTILE_EXEMPT_CLI=0` also requires a token from CLI clients. Setup: [Railway: Cloudflare Turnstile](../deploy/RAILWAY.md#cloudflare-turnstile); design: [Security controls, C-26](../security/CONTROLS.md). |
 | Brand | `BRAND_NAME`, `BRAND_LEGAL_NAME`, `BRAND_LOGO_URL`, `BRAND_LOGO_WIDTH`, `BRAND_PRIMARY_COLOR`, `BRAND_ACCENT_COLOR`, `BRAND_SUPPORT_EMAIL`, `BRAND_POSTAL_ADDRESS`, `BRAND_WEBSITE_URL` | Branding of every email. Colours are `#rrggbb`; URLs must be `https://` in production. See [Email](email.md#brand-variables). |
 | GitHub | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_SLUG`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_TOKEN` | App credentials → live data; webhook secret only → webhook-only; nothing set → demo data outside production, `503 integration_unconfigured` in production. |
 | Realtime | `STREAM_HEARTBEAT_MS` | Heartbeat of `GET /api/stream`. |
@@ -80,4 +84,5 @@ Read by `infra/frontend/Caddyfile`, not by the SPA: `PORT` (8081),
 `proxy`: same-origin reverse proxy to `API_UPSTREAM`, used on Railway),
 `API_UPSTREAM` (`backend.railway.internal:8080`), `S3_PUBLIC_ORIGIN` (added to
 the CSP `connect-src` and `img-src` for presigned uploads), `HSTS_VALUE` and
-`MAX_BODY_SIZE` (2MB). Railway values: [RAILWAY.md §7](../deploy/RAILWAY.md#7-variables-per-service).
+`MAX_BODY_SIZE` (2MB). The SPA CSP allows `https://challenges.cloudflare.com`
+in `script-src` and `frame-src` for the Turnstile widget. Railway values: [RAILWAY.md §7](../deploy/RAILWAY.md#7-variables-per-service).

@@ -75,6 +75,7 @@ describe('authz — authentication is required on every guarded route', () => {
       '/api/version',
       '/api/openapi.json',
       '/api/_status-codes',
+      '/api/auth/config',
     ]) {
       assert.equal((await app.client().get(path)).status, 200, path);
     }

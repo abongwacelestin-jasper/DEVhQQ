@@ -14,6 +14,7 @@
 
 import { hkdfSync } from 'node:crypto';
 import { loadMailConfig, mailEnvFromProcess, type MailConfig } from './mail.ts';
+import { loadTurnstileConfig, turnstileEnvFromProcess, type TurnstileConfig } from './turnstile.ts';
 
 export type NodeEnv = 'development' | 'test' | 'production';
 
@@ -76,6 +77,8 @@ export interface AppConfig {
   webauthnOrigins: string[];
   /** Transactional email: transport, sender and brand (config/mail.ts). */
   mail: MailConfig;
+  /** Cloudflare Turnstile bot protection on the public auth forms (config/turnstile.ts). */
+  turnstile: TurnstileConfig;
 }
 
 function hexKey(name: string, raw: string): Buffer {
@@ -268,6 +271,7 @@ export function loadConfig(): AppConfig {
     dataEncryption: loadDataEncryption(isProd, sessionSecret),
     webauthnOrigins,
     mail: loadMailConfig(mailEnvFromProcess(), { isProd, appOrigin }),
+    turnstile: loadTurnstileConfig(turnstileEnvFromProcess(), { isProd, appOrigin }),
   };
 }
 
@@ -303,6 +307,13 @@ export function publicConfig() {
       appUrl: config.mail.brand.appUrl,
       brand: config.mail.brand.name,
     },
+    turnstile: {
+      mode: config.turnstile.mode,
+      siteKey: config.turnstile.siteKey ?? null,
+      failOpen: config.turnstile.failOpen,
+      exemptCli: config.turnstile.exemptCli,
+      expectedHostname: config.turnstile.expectedHostname,
+    },
     secrets: {
       SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'dev fallback',
       SESSION_SECRET_PREVIOUS: config.sessionSecretPrevious ? 'set' : 'not set',
@@ -311,6 +322,7 @@ export function publicConfig() {
       DATA_ENCRYPTION_KEY: config.dataEncryption.source === 'env' ? 'set' : 'dev fallback',
       DATA_ENCRYPTION_KEYS_PREVIOUS: `${config.dataEncryption.previous.length} key(s)`,
       RESEND_API_KEY: config.mail.resend.apiKey ? 'set' : 'not set',
+      TURNSTILE_SECRET_KEY: config.turnstile.secretKey ? 'set' : 'not set',
     },
     node: process.version,
   };

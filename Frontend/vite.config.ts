@@ -16,20 +16,24 @@ import { SANDBOX_BOOTSTRAP } from './src/utils/codeRunner';
  */
 const sandboxHash = `'sha256-${createHash('sha256').update(SANDBOX_BOOTSTRAP).digest('base64')}'`;
 const MONACO_CDN = 'https://cdn.jsdelivr.net';
+// --- Turnstile (bot check on sign-in, recovery, accept-invite): api.js + its iframe.
+// Only script-src and frame-src; the widget makes its own requests inside its frame.
+const TURNSTILE = 'https://challenges.cloudflare.com';
+// --- end Turnstile
 
 function csp(mode: 'build' | 'dev'): string {
   const dev = mode === 'dev';
   return [
     "default-src 'self'",
     // Dev only: @vitejs/plugin-react injects an inline refresh preamble.
-    `script-src 'self' ${dev ? "'unsafe-inline'" : sandboxHash} ${MONACO_CDN}`,
+    `script-src 'self' ${dev ? "'unsafe-inline'" : sandboxHash} ${MONACO_CDN} ${TURNSTILE}`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ${MONACO_CDN}`,
     `font-src 'self' data: https://fonts.gstatic.com ${MONACO_CDN}`,
     "img-src 'self' data: blob: https://avatars.githubusercontent.com",
     `connect-src 'self' https://api.github.com ${MONACO_CDN}${dev ? ' ws://127.0.0.1:5173 ws://localhost:5173' : ''}`,
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
-    "frame-src 'self'",
+    `frame-src 'self' ${TURNSTILE}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",

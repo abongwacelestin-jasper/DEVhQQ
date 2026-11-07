@@ -38,15 +38,27 @@ const silent = { silent: true } as const;
 export const getSession = () => api<SessionResponse>('/api/auth/session', silent);
 export const getPending = () => api<PendingResponse>('/api/auth/pending', silent);
 
-export const signInWithPassword = (email: string, password: string) =>
+/** `turnstileToken`: the Cloudflare Turnstile token, when the server has the check on. */
+const withTurnstile = (turnstileToken?: string | null) =>
+  turnstileToken ? { turnstileToken } : {};
+
+export const signInWithPassword = (
+  email: string,
+  password: string,
+  turnstileToken?: string | null,
+) =>
   api<SignInResponse>('/api/auth/sign-in', {
     method: 'POST',
-    body: { email, password },
+    body: { email, password, ...withTurnstile(turnstileToken) },
     ...silent,
   });
 
-export const signInDemoRole = (role: string) =>
-  api<AuthenticatedResponse>('/api/auth/demo', { method: 'POST', body: { role }, ...silent });
+export const signInDemoRole = (role: string, turnstileToken?: string | null) =>
+  api<AuthenticatedResponse>('/api/auth/demo', {
+    method: 'POST',
+    body: { role, ...withTurnstile(turnstileToken) },
+    ...silent,
+  });
 
 export const verifyTotp = (code: string) =>
   api<AuthenticatedResponse>('/api/auth/mfa/totp', { method: 'POST', body: { code }, ...silent });
@@ -300,8 +312,19 @@ export function normalizeOnboarding(raw: unknown): OnboardingState | null {
 // ---------------------------------------------------------------------------
 
 /** Always "accepted" for any well-formed email: the server never reveals whether an account exists. */
-export const requestRecovery = (email: string) =>
-  api<void>('/api/auth/recovery/request', { method: 'POST', body: { email }, ...silent });
+export const requestRecovery = (email: string, turnstileToken?: string | null) =>
+  api<void>('/api/auth/recovery/request', {
+    method: 'POST',
+    body: { email, ...withTurnstile(turnstileToken) },
+    ...silent,
+  });
+
+/** Sets the invited member's password (the token is the single-use invite link token). */
+export const acceptInvite = (token: string, password: string, turnstileToken?: string | null) =>
+  api<void>('/api/auth/accept-invite', {
+    method: 'POST',
+    body: { token, password, ...withTurnstile(turnstileToken) },
+  });
 
 export const resetPassword = (token: string, password: string) =>
   api<void>('/api/auth/recovery/reset', { method: 'POST', body: { token, password }, ...silent });

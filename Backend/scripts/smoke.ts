@@ -61,6 +61,23 @@ async function raw(path: string) {
 const health = await call('GET', '/api/health');
 expect('health is 200', health.status === 200);
 
+// --- Turnstile: public sign-in config (off by default; security/turnstile.ts) ---
+const authConfig = await call('GET', '/api/auth/config');
+const turnstileCfg = authConfig.json.turnstile as { mode?: string; siteKey?: unknown } | undefined;
+expect(
+  'auth config publishes Turnstile mode (off by default) and no secret',
+  authConfig.status === 200 &&
+    turnstileCfg?.mode === (process.env.TURNSTILE_MODE === 'on' ? 'on' : 'off') &&
+    !JSON.stringify(authConfig.json).toLowerCase().includes('secret'),
+  authConfig.json,
+);
+const authConfigPost = await call('POST', '/api/auth/config', {});
+expect(
+  'auth config is read-only (POST → 405)',
+  authConfigPost.status === 405,
+  authConfigPost.status,
+);
+
 const consolePage = await raw('/console');
 expect(
   'backend console renders the operations UI',
