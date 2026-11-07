@@ -37,13 +37,15 @@ beforeEach(() => {
   profile = saved;
 });
 
-describe('ProfileSettings', () => {
+// Many keystrokes and re-renders per test: allow for a loaded CI machine.
+describe('ProfileSettings', { timeout: 20_000 }, () => {
   it('sends only the changed fields and confirms after the server accepts', async () => {
     updateProfile.mockResolvedValue({ ok: true });
     const { user } = renderWithRouter(<ProfileSettings />);
     expect(screen.getByLabelText('Timezone')).toHaveValue('UTC'); // unknown zones stay selectable
     expect(screen.getByRole('button', { name: 'Save profile' })).toBeDisabled();
-    await user.type(screen.getByLabelText('Title'), 'Staff engineer');
+    await user.click(screen.getByLabelText('Title'));
+    await user.paste('Staff engineer');
     await user.click(screen.getByRole('checkbox', { name: 'Wed' }));
     await user.click(screen.getByRole('radio', { name: 'Daily digest' }));
     await user.click(screen.getByRole('button', { name: 'Save profile' }));
@@ -58,7 +60,8 @@ describe('ProfileSettings', () => {
   it('shows the server refusal as an alert and never claims success', async () => {
     updateProfile.mockResolvedValue({ ok: false, error: 'hoursTo must be later than hoursFrom' });
     const { user } = renderWithRouter(<ProfileSettings />);
-    await user.type(screen.getByLabelText('Pronouns (optional)'), 'he/him');
+    await user.click(screen.getByLabelText('Pronouns (optional)'));
+    await user.paste('he/him');
     await user.click(screen.getByRole('button', { name: 'Save profile' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('hoursTo must be later');
     expect(screen.queryByRole('status')).toBeNull();

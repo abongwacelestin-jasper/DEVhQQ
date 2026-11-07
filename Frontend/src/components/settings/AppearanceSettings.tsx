@@ -30,16 +30,16 @@ export function AppearanceSettings() {
           <legend className="text-[12px] font-medium text-ink">Theme</legend>
           <div className="mt-1.5 grid grid-cols-2 gap-1.5">
             {themes.map((t) => (
-              <label key={t.value}>
+              <label key={t.value} className="relative block">
                 <input
                   type="radio"
                   name={`${id}-theme`}
                   value={t.value}
                   checked={theme === t.value}
                   onChange={() => setTheme(t.value)}
-                  className="peer sr-only"
+                  className="peer absolute inset-0 z-10 m-0 h-full w-full cursor-pointer appearance-none opacity-0"
                 />
-                <span className="flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-line-strong text-[12.5px] font-medium text-ink transition-colors duration-150 hover:bg-sunken/60 peer-checked:border-ink peer-checked:bg-ink peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-1">
+                <span className="flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-line-strong text-[12.5px] font-medium text-ink transition-colors duration-150 peer-hover:bg-sunken/60 peer-checked:border-ink peer-checked:bg-ink peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-1">
                   <t.icon className="h-3.5 w-3.5" aria-hidden />
                   {t.label}
                 </span>

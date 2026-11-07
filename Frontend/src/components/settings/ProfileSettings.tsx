@@ -45,7 +45,7 @@ function changedFields(form: Form, saved: Form): Partial<Profile> {
 
 const fieldLabel = 'text-[12px] font-medium text-ink';
 const pill =
-  'inline-flex h-7 cursor-pointer select-none items-center gap-1 rounded-full border px-2.5 text-[12px] font-medium transition-colors duration-150 peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-1 border-line-strong text-ink hover:bg-sunken/60 peer-checked:border-ink peer-checked:bg-ink peer-checked:text-white';
+  'inline-flex h-7 cursor-pointer select-none items-center gap-1 rounded-full border px-2.5 text-[12px] font-medium transition-colors duration-150 peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-1 border-line-strong text-ink peer-hover:bg-sunken/60 peer-checked:border-ink peer-checked:bg-ink peer-checked:text-white';
 
 /**
  * Profile, availability and notification choices, stored by the server
@@ -217,10 +217,10 @@ export function ProfileSettings() {
             <legend className={fieldLabel}>Working days</legend>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {weekDays.map((d) => (
-                <label key={d}>
+                <label key={d} className="relative block">
                   <input
                     type="checkbox"
-                    className="peer sr-only"
+                    className="peer absolute inset-0 z-10 m-0 h-full w-full cursor-pointer appearance-none opacity-0"
                     checked={form.days.includes(d)}
                     onChange={() => toggle('days', d)}
                   />
@@ -242,10 +242,10 @@ export function ProfileSettings() {
             {[...new Set([...skillOptions, ...form.skills])].map((s) => {
               const on = form.skills.includes(s);
               return (
-                <label key={s}>
+                <label key={s} className="relative block">
                   <input
                     type="checkbox"
-                    className="peer sr-only"
+                    className="peer absolute inset-0 z-10 m-0 h-full w-full cursor-pointer appearance-none opacity-0"
                     checked={on}
                     onChange={() => toggle('skills', s)}
                   />
@@ -284,12 +284,12 @@ export function ProfileSettings() {
             <legend className={fieldLabel}>Email delivery</legend>
             <div className="mt-1.5 grid grid-cols-3 gap-1.5">
               {emailModes.map((m) => (
-                <label key={m.value}>
+                <label key={m.value} className="relative block">
                   <input
                     type="radio"
                     name={`${id}-email`}
                     value={m.value}
-                    className="peer sr-only"
+                    className="peer absolute inset-0 z-10 m-0 h-full w-full cursor-pointer appearance-none opacity-0"
                     checked={form.emailDelivery === m.value}
                     onChange={() => set('emailDelivery', m.value)}
                   />

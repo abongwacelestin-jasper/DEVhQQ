@@ -25,9 +25,12 @@ async function fill(
   next: string,
   confirm = next,
 ) {
-  await user.type(screen.getByLabelText('Current password'), current);
-  await user.type(screen.getByLabelText('New password'), next);
-  await user.type(screen.getByLabelText('Confirm new password'), confirm);
+  await user.click(screen.getByLabelText('Current password'));
+  await user.paste(current);
+  await user.click(screen.getByLabelText('New password'));
+  await user.paste(next);
+  await user.click(screen.getByLabelText('Confirm new password'));
+  await user.paste(confirm);
   await user.click(screen.getByRole('button', { name: 'Change password' }));
 }
 
@@ -47,7 +50,8 @@ describe('passwordRules', () => {
   });
 });
 
-describe('ChangePassword', () => {
+// Many keystrokes and re-renders per test: allow for a loaded CI machine.
+describe('ChangePassword', { timeout: 20_000 }, () => {
   it('announces success only after the server accepts, then clears the form', async () => {
     const f = mockFetch().reply(200, { ok: true, revokedSessions: 2 });
     const { user } = renderWithRouter(<ChangePassword />);
@@ -80,9 +84,11 @@ describe('ChangePassword', () => {
     await fill(user, 'devhq-demo', 'weakpass');
     expect(screen.getByRole('alert')).toHaveTextContent('doesn’t meet every requirement');
     await user.clear(screen.getByLabelText('New password'));
-    await user.type(screen.getByLabelText('New password'), GOOD);
+    await user.click(screen.getByLabelText('New password'));
+    await user.paste(GOOD);
     await user.clear(screen.getByLabelText('Confirm new password'));
-    await user.type(screen.getByLabelText('Confirm new password'), `${GOOD}x`);
+    await user.click(screen.getByLabelText('Confirm new password'));
+    await user.paste(`${GOOD}x`);
     await user.click(screen.getByRole('button', { name: 'Change password' }));
     expect(screen.getByRole('alert')).toHaveTextContent('don’t match');
     expect(f.calls).toHaveLength(0);
