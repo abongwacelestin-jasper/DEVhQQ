@@ -54,6 +54,50 @@ export interface AppConfig {
     dir: string;
     retentionDays: number;
   };
+  /** S3-compatible object storage (STORAGE lane). Unset endpoint → local disk driver (non-prod). */
+  storage: StorageConfig;
+}
+
+export interface StorageConfig {
+  /** Internal API endpoint, e.g. http://minio:9000. Undefined → local driver. */
+  endpoint?: string;
+  /** Browser-reachable endpoint used for presigned URLs (defaults to `endpoint`). */
+  publicEndpoint?: string;
+  region: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  forcePathStyle: boolean;
+  buckets: { uploads: string; backups: string; audit: string; models: string };
+  /** Root directory of the local driver (used only when `endpoint` is unset). */
+  localDir: string;
+}
+
+function storageConfig(isProd: boolean): StorageConfig {
+  const endpoint = process.env.S3_ENDPOINT?.trim() || undefined;
+  if (endpoint && (!process.env.S3_ACCESS_KEY_ID || !process.env.S3_SECRET_ACCESS_KEY))
+    throw new Error('S3_ENDPOINT is set but S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY are missing');
+  if (isProd && endpoint && !endpoint.startsWith('https://') && process.env.S3_ALLOW_HTTP !== '1')
+    throw new Error(
+      'S3_ENDPOINT must use https in production (set S3_ALLOW_HTTP=1 for an internal network)',
+    );
+  return {
+    endpoint: endpoint?.replace(/\/$/, ''),
+    publicEndpoint: (process.env.S3_PUBLIC_ENDPOINT?.trim() || endpoint)?.replace(/\/$/, ''),
+    region: process.env.S3_REGION ?? 'us-east-1',
+    accessKeyId: process.env.S3_ACCESS_KEY_ID,
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+    // MinIO needs path-style URLs; AWS / R2 work with either. Default: on.
+    forcePathStyle: !['0', 'false'].includes(process.env.S3_FORCE_PATH_STYLE ?? 'true'),
+    buckets: {
+      uploads: process.env.S3_BUCKET_UPLOADS ?? 'devhq-uploads',
+      backups: process.env.S3_BUCKET_BACKUPS ?? 'devhq-backups',
+      audit: process.env.S3_BUCKET_AUDIT ?? 'devhq-audit',
+      models: process.env.S3_BUCKET_MODELS ?? 'devhq-models',
+    },
+    // Under BACKUP_DIR so the gate's per-run BACKUP_DIR also isolates objects.
+    localDir:
+      process.env.STORAGE_LOCAL_DIR ?? `${process.env.BACKUP_DIR ?? './.backups'}/object-store`,
+  };
 }
 
 function required(name: string, fallbackForDev?: string): string {
@@ -122,6 +166,7 @@ export function loadConfig(): AppConfig {
       dir: process.env.BACKUP_DIR ?? './.backups',
       retentionDays: int('BACKUP_RETENTION_DAYS', 35),
     },
+    storage: storageConfig(isProd),
   };
 }
 
@@ -143,10 +188,18 @@ export function publicConfig() {
     rateLimits: config.rateLimits,
     crypto: config.crypto,
     backups: config.backups,
+    storage: {
+      driver: config.storage.endpoint ? 's3' : 'local',
+      endpoint: config.storage.endpoint ?? null,
+      region: config.storage.region,
+      buckets: config.storage.buckets,
+    },
     secrets: {
       SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'dev fallback',
       SESSION_SECRET_PREVIOUS: config.sessionSecretPrevious ? 'set' : 'not set',
       DEMO_TOTP_SECRET: process.env.DEMO_TOTP_SECRET ? 'set' : 'not set',
+      S3_SECRET_ACCESS_KEY: config.storage.secretAccessKey ? 'set' : 'not set',
+      DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY ? 'set' : 'not set',
     },
     node: process.version,
   };

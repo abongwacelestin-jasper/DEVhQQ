@@ -54,6 +54,8 @@ import { registerCiRoutes } from './routes/ci.routes.ts';
 import { registerMonitorRoutes } from './routes/monitors.routes.ts';
 import { registerIntegrationRoutes } from './routes/integrations.routes.ts';
 import { registerWebhookRoutes } from './routes/webhooks.routes.ts';
+import { registerFileRoutes } from './routes/files.routes.ts';
+import { registerBackupRoutes } from './routes/backups.routes.ts';
 
 export async function buildApp() {
   // Postgres when DATABASE_URL is set (migrate → driver → hydrate → seed-if-empty), else in-memory.
@@ -87,6 +89,8 @@ export async function buildApp() {
   registerMonitorRoutes(router);
   registerIntegrationRoutes(router);
   registerWebhookRoutes(router);
+  registerFileRoutes(router);
+  registerBackupRoutes(router);
   return router;
 }
 

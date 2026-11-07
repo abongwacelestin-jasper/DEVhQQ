@@ -12,6 +12,8 @@ import type { AddressInfo } from 'node:net';
 
 // Isolate each run's audit file so repeated gate runs never share state.
 process.env.AUDIT_LOG_FILE = `/tmp/devhq-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jsonl`;
+// STORAGE: fresh local object store per run (unused when S3_ENDPOINT points at MinIO).
+process.env.STORAGE_LOCAL_DIR ??= `/tmp/devhq-smoke-objects-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const { buildApp } = await import('../server.ts');
 const router = await buildApp();
@@ -702,6 +704,181 @@ expect(
     );
   }
   delete process.env.GITHUB_WEBHOOK_SECRET;
+}
+
+// ── STORAGE (wave 4): object storage, presigned uploads, backups, audit archive ──
+{
+  const { runSigV4Vectors } = await import('../storage/sigv4.test.ts');
+  const vectors = runSigV4Vectors();
+  expect(
+    `storage: SigV4 signer matches all ${vectors.length} AWS test vectors`,
+    vectors.length >= 8 && vectors.every((x) => x.ok),
+    vectors.filter((x) => !x.ok),
+  );
+
+  const admin = (await call('POST', '/api/auth/demo', { role: 'admin' })).json.token as string;
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(56, 7),
+  ]);
+  type Upload = { fileId: string; uploadUrl: string; headers: Record<string, string> };
+  const putTo = (u: Upload, bytes: Buffer) =>
+    fetch(u.uploadUrl, { method: 'PUT', headers: u.headers, body: bytes });
+  const ask = (token: string, purpose: string, contentType: string, size: number, refId: string) =>
+    call('POST', '/api/files/uploads', { purpose, contentType, size, name: 'f.bin', refId }, token);
+
+  const req = await ask(dev, 'doc-attachment', 'image/png', png.length, 'doc-payments-spec');
+  const up = req.json as unknown as Upload;
+  expect(
+    'storage: presigned upload issued for an in-scope doc',
+    req.status === 201 &&
+      typeof up.uploadUrl === 'string' &&
+      up.headers['Content-Type'] === 'image/png',
+    req.json,
+  );
+  const early = await call('POST', `/api/files/${up.fileId}/complete`, {}, dev);
+  expect('storage: complete before upload is 409', early.status === 409, early.json);
+  const put = await putTo(up, png);
+  expect('storage: direct PUT to presigned URL accepted', put.ok, put.status);
+  const done = await call('POST', `/api/files/${up.fileId}/complete`, {}, dev);
+  expect(
+    'storage: complete verifies size + magic bytes and marks ready',
+    done.status === 200 && done.json.status === 'ready',
+    done.json,
+  );
+  const dl = await call('GET', `/api/files/${up.fileId}`, undefined, dev);
+  const got = dl.status === 200 ? await fetch(dl.json.url as string) : undefined;
+  const gotBytes = got ? Buffer.from(await got.arrayBuffer()) : Buffer.alloc(0);
+  expect(
+    'storage: presigned GET returns the exact bytes, inline for images',
+    dl.status === 200 &&
+      dl.json.disposition === 'inline' &&
+      gotBytes.equals(png) &&
+      got?.headers.get('content-type') === 'image/png',
+    dl.json,
+  );
+
+  const pdf = Buffer.from('%PDF-1.7\n% smoke\n');
+  const pdfReq = await ask(dev, 'doc-attachment', 'application/pdf', pdf.length, 'doc-payments-spec');
+  await putTo(pdfReq.json as unknown as Upload, pdf);
+  await call('POST', `/api/files/${pdfReq.json.fileId}/complete`, {}, dev);
+  const pdfDl = await call('GET', `/api/files/${pdfReq.json.fileId}`, undefined, dev);
+  const pdfGet = await fetch(pdfDl.json.url as string);
+  await pdfGet.arrayBuffer();
+  expect(
+    'storage: non-images download as attachment',
+    pdfDl.json.disposition === 'attachment' &&
+      (pdfGet.headers.get('content-disposition') ?? '').startsWith('attachment;'),
+    pdfDl.json,
+  );
+
+  for (const contentType of ['text/html', 'image/svg+xml']) {
+    const r = await ask(dev, 'doc-attachment', contentType, 10, 'doc-payments-spec');
+    expect(`storage: ${contentType} upload refused (415)`, r.status === 415, r.json);
+  }
+  const big = await ask(dev, 'avatar', 'image/png', 3 * 1024 * 1024, 'm4');
+  expect('storage: oversize avatar refused (413)', big.status === 413, big.json);
+
+  const html = Buffer.from('<html><script>alert(1)</script></html>');
+  const liar = await ask(dev, 'doc-attachment', 'image/png', html.length, 'doc-payments-spec');
+  const liarPut = await putTo(liar.json as unknown as Upload, html);
+  expect('storage: disguised upload reaches storage', liarPut.ok, liarPut.status);
+  const liarDone = await call('POST', `/api/files/${liar.json.fileId}/complete`, {}, dev);
+  expect(
+    'storage: magic-byte mismatch rejected',
+    liarDone.status === 422 && (liarDone.json.error as { code: string }).code === 'type_mismatch',
+    liarDone.json,
+  );
+  const short = await ask(dev, 'doc-attachment', 'image/png', 100, 'doc-payments-spec');
+  const shortPut = await putTo(short.json as unknown as Upload, png);
+  await shortPut.arrayBuffer();
+  expect('storage: PUT of a size other than the signed one is refused', !shortPut.ok, shortPut.status);
+  const cancel = await call('DELETE', `/api/files/${short.json.fileId}`, undefined, dev);
+  expect('storage: pending upload can be cancelled', cancel.status === 204, cancel.json);
+
+  const blogDoc = await call(
+    'POST',
+    '/api/docs',
+    { projectId: 'p4', title: 'Storage smoke', kind: 'guide', visibility: 'project', body: 'x' },
+    admin,
+  );
+  const blogDocId = blogDoc.json.id as string;
+  const outReq = await ask(dev, 'doc-attachment', 'image/png', png.length, blogDocId);
+  expect('storage: upload against an out-of-scope doc is 404', outReq.status === 404, outReq.json);
+  const adminUp = await ask(admin, 'doc-attachment', 'image/png', png.length, blogDocId);
+  await putTo(adminUp.json as unknown as Upload, png);
+  await call('POST', `/api/files/${adminUp.json.fileId}/complete`, {}, admin);
+  const outGet = await call('GET', `/api/files/${adminUp.json.fileId}`, undefined, dev);
+  const outDel = await call('DELETE', `/api/files/${adminUp.json.fileId}`, undefined, dev);
+  expect(
+    'storage: out-of-scope file is 404 for read and delete',
+    outGet.status === 404 && outDel.status === 404,
+    [outGet.status, outDel.status],
+  );
+  const listed = await call('GET', '/api/files?refId=doc-payments-spec', undefined, dev);
+  expect(
+    'storage: attachments listed by resource',
+    listed.status === 200 &&
+      (listed.json.items as { id: string }[]).some((f) => f.id === up.fileId),
+    listed.json,
+  );
+
+  const backup = await call('POST', '/api/backups', undefined, admin);
+  const backupId = backup.json.id as string;
+  expect(
+    'storage: encrypted backup written to the backups bucket',
+    backup.status === 201 &&
+      /^bk-/.test(backupId) &&
+      backup.json.encryption === 'aes-256-gcm' &&
+      (backup.json.collections as Record<string, number>).files >= 2,
+    backup.json,
+  );
+  const devRestore = await call('POST', `/api/backups/${backupId}/restore`, {}, dev);
+  expect('storage: restore requires Administration:admin', devRestore.status === 403, devRestore.json);
+  const dry = await call('POST', `/api/backups/${backupId}/restore`, {}, admin);
+  const plan = (dry.json.plan ?? []) as { name: string; inBackup: number; unchanged: number }[];
+  const filesPlan = plan.find((p) => p.name === 'files');
+  expect(
+    'storage: restore dry-run verifies, decrypts and diffs without writing',
+    dry.status === 200 &&
+      dry.json.dryRun === true &&
+      dry.json.verified === true &&
+      !!filesPlan &&
+      filesPlan.inBackup >= 2 &&
+      filesPlan.unchanged === filesPlan.inBackup,
+    dry.json,
+  );
+  await call('DELETE', `/api/files/${pdfReq.json.fileId}`, undefined, dev);
+  const noConfirm = await call('POST', `/api/backups/${backupId}/restore`, { dryRun: false }, admin);
+  expect('storage: real restore needs explicit confirmation', noConfirm.status === 422, noConfirm.json);
+  const real = await call(
+    'POST',
+    `/api/backups/${backupId}/restore`,
+    { dryRun: false, confirm: backupId, collections: ['files'] },
+    admin,
+  );
+  const back = await call('GET', '/api/files?refId=doc-payments-spec', undefined, dev);
+  expect(
+    'storage: real restore brings a deleted row back (after a safety backup)',
+    real.status === 200 &&
+      typeof real.json.safetyBackupId === 'string' &&
+      (back.json.items as { id: string }[]).some((f) => f.id === pdfReq.json.fileId),
+    real.json,
+  );
+  const drill = await call('POST', '/api/backups/drill', undefined, admin);
+  expect('storage: restore drill passes on the encrypted backup', drill.json.ok === true, drill.json);
+
+  const { flushAuditArchive, auditArchiveStatus } = await import('../storage/auditArchive.ts');
+  await flushAuditArchive();
+  const arch = auditArchiveStatus();
+  expect(
+    'storage: audit batch archived to the audit bucket with its chain head',
+    arch.enabled &&
+      arch.batches >= 1 &&
+      arch.pending === 0 &&
+      /^audit\/\d{4}\/\d{2}\/\d{2}\//.test(arch.lastKey),
+    arch,
+  );
 }
 
 const audit = await call('GET', '/api/audit/verify', undefined, dev);
