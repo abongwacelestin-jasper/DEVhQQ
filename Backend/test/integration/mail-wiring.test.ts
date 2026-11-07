@@ -267,3 +267,18 @@ describe('mail wiring — lock-out, invite, incident, preferences', () => {
     }
   });
 });
+
+describe('mail wiring — password changed', () => {
+  it('emails the member after a signed-in password change', async () => {
+    const c = await fullSignIn(app, 'sam@techorg.io'); // m8
+    const res = await c.post('/api/auth/password', {
+      currentPassword: 'devhq-demo',
+      newPassword: 'Mail-Wiring-Passw0rd!',
+    });
+    assert.ok(res.status < 300, res.text);
+    const hits = await sent((m) => m.to === 'sam@techorg.io' && /password/i.test(m.subject));
+    assert.equal(hits.length, 1, JSON.stringify(mail.outbox.map((m) => m.subject)));
+    assert.ok(!hits[0].text.includes('Mail-Wiring-Passw0rd!'), 'the password is never emailed');
+    assert.ok(absolute(hits[0]));
+  });
+});

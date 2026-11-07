@@ -101,6 +101,7 @@ import {
   sendBackupCodesGenerated,
   sendFactorChanged,
   sendSignInAlert,
+  sendPasswordChanged,
 } from '../mail/events.ts';
 
 const MAX_FAILURES = 5;
@@ -1291,6 +1292,7 @@ export function registerAuthRoutes(r: Router) {
         sensitive: true,
         requestId: ctx.requestId,
       });
+      void sendPasswordChanged(member, ctx, { sessionsSignedOut: revoked > 0 });
       return deliver(ctx, token, cookieAge, { ok: true, revokedSessions: revoked });
     },
   );
