@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { ThemedToaster } from './components/layout/ThemedToaster';
@@ -40,6 +40,7 @@ import { SecurityCenter } from './pages/SecurityCenter';
 import { Integrations } from './pages/Integrations';
 import { IntegrationDetail } from './pages/IntegrationDetail';
 import { AuditLog } from './pages/AuditLog';
+import { PageNotFound } from './pages/PageNotFound';
 import { ProductLayout } from './pages/product/ProductLayout';
 import { ProductOverview } from './pages/product/ProductOverview';
 import { ProductWork } from './pages/product/ProductWork';
@@ -215,8 +216,8 @@ export function App() {
                                       <Route path="analytics" element={<ProductAnalytics />} />
                                       <Route path="people" element={<ProductPeople />} />
                                     </Route>
+                                    <Route path="*" element={<PageNotFound />} />
                                   </Route>
-                                  <Route path="*" element={<Navigate to="/" replace />} />
                                 </Routes>
                                 <ThemedToaster />
                               </ReauthProvider>

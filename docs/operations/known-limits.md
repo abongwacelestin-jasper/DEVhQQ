@@ -53,6 +53,9 @@ See [infra/minio/README.md](../../infra/minio/README.md).
 
 ## Other limits
 
+- **French and Spanish cover navigation and page headings only.** Body copy,
+  forms and messages are English. Full translation needs translated strings
+  reviewed by native speakers (`Frontend/src/data/translations.ts`).
 - **The audit trail, logs and metrics are not product-scoped.** They need
   Administration ≥ `view` (Owner, Operations), and whoever has it sees every
   product. See

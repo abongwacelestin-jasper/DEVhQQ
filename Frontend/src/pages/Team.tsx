@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FolderIcon, UserPlusIcon } from 'lucide-react';
@@ -16,6 +17,7 @@ import type { RoleName } from '../types/team';
 type Tab = 'members' | 'roles' | 'review';
 
 export function Team() {
+  const { heading } = useLanguage();
   const { matches, activeProject, scopeLabel } = useProductFilter();
   const { canDo } = useAuth();
   const { tasks } = useWork();
@@ -48,7 +50,9 @@ export function Team() {
     <div className="space-y-3">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h1 className="text-[17px] font-semibold tracking-tight text-ink">Team & roles</h1>
+          <h1 className="text-[17px] font-semibold tracking-tight text-ink">
+            {heading('Team & roles')}
+          </h1>
           <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
             {activeProject && <FolderIcon className="h-3.5 w-3.5 text-subtle" />}
             {activeProject
@@ -73,9 +77,18 @@ export function Team() {
       )}
 
       <StatStrip>
-        <StatCard label="Members" value={scoped.length} note={loading ? 'Loading…' : 'In your scope'} />
+        <StatCard
+          label="Members"
+          value={scoped.length}
+          note={loading ? 'Loading…' : 'In your scope'}
+        />
         <StatCard label="Active" value={active.length} note="Can sign in today" />
-        <StatCard label="Invited" value={invited} note="Not yet activated" tone={invited ? 'info' : undefined} />
+        <StatCard
+          label="Invited"
+          value={invited}
+          note="Not yet activated"
+          tone={invited ? 'info' : undefined}
+        />
         <StatCard
           label="Without MFA"
           value={noMfa}

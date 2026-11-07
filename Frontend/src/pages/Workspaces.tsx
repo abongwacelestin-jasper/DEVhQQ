@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
 import {
   CheckIcon,
@@ -43,6 +44,7 @@ const isolation = [
 ];
 
 export function Workspaces() {
+  const { heading } = useLanguage();
   const { workspaces, current, switchTo, setModules, status, error, demo, reload } = useWorkspace();
   const { setCreateWorkspaceOpen } = useWorkspaceUI();
   const isOwner = canAdminister(current);
@@ -62,7 +64,9 @@ export function Workspaces() {
       <section className="grid items-center gap-3 overflow-hidden rounded-lg border border-line bg-accent-soft/40 px-3.5 py-3 md:grid-cols-[auto_minmax(0,1fr)_auto]">
         <WorkspacesIllustration className="hidden h-[84px] w-auto md:block" />
         <div className="min-w-0">
-          <h1 className="text-[17px] font-semibold tracking-tight text-ink">Workspaces</h1>
+          <h1 className="text-[17px] font-semibold tracking-tight text-ink">
+            {heading('Workspaces')}
+          </h1>
           <p className="mt-0.5 max-w-xl text-[12.5px] text-muted">
             Run several companies from one DevHQ account. Each workspace has its own products,
             people, modules and security policies.

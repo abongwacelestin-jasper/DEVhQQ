@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -39,6 +40,7 @@ function toRow(e: ApiAuditEntry): AuditRow {
 }
 
 export function AuditLog() {
+  const { heading } = useLanguage();
   const { authEvents, session } = useAuth();
   const [workspace, setWorkspace] = useState<AuditRow[]>([]);
   const [params] = useSearchParams();
@@ -131,7 +133,9 @@ export function AuditLog() {
       {/* Header */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h1 className="text-[18px] font-semibold tracking-tight text-ink">Audit log</h1>
+          <h1 className="text-[18px] font-semibold tracking-tight text-ink">
+            {heading('Audit log')}
+          </h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
             Append-only · retained 400 days · every entry hash-chained to the one before it
           </p>

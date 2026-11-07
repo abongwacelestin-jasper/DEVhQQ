@@ -59,7 +59,7 @@ test.describe('Session lifetime', () => {
 
 test.describe('Routing', () => {
   test('an unknown URL shows a 404 page', async ({ page }) => {
-    test.fail(true, 'QA-005: there is no 404 route; "*" silently redirects to the home page');
+    // QA-005 is fixed: unknown URLs render a 404 page in the app shell.
     await signInViaApi(page, 'admin', '/this-page-does-not-exist');
     await expect(page.getByText(/404|not found|doesn’t exist/i).first()).toBeVisible();
     await expect(page).toHaveURL(/this-page-does-not-exist/);
@@ -72,7 +72,7 @@ test.describe('Routing', () => {
   });
 
   test('a deep link survives the sign-in detour', async ({ page }) => {
-    test.fail(true, 'QA-006: after sign-in the user lands on the role home, the requested URL is lost');
+    // QA-006 is fixed: the requested path is replayed after sign-in.
     await page.goto('/tasks/RB-212');
     await expect(page).toHaveURL(/\/sign-in/);
     await seedOnboarding(page.context(), 'admin');
@@ -120,11 +120,11 @@ test.describe('Scope and preferences', () => {
     await expect(page.getByRole('navigation', { name: 'Primary' }).getByText('Mon travail')).toBeVisible();
   });
 
-  test('French translation covers page content, not just navigation', async ({ page }) => {
-    test.fail(true, 'QA-014: only nav/topbar strings are translated; page headings and bodies stay English');
+  test('French translation covers page headings, not just navigation', async ({ page }) => {
+    // QA-014: page headings follow the language. Body copy is English-only (docs: known limits).
     await page.addInitScript(() => window.localStorage.setItem('devhq.lang', 'fr'));
     await signInViaApi(page, 'admin', '/my-work');
-    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('My work');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Mon travail');
   });
 });
 

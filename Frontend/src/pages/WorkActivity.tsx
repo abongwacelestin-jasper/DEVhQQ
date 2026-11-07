@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext';
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DownloadIcon, SearchIcon } from 'lucide-react';
@@ -26,6 +27,7 @@ const csvCell = (v: string) => {
 };
 
 export function WorkActivity() {
+  const { heading } = useLanguage();
   const { events, tasks } = useWork();
   const { inRange, from, to, label } = useDateRange();
   const { matchesTask } = useProductFilter();
@@ -148,7 +150,9 @@ export function WorkActivity() {
       <section className="grid items-center gap-3 overflow-hidden rounded-lg border border-line bg-sunken/40 px-3.5 py-3 md:grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
         <TimelineIllustration className="hidden h-[84px] w-auto md:block" />
         <div className="min-w-0">
-          <h1 className="text-[17px] font-semibold tracking-tight text-ink">Work activity</h1>
+          <h1 className="text-[17px] font-semibold tracking-tight text-ink">
+            {heading('Work activity')}
+          </h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
             An append-only record of every task change — who did what, and exactly when. {label}.
           </p>

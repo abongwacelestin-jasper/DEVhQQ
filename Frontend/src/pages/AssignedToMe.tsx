@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext';
 import { useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -35,6 +36,7 @@ const subject = (e: AssignmentEmail, title: string) =>
  * records. Email preferences appear only when the server exposes them.
  */
 export function AssignedToMe() {
+  const { heading } = useLanguage();
   const { tasks, updateTask } = useWork();
   const { me, emails, read, markRead, markUnread, markAllRead } = useAssignmentEmails();
   const { memberById } = useDirectory();
@@ -77,7 +79,9 @@ export function AssignedToMe() {
     <div className="space-y-3">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[20px] font-semibold tracking-tight text-ink">Assigned to me</h1>
+          <h1 className="text-[20px] font-semibold tracking-tight text-ink">
+            {heading('Assigned to me')}
+          </h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
             {unread} unread · {openCount} still open · unread items may be emailed in a digest when
             your administrator enables it

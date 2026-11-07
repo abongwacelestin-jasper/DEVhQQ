@@ -13,6 +13,7 @@ import {
   ShieldCheckIcon,
 } from 'lucide-react';
 import { api } from '../../api/client';
+import { clearReturnTo, peekReturnTo } from '../../utils/authRoutes';
 import { errorMessage } from '../../components/work/apiState';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import { ProfileIllustration } from '../../components/illustrations/ProfileIllustration';
@@ -148,7 +149,9 @@ export function CompleteProfile() {
       /* storage unavailable */
     }
     toast.success(`Welcome, ${p.displayName.split(' ')[0]}`);
-    navigate(role.home, { replace: true });
+    const back = peekReturnTo();
+    clearReturnTo();
+    navigate(back ?? role.home, { replace: true });
   };
 
   return (

@@ -130,14 +130,14 @@ export function ChannelList({ activeId, q, view, product, onChange, onNew }: Cha
         </label>
         <div
           className="flex items-center gap-1 overflow-x-auto scroll-thin"
-          role="tablist"
+          role="group"
           aria-label="Conversation filter"
         >
           {views.map((v) => (
             <button
               key={v.id}
-              role="tab"
-              aria-selected={view === v.id}
+              type="button"
+              aria-pressed={view === v.id}
               onClick={() => onChange('view', v.id === 'all' ? '' : v.id)}
               className={`h-6 shrink-0 rounded-full px-2.5 text-[11.5px] font-medium transition-colors duration-150 ${view === v.id ? 'bg-ink text-white' : 'bg-sunken text-ink hover:bg-line'}`}
             >

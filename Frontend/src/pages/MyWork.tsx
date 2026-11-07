@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext';
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -39,6 +40,7 @@ import type { Deployment } from '../types/operations';
 type Scope = 'mine' | 'by-me' | 'reviewing';
 
 export function MyWork() {
+  const { heading } = useLanguage();
   const { requestReauth } = useReauth();
   const { tasks, events, timeLogs, updateTask } = useWork();
   const { inRange, label } = useDateRange();
@@ -140,7 +142,9 @@ export function MyWork() {
       <section className="grid items-center gap-3 overflow-hidden rounded-lg border border-line bg-accent-soft/40 px-3.5 py-3 md:grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
         <ChecklistIllustration className="hidden h-[84px] w-auto md:block" />
         <div className="min-w-0">
-          <h1 className="text-[17px] font-semibold tracking-tight text-ink">My work</h1>
+          <h1 className="text-[17px] font-semibold tracking-tight text-ink">
+            {heading('My work')}
+          </h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
             Approvals, tasks and mentions that need you. Open work always shows; completed work and
             activity follow the date range.

@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { CloudOffIcon, LoaderCircleIcon, RotateCwIcon } from 'lucide-react';
 import { useAuth, type AuthStage } from '../../contexts/AuthContext';
-import { pathForStage } from '../../utils/authRoutes';
+import {
+  clearReturnTo,
+  pathForStage,
+  peekReturnTo,
+  rememberReturnTo,
+} from '../../utils/authRoutes';
 
 /** Shown when the session probe could not reach the server — never confused with "signed out". */
 function BootError({ message, onRetry }: { message: string; onRetry: () => Promise<void> }) {
@@ -54,16 +59,28 @@ export function StageRoute({
   children: React.ReactNode;
 }) {
   const { stage: current, role, booting, bootError, retryBoot } = useAuth();
+  const allowed = Array.isArray(stage) ? stage : [stage];
+  const leavingToApp = !booting && !bootError && current === 'ready' && !allowed.includes(current);
+  const returnTo = leavingToApp ? peekReturnTo() : null;
+  // Consume the remembered deep link once we actually head into the app.
+  useEffect(() => {
+    if (leavingToApp) clearReturnTo();
+  }, [leavingToApp]);
   if (bootError) return <BootError message={bootError} onRetry={retryBoot} />;
   if (booting) return null;
-  const allowed = Array.isArray(stage) ? stage : [stage];
-  if (!allowed.includes(current)) return <Navigate to={pathForStage(current, role)} replace />;
+  if (!allowed.includes(current))
+    return <Navigate to={returnTo ?? pathForStage(current, role)} replace />;
   return <>{children}</>;
 }
 
 /** Guards the whole app: only fully onboarded sessions get through. */
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const { stage, role, booting, bootError, retryBoot } = useAuth();
+  const { pathname, search, hash } = useLocation();
+  const bounced = !booting && !bootError && stage === 'signed-out';
+  useEffect(() => {
+    if (bounced) rememberReturnTo(`${pathname}${search}${hash}`);
+  }, [bounced, pathname, search, hash]);
   if (bootError) return <BootError message={bootError} onRetry={retryBoot} />;
   if (booting) return null;
   if (stage !== 'ready') return <Navigate to={pathForStage(stage, role)} replace />;

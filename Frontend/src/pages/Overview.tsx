@@ -109,7 +109,11 @@ export function Overview() {
       value: awaiting.filter((d) => d.env === 'production').length,
       tone: 'bad' as const,
     },
-    { label: 'Staging', value: awaiting.filter((d) => d.env !== 'production').length, tone: 'info' as const },
+    {
+      label: 'Staging',
+      value: awaiting.filter((d) => d.env !== 'production').length,
+      tone: 'info' as const,
+    },
   ];
   const deployDays = Array.from({ length: 7 }, (_, i) => {
     const offset = 6 - i;
