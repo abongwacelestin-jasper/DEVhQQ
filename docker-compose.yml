@@ -151,7 +151,8 @@ services:
         limits: { cpus: "0.50", memory: 256M, pids: 200 }
 
   # -------------------------------------------------------------------------
-  # Frontend: static SPA on unprivileged nginx (:8081).
+  # Frontend: static SPA on unprivileged Caddy (:8081, infra/frontend/Caddyfile).
+  # API_MODE stays unset: the edge routes /api itself.
   # -------------------------------------------------------------------------
   frontend:
     <<: *hardened
@@ -259,6 +260,8 @@ services:
       - anthropic_api_key
       - models_s3_access_key_id
       - models_s3_secret_access_key
+    volumes:
+      - models_data:/var/lib/devhq-models   # local registry fallback (MODEL_DIR)
     tmpfs:
       - /tmp:size=256m,mode=1777
     networks: [app_net, egress_net]
@@ -393,6 +396,7 @@ networks:
 volumes:
   pg_data:
   minio_data:
+  models_data:
   backend_state:
   edge_data:
   edge_config:

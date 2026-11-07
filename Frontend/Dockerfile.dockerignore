@@ -6,7 +6,7 @@
 !Frontend/
 !Backend/package.json
 !Models/package.json
-!infra/nginx/
+!infra/frontend/
 
 **/.git
 **/node_modules

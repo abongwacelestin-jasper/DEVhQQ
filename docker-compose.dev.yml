@@ -6,7 +6,7 @@
 # Differences from the prod-like base:
 #   - backend runs from mounted source with `node --watch`, NODE_ENV=development
 #     (demo sign-in enabled, seeds load into an empty database)
-#   - frontend is the Vite dev server with HMR instead of nginx
+#   - frontend is the Vite dev server with HMR instead of the Caddy static server
 #   - edge serves https://localhost with Caddy's internal CA, HSTS max-age=0
 #   - Postgres, MinIO (+ console), models and the backend are published on
 #     127.0.0.1 only, so host tools (psql, mc, curl) can reach them

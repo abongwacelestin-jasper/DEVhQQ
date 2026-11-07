@@ -50,10 +50,14 @@ LABEL org.opencontainers.image.title="devhq-backend" \
       org.opencontainers.image.created="${CREATED}"
 
 # tini reaps zombies and forwards SIGTERM so server.ts can drain gracefully.
+# The same image runs the API (default CMD), the worker and the cron service
+# (worker.ts, see infra/railway/).
 # npm, npx, corepack and yarn are removed: they are not needed at runtime and
 # their bundled dependencies are a recurring source of scanner findings.
+# su-exec: infra/docker/entrypoint.sh drops root after fixing the ownership of
+# a root-owned volume (Railway); unused when the container starts as 10001.
 # hadolint ignore=DL3018
-RUN apk add --no-cache tini \
+RUN apk add --no-cache tini su-exec \
  && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
            /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
            /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-* \

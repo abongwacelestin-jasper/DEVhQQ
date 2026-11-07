@@ -1,0 +1,175 @@
+# DevHQ web app server (Caddy 2): the static SPA build, and optionally the
+# same-origin reverse proxy to the API.
+#
+# Two ways this runs (Frontend/Dockerfile):
+#   Compose  behind the edge (infra/edge/Caddyfile), which terminates TLS and
+#            routes /api to the backend itself. API_MODE unset ("none"): API
+#            paths that reach this server answer 404.
+#   Railway  the public service. Railway (and Cloudflare in front of it)
+#            terminate TLS; API_MODE=proxy sends /api, /console to
+#            API_UPSTREAM over private networking, so the SPA and the API share
+#            one origin and the __Host- SameSite=Strict cookie keeps working.
+#
+# Environment (all optional):
+#   PORT              listen port (default 8081; Railway injects it)
+#   API_MODE          none | proxy
+#   API_UPSTREAM      host:port of the backend (default backend.railway.internal:8080)
+#   S3_PUBLIC_ORIGIN  origin browsers upload to with presigned URLs, added to
+#                     connect-src and img-src (R2: https://<account>.r2.cloudflarestorage.com)
+#   HSTS_VALUE        Strict-Transport-Security value
+#   MAX_BODY_SIZE     request body cap for proxied API calls (default 2MB)
+#
+# Environment placeholders ({$VAR}) are substituted before parsing, which is
+# what lets `import api_{$API_MODE:none}` pick a snippet.
+
+{
+	admin off
+	persist_config off
+	auto_https off
+	# Never served over TLS here, so nothing needs Caddy's data directory.
+	storage file_system /tmp/caddy
+
+	servers {
+		protocols h1 h2c
+		timeouts {
+			read_header 10s
+			read_body 30s
+			write 0
+			idle 2m
+		}
+		max_header_size 32KB
+		# Client IP: walk X-Forwarded-For right to left, skipping only hops we
+		# trust (private and carrier-grade NAT ranges used by Railway's proxy,
+		# and Cloudflare's published ranges, https://www.cloudflare.com/ips/).
+		# A client-supplied XFF entry is never taken as the client IP.
+		trusted_proxies static private_ranges 100.64.0.0/10 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers X-Forwarded-For
+		trusted_proxies_strict
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Applies to SPA responses only (`@spa`, defined in the site block); API
+# responses keep the backend's own headers (Backend/security/headers.ts).
+(security_headers) {
+	# Keep in step with Backend/security/headers.ts. Differences are what the
+	# SPA bundle needs and the API does not: Google Fonts (Frontend/src/index.css),
+	# jsDelivr (the Monaco loader), worker-src blob: (code runner, Monaco), and
+	# the object-storage origin for presigned uploads and image previews.
+	# No nonce: the Vite build emits only external module scripts.
+	header @spa {
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https://avatars.githubusercontent.com https://cdn.magicpatterns.com {$S3_PUBLIC_ORIGIN}; connect-src 'self' https://api.github.com {$S3_PUBLIC_ORIGIN}; worker-src 'self' blob:; frame-src https://js.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests"
+		Strict-Transport-Security "{$HSTS_VALUE:max-age=63072000; includeSubDomains; preload}"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(self), publickey-credentials-get=(self), publickey-credentials-create=(self)"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		-Server
+		-X-Powered-By
+	}
+}
+
+# API_MODE=none: API paths belong to the edge. If one reaches this server the
+# routing is wrong; answer 404 instead of returning the SPA shell.
+(api_none) {
+	@api path /api /api/* /console /console/* /backend.html
+	handle @api {
+		header Content-Type application/json
+		respond `{"error":{"code":"not_found","message":"API is served by the backend"}}` 404
+	}
+}
+
+# API_MODE=proxy: same-origin reverse proxy to the backend (Railway).
+(api_proxy) {
+	@api path /api /api/* /console /console/* /backend.html
+	handle @api {
+		# Static files are pre-compressed at build time (precompress.mjs);
+		# only proxied API responses are compressed on the fly.
+		encode zstd gzip
+		request_body {
+			max_size {$MAX_BODY_SIZE:2MB}
+		}
+		# The IP the backend sees (TRUST_PROXY=1 takes the first XFF entry).
+		# client_ip is the nearest X-Forwarded-For hop that is not a trusted
+		# proxy. When every hop is trusted (Railway replaced XFF with
+		# Cloudflare's address), the request came through Cloudflare and its
+		# CF-Connecting-IP names the client. A forged CF-Connecting-IP sent
+		# straight to Railway does not count: Railway records that sender as an
+		# untrusted hop, so client_ip is the sender.
+		vars real_ip {client_ip}
+		@via_cloudflare {
+			client_ip private_ranges 100.64.0.0/10 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+			header CF-Connecting-IP *
+		}
+		vars @via_cloudflare real_ip {http.request.header.CF-Connecting-IP}
+		reverse_proxy {$API_UPSTREAM:backend.railway.internal:8080} {
+			# Overwrite, never append: the first entry must be ours.
+			header_up X-Forwarded-For {http.vars.real_ip}
+			header_up X-Real-IP {http.vars.real_ip}
+			header_up X-Forwarded-Proto https
+			header_up -Forwarded
+			header_up -CF-Connecting-IP
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 60s
+			}
+			# Server-sent events (/api/_events, /api/stream) must not be buffered.
+			flush_interval -1
+		}
+	}
+}
+
+:{$PORT:8081} {
+	log
+	log_skip /healthz
+
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	import api_{$API_MODE:none}
+
+	# The SPA's own headers. API responses carry the backend's headers instead.
+	@spa not path /api /api/* /console /console/* /backend.html /healthz
+	import security_headers
+	root * /srv
+
+	# Dotfiles (.git, .env, ...) are never served, even if one slips in.
+	@dotfiles path */.*
+	handle @dotfiles {
+		respond 404
+	}
+
+	# Content-hashed build output: cache forever.
+	handle /assets/* {
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server {
+			precompressed br gzip
+		}
+	}
+
+	# Un-hashed files copied from Frontend/public (images, icons, fonts).
+	@public path_regexp \.(?:png|jpe?g|gif|webp|avif|ico|svg|woff2?|webmanifest|txt)$
+	handle @public {
+		header Cache-Control "public, max-age=86400"
+		file_server {
+			precompressed br gzip
+		}
+	}
+
+	# The SPA shell and client-side routes: always revalidate so a deploy is
+	# picked up at once.
+	handle {
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server {
+			precompressed br gzip
+		}
+	}
+}
