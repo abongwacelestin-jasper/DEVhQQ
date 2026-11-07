@@ -156,3 +156,20 @@ Worktrees have no `node_modules`. Run `npm install` in the package you work in
 symlink from the main checkout:
 `ln -s /Users/macbook/Downloads/DEVHQ/DevHQ/node_modules node_modules` (and
 likewise for `Backend/` / `Frontend/`), and say so in your handoff.
+
+---
+
+## 9. Addendum (2026-11-07): assurance lanes
+
+Four more lanes run in parallel with the ten build lanes. Build lanes merge
+into `wave4/integration` over time; assurance lanes work against the current
+code, then the coordinator asks for a **second pass on the merged branch**.
+
+| Lane | Owns (create + edit) | Edits allowed elsewhere |
+|---|---|---|
+| **TEST** Unit & integration tests | `Backend/test/**`, `Frontend/src/**/*.test.ts(x)`, `Frontend/src/test/**`, `Frontend/vitest.config.ts`, `Models/tests/**` (additive only; ML owns existing files) | `Backend/package.json` + `Frontend/package.json` (test scripts + test devDependencies only) |
+| **QA** Beta / end-to-end testing | `e2e/**` (Playwright project at repo root, own `package.json`), `docs/qa/**` | — |
+| **CYBER** Independent offensive assessment | `security-tests/**` (PoC scripts and automated attack checks), `docs/security/assessment/**` | none: CYBER never fixes app code; findings go to the coordinator |
+| **DOCS** Documentation | `docs/**` except `docs/agents/**`, `docs/security/**`, `docs/deploy/**`, `docs/qa/**`; `Backend/README.md`, `Frontend/README.md`, `Models/README.md` (only if ML hasn't created one; otherwise additive sections), `CONTRIBUTING.md`, `CHANGELOG.md`, `CODE_OF_CONDUCT.md` | — |
+
+Merge order: these four land after the ten build lanes.
