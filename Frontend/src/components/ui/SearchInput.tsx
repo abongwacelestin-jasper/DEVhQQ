@@ -33,7 +33,7 @@ export function SearchInput({
         <button
           type="button"
           onClick={() => onChange('')}
-          aria-label="Clear search"
+          aria-label="Clear filter"
           className="absolute right-1.5 grid h-[18px] w-[18px] place-items-center rounded text-subtle hover:text-ink"
         >
           <XIcon className="h-3 w-3" />
