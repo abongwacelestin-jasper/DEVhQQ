@@ -5,6 +5,15 @@ import type { ApiDeployment } from '../api/types';
 import { useAuth } from '../contexts/AuthContext';
 import { NOW, relative } from '../utils/date';
 import type { Deployment } from '../types/operations';
+import { onServerEvents } from '../components/engineering/data/events';
+
+/** The UI row plus the server fields charts and topology derive from. */
+export interface DeploymentRow extends Deployment {
+  createdAt: string;
+  version: string;
+  requestedBy: string;
+  approvedBy?: string;
+}
 
 /**
  * Deployments as the API knows them.
@@ -14,9 +23,13 @@ import type { Deployment } from '../types/operations';
  * transition is a request, and a failure puts the row back as the server has it.
  */
 
-function toDeployment(d: ApiDeployment): Deployment {
+export function toDeployment(d: ApiDeployment): DeploymentRow {
   return {
     id: d.id,
+    createdAt: d.createdAt,
+    version: d.version,
+    requestedBy: d.requestedBy,
+    approvedBy: d.approvedBy,
     product: d.product,
     env: d.env,
     sha: d.sha,
@@ -35,12 +48,14 @@ function toDeployment(d: ApiDeployment): Deployment {
 export function useDeployments() {
   const { session } = useAuth();
   const memberId = session?.memberId ?? null;
-  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [deployments, setDeployments] = useState<DeploymentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   const reload = useCallback(async () => {
     const rows = await api<ApiDeployment[]>('/api/deployments');
     setDeployments(rows.map(toDeployment));
+    setError(null);
   }, []);
 
   useEffect(() => {
@@ -54,6 +69,7 @@ export function useDeployments() {
     reload()
       .catch((e) => {
         if (!alive) return;
+        setError(e instanceof Error ? e : new Error(String(e)));
         toast.error("Couldn't load deployments", {
           description: e instanceof Error ? e.message : 'The deployments API did not respond.',
         });
@@ -63,6 +79,20 @@ export function useDeployments() {
       });
     return () => {
       alive = false;
+    };
+  }, [memberId, reload]);
+
+  // Approvals and simulated rollouts finish on the server; the stream says when to re-read.
+  useEffect(() => {
+    if (!memberId) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const off = onServerEvents(['deployment'], () => {
+      clearTimeout(t);
+      t = setTimeout(() => void reload().catch(() => undefined), 300);
+    });
+    return () => {
+      clearTimeout(t);
+      off();
     };
   }, [memberId, reload]);
 
@@ -96,5 +126,5 @@ export function useDeployments() {
     [transition],
   );
 
-  return { deployments, approve, rollback, reload, loading };
+  return { deployments, approve, rollback, reload, loading, error };
 }
