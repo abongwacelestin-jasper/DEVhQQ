@@ -17,7 +17,13 @@ describe('Modal', () => {
 
   it('is a labelled modal dialog with description, body and footer', () => {
     render(
-      <Modal open onClose={() => {}} title="Invite member" description="They get a link" footer={<button>Send</button>}>
+      <Modal
+        open
+        onClose={() => {}}
+        title="Invite member"
+        description="They get a link"
+        footer={<button>Send</button>}
+      >
         <p>Body text</p>
       </Modal>,
     );

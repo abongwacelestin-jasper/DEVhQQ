@@ -30,8 +30,21 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary', 'html'],
       reportsDirectory: './coverage',
-      include: ['src/utils/**', 'src/api/**', 'src/components/ui/**', 'src/components/auth/**'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/api/types.ts'],
+      include: [
+        'src/utils/**',
+        'src/api/**',
+        'src/components/ui/**',
+        'src/components/auth/**',
+        'src/components/engineering/data/**',
+        'src/components/work/**',
+        'src/components/messaging/**',
+      ],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/test/**',
+        'src/api/types.ts',
+        'src/components/engineering/data/types.ts',
+      ],
       thresholds: {
         // Measured at 97-100%. Thresholds leave a little headroom, not a lot:
         // a module that has tests must stay covered.
@@ -49,6 +62,27 @@ export default defineConfig({
         },
         'src/components/ui/{Button,Modal,SearchInput,Segmented,MultiSelect,UnderlineTabs,StatusBadge,ProgressBar,Avatar,StatCard,Panel}.tsx':
           { lines: 95, functions: 95, branches: 85, statements: 95 },
+        // Phase 2 (merged branch). Measured: adapt 100/96.6, sessionModel 100/100,
+        // RichText 100/92.5, useTaskInsights 96/98 (lines/branches).
+        'src/components/engineering/data/adapt.ts': {
+          lines: 95,
+          functions: 95,
+          branches: 90,
+          statements: 95,
+        },
+        'src/api/auth/sessionModel.ts': { lines: 95, functions: 95, branches: 90, statements: 95 },
+        'src/components/messaging/RichText.tsx': {
+          lines: 95,
+          functions: 95,
+          branches: 85,
+          statements: 95,
+        },
+        'src/components/work/useTaskInsights.ts': {
+          lines: 90,
+          functions: 95,
+          branches: 90,
+          statements: 90,
+        },
         'src/components/auth/CodeInput.tsx': {
           lines: 95,
           functions: 95,

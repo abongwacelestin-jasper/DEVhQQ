@@ -133,7 +133,7 @@ describe('buildSnippet', () => {
   // FINDING F-FE-3: the PowerShell snippet wraps the URL in single quotes without
   // escaping, so a URL containing a quote (e.g. a search for "it's") produces a
   // broken command: -Uri 'http://…?q=it's'. PowerShell escapes ' as ''.
-  it.fails("powershell: escapes single quotes in the URL (F-FE-3)", () => {
+  it.fails('powershell: escapes single quotes in the URL (F-FE-3)', () => {
     const out = buildSnippet('powershell', { ...base, url: "/api/tasks?q=it's" });
     expect(out).toContain("-Uri 'http://localhost:8080/api/tasks?q=it''s'");
   });

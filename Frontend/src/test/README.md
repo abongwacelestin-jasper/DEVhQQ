@@ -77,8 +77,20 @@ Coverage reports go to `Frontend/coverage/` (`text` in the terminal,
   failure, and the fixer turns it back into `it(...)`.
 
 Open findings: F-FE-1 (`metrics.test.ts`), F-FE-2 and F-FE-3
-(`snippets.test.ts`), F-FE-4 (`audit.test.ts`), F-FE-5 (`client.test.ts`) and
-F-FE-6 (`CodeInput.test.tsx`).
+(`snippets.test.ts`), F-FE-4 (`audit.test.ts`), F-FE-6 (`CodeInput.test.tsx`)
+and F-FE-10 (`components/messaging/RichText.test.tsx`). F-FE-5 was fixed on the
+merged branch and its test is now a plain `it(...)`. List open findings with
+`grep -rn "FINDING F-FE" src`.
+
+Phase 2 notes:
+
+- `api/client.ts` is cookie-only: tests assert no `X-DevHQ-Client` header, no
+  bearer token and `credentials: 'same-origin'`. Step-up is a
+  `stepUp(cause) => Promise<boolean>` handler and the request is retried once.
+- Hooks with module-level caches (for example `components/work/useTaskInsights.ts`)
+  are tested with `vi.resetModules()` and a fresh `import()` per test, plus
+  `renderHook` and `mockFetch().route(...)`, which answers by method and path
+  so the order of concurrent requests does not matter.
 
 ## Coverage thresholds
 
@@ -88,6 +100,10 @@ global number.
 | Group | lines / functions / branches / statements |
 |---|---|
 | `utils/{fuzzy,date,slug,status,secretScan,audit,authRoutes,snippets,metrics}.ts` | 95 / 95 / 90 / 95 |
+| `components/engineering/data/adapt.ts` | 95 / 95 / 90 / 95 |
+| `api/auth/sessionModel.ts` | 95 / 95 / 90 / 95 |
+| `components/messaging/RichText.tsx` | 95 / 95 / 85 / 95 |
+| `components/work/useTaskInsights.ts` | 90 / 95 / 90 / 90 |
 | `api/{client,capabilities,adapters}.ts` | 95 / 95 / 90 / 95 |
 | `components/ui/{Button,Modal,SearchInput,Segmented,MultiSelect,UnderlineTabs,StatusBadge,ProgressBar,Avatar,StatCard,Panel}.tsx` | 95 / 95 / 85 / 95 |
 | `components/auth/CodeInput.tsx` | 95 / 95 / 90 / 95 |

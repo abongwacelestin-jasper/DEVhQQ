@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { demoRoles, type Action, type Area } from '../data/roles';
 import type { ApiArea, ApiLevel, Capabilities } from './types';
-import {
-  ACTION_REQUIREMENT,
-  AREA_TO_SERVER,
-  canPerform,
-  canVisit,
-  levelFor,
-} from './capabilities';
+import { ACTION_REQUIREMENT, AREA_TO_SERVER, canPerform, canVisit, levelFor } from './capabilities';
 
 const LEVELS: ApiLevel[] = ['none', 'view', 'contribute', 'manage', 'admin'];
 const AREAS: ApiArea[] = [
@@ -28,7 +22,14 @@ function caps(level: ApiLevel, overrides: Partial<Record<ApiArea, ApiLevel>> = {
     ApiArea,
     ApiLevel
   >;
-  return { role: 'Developer', products: ['renewberry'], matrix, levels: LEVELS, verifiedAt: 0, elevations: [] };
+  return {
+    role: 'Developer',
+    products: ['renewberry'],
+    matrix,
+    levels: LEVELS,
+    verifiedAt: 0,
+    elevations: [],
+  };
 }
 
 /** The server's Developer row (Backend/auth/rbac.ts permissionMatrix). */
@@ -115,7 +116,6 @@ describe('canPerform', () => {
   });
 
   it("every demo role's curated actions name real actions", () => {
-    for (const role of demoRoles)
-      for (const a of role.actions) expect(ALL_ACTIONS).toContain(a);
+    for (const role of demoRoles) for (const a of role.actions) expect(ALL_ACTIONS).toContain(a);
   });
 });

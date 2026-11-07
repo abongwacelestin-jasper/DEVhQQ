@@ -81,7 +81,12 @@ describe('StatCard', () => {
 describe('Panel', () => {
   it('is a section headed by its title with optional meta, action and filter rows', () => {
     render(
-      <Panel title="Deploys" meta={<span>3 today</span>} action={<button>New</button>} filter={<input aria-label="f" />}>
+      <Panel
+        title="Deploys"
+        meta={<span>3 today</span>}
+        action={<button>New</button>}
+        filter={<input aria-label="f" />}
+      >
         <p>rows</p>
       </Panel>,
     );

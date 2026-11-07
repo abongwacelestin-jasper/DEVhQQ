@@ -119,7 +119,8 @@ describe('weekBuckets', () => {
     const b = weekBuckets(addDays(NOW, -20), NOW);
     expect(b.map((x) => x.label)).toEqual(['Oct 3', 'Oct 10', 'Oct 17']);
     expect(b[2].end).toEqual(new Date(2026, 9, 23, 23, 59, 59, 999));
-    for (let i = 1; i < b.length; i++) expect(b[i].start.getTime()).toBe(b[i - 1].end.getTime() + 1);
+    for (let i = 1; i < b.length; i++)
+      expect(b[i].start.getTime()).toBe(b[i - 1].end.getTime() + 1);
   });
 
   it('never extends past NOW and respects max', () => {
@@ -141,7 +142,11 @@ describe('task flow metrics', () => {
   ];
 
   it('doneEvent returns the latest move to done', () => {
-    const reopened = [...events, ev('A', 'status', oct(9), 'in-progress'), ev('A', 'status', oct(15), 'done')];
+    const reopened = [
+      ...events,
+      ev('A', 'status', oct(9), 'in-progress'),
+      ev('A', 'status', oct(15), 'done'),
+    ];
     expect(doneEvent(reopened, 'A')?.at).toBe(oct(15).toISOString());
     expect(doneEvent(events, 'C')).toBeUndefined();
   });

@@ -57,7 +57,14 @@ describe('CodeInput', () => {
     render(<Harness />);
     await user.keyboard('246810');
     expect(value()).toBe('246810');
-    expect(boxes().map((b) => (b as HTMLInputElement).value)).toEqual(['2', '4', '6', '8', '1', '0']);
+    expect(boxes().map((b) => (b as HTMLInputElement).value)).toEqual([
+      '2',
+      '4',
+      '6',
+      '8',
+      '1',
+      '0',
+    ]);
     expect(screen.getByLabelText('Digit 6')).toHaveFocus();
   });
 

@@ -14,7 +14,12 @@ describe('Button', () => {
     const user = setupUser();
     const onClick = vi.fn();
     render(
-      <Button onClick={onClick} type="submit" aria-describedby="hint" icon={<svg data-testid="icon" />}>
+      <Button
+        onClick={onClick}
+        type="submit"
+        aria-describedby="hint"
+        icon={<svg data-testid="icon" />}
+      >
         Save
       </Button>,
     );
