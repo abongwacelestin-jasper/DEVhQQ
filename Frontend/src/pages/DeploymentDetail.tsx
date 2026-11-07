@@ -1,10 +1,10 @@
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   CircleCheckIcon,
   CircleDashedIcon,
   CircleXIcon,
-  ExternalLinkIcon,
   LoaderCircleIcon,
   RotateCcwIcon,
   ShieldCheckIcon,
@@ -15,122 +15,165 @@ import { MetaList } from '../components/ui/MetaList';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProductMark } from '../components/ui/ProductMark';
 import { Avatar } from '../components/ui/Avatar';
-import { Button } from '../components/ui/Button';
 import { NotFound } from '../components/ui/NotFound';
+import { EnvironmentPipeline } from '../components/delivery/EnvironmentPipeline';
+import { DeployRiskBadge } from '../components/delivery/DeployRiskBadge';
+import { lanesFromDeployments } from '../components/delivery/environments';
+import {
+  DataState,
+  GuardedButton,
+  InlineError,
+  SampleDataBadge,
+} from '../components/engineering/states';
+import { useCiRuns, useServerLevel } from '../components/engineering/data/hooks';
+import { useAuth } from '../contexts/AuthContext';
 import { useReauth } from '../contexts/ReauthContext';
-import { useDeployments } from '../hooks/useDeployments';
+import { useDeployments, type DeploymentRow } from '../hooks/useDeployments';
 import { api } from '../api/client';
 import type { ApiDeployment } from '../api/types';
-import { deployPullRequests } from '../data/operations';
 import { products } from '../data/portfolio';
-import { pullRequests } from '../data/engineering';
 import { deployMeta, memberById } from '../utils/status';
-import { repoSlug } from '../utils/slug';
-import type { DeployStatus } from '../types/operations';
+import { formatDateTime } from '../utils/date';
 
 type StepState = 'done' | 'failed' | 'running' | 'pending' | 'skipped';
-const stepNames = [
-  'Checkout',
-  'Install dependencies',
-  'Build',
-  'Run migrations',
-  'Deploy',
-  'Health check',
-];
-const stepTimes = ['4s', '38s', '1m 10s', '22s', '1m 34s', '24s'];
 
-function stepStates(status: DeployStatus, failedStep?: string): StepState[] {
-  if (status === 'succeeded' || status === 'rolled-back') return stepNames.map(() => 'done');
-  if (status === 'awaiting-approval') return stepNames.map(() => 'pending');
-  if (status === 'running')
-    return stepNames.map((_, i) => (i < 3 ? 'done' : i === 3 ? 'running' : 'pending'));
-  const f = stepNames.indexOf(failedStep ?? 'Deploy');
-  return stepNames.map((_, i) => (i < f ? 'done' : i === f ? 'failed' : 'skipped'));
+/**
+ * The lifecycle DevHQ actually records: request → approval → rollout.
+ * Build/test steps live in CI (shown below from real runs), so they are not
+ * re-drawn here with invented timings.
+ */
+function lifecycle(d: DeploymentRow): { label: string; state: StepState; note: string }[] {
+  const prod = d.env === 'production';
+  const requested = {
+    label: 'Requested',
+    state: 'done' as StepState,
+    note: `${memberById(d.requestedBy).name} · ${formatDateTime(new Date(d.createdAt))}`,
+  };
+  const approval = {
+    label: 'Approval',
+    state: (!prod
+      ? 'skipped'
+      : d.approvedBy
+        ? 'done'
+        : d.status === 'awaiting-approval'
+          ? 'pending'
+          : d.status === 'rolled-back'
+            ? 'failed'
+            : 'skipped') as StepState,
+    note: !prod
+      ? 'Not required for staging'
+      : d.approvedBy
+        ? `Approved by ${memberById(d.approvedBy).name}`
+        : d.status === 'awaiting-approval'
+          ? 'Waiting for Deployment: manage + step-up'
+          : d.status === 'rolled-back'
+            ? 'Rejected'
+            : '—',
+  };
+  const rollout = {
+    label: 'Rollout',
+    state: (d.status === 'succeeded'
+      ? 'done'
+      : d.status === 'running'
+        ? 'running'
+        : d.status === 'failed'
+          ? 'failed'
+          : d.status === 'rolled-back'
+            ? 'skipped'
+            : 'pending') as StepState,
+    note: `${deployMeta[d.status].label} · ${d.provider}`,
+  };
+  return [requested, approval, rollout];
 }
+
+const icon: Record<StepState, JSX.Element> = {
+  done: <CircleCheckIcon className="h-4 w-4 text-ok" aria-hidden />,
+  failed: <CircleXIcon className="h-4 w-4 text-bad" aria-hidden />,
+  running: <LoaderCircleIcon className="h-4 w-4 animate-spin text-info" aria-hidden />,
+  pending: <CircleDashedIcon className="h-4 w-4 text-subtle" aria-hidden />,
+  skipped: <CircleDashedIcon className="h-4 w-4 text-subtle" aria-hidden />,
+};
 
 export function DeploymentDetail() {
   const { deployId } = useParams();
   const navigate = useNavigate();
   const { requestReauth } = useReauth();
-  const { deployments, approve, rollback, loading } = useDeployments();
+  const { session, canDo } = useAuth();
+  const { atLeast } = useServerLevel();
+  const { deployments, approve, rollback, loading, error, reload, actionError } = useDeployments();
   const d = deployments.find((x) => x.id === deployId);
+  const runs = useCiRuns();
+  const [rerunError, setRerunError] = useState<unknown>(null);
+
   if (!d) {
-    if (loading) return <p className="p-6 text-[12.5px] text-muted">Loading deployment…</p>;
+    if (loading || error)
+      return (
+        <DataState
+          status={loading ? 'loading' : 'error'}
+          error={error}
+          what="Deployment"
+          onRetry={() => void reload()}
+        />
+      );
     return <NotFound what="Deployment" backTo="/deployments" backLabel="Back to deployments" />;
   }
-  const product = products.find((p) => p.id === d.product);
-  const states = stepStates(d.status, d.failedStep);
-  const prNumber = deployPullRequests[d.sha];
-  const pr = prNumber ? pullRequests.find((p) => p.number === prNumber) : undefined;
-  const isProd = d.env === 'production';
 
-  const logs = [
-    `[00:00] ▶ ${d.provider} job started for ${d.sha}`,
-    '[00:04] ✓ Checked out commit',
-    '[00:42] ✓ Installed 1,284 packages (lockfile verified)',
-    '[01:52] ✓ Build completed · bundle 412 kB',
-    ...(d.status === 'failed'
-      ? [
-          '[02:14] ▶ Running migrations (3 pending)',
-          '[02:31] ✗ ERROR: column "reset_token_hash" already exists',
-          '[02:31] ✗ Migration 2026_10_22_add_reset_tokens failed — rolled back transaction',
-          '[02:48] ■ Job failed. Nothing was deployed.',
-        ]
-      : d.status === 'awaiting-approval'
-        ? ['[—] ⏸ Waiting for approval from Owner or Operations']
-        : d.status === 'running'
-          ? ['[02:14] ▶ Running migrations…']
-          : [
-              '[02:14] ✓ Migrations up to date',
-              '[03:48] ✓ Deployed to ' + (product?.name ?? '') + ' ' + d.env,
-              '[04:12] ✓ Health check 200 OK in 182ms',
-            ]),
-  ];
+  const product = products.find((p) => p.id === d.product);
+  const isProd = d.env === 'production';
+  const mayApprove = canDo('deploy:approve');
+  const mayManage = atLeast('Deployment', 'manage');
+  const mayRequest = atLeast('Deployment', 'contribute');
+  const ownRequest = d.requestedBy === session?.memberId;
+  const steps = lifecycle(d);
+  const lanes = lanesFromDeployments(deployments, d.product);
+  const sameEnv = deployments
+    .filter((x) => x.product === d.product && x.env === d.env)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const position = sameEnv.findIndex((x) => x.id === d.id);
+  const replacedBy = position > 0 ? sameEnv[position - 1] : undefined;
+  const replaced = sameEnv[position + 1];
+  const commitRuns = runs.items.filter((r) => r.sha && d.sha && r.sha.startsWith(d.sha));
+  const errorHere = actionError?.id === d.id ? actionError.error : null;
 
   const approveThis = () =>
     requestReauth({
       title: `Approve ${d.env} deploy`,
       description: `${d.sha} will be handed to ${d.provider}. Approvals are permanently recorded.`,
       actionLabel: 'Verify & approve',
-      successMessage: 'Deployment approved',
       onConfirm: () => void approve(d.id),
     });
 
   const rollbackThis = () =>
     requestReauth({
-      title: 'Roll back production',
-      description: `Redeploys the previous release for ${product?.name}. Requires Owner or Operations.`,
-      actionLabel: 'Verify & roll back',
-      successMessage: 'Rollback started',
+      title: d.status === 'awaiting-approval' ? 'Reject deployment' : 'Roll back deployment',
+      description: `Marks ${d.version} on ${product?.name ?? d.product} ${d.env} as rolled back.`,
+      actionLabel: d.status === 'awaiting-approval' ? 'Verify & reject' : 'Verify & roll back',
       onConfirm: () => void rollback(d.id),
     });
 
   /** A re-run is a new deployment record for the same commit — history is never rewritten. */
-  const rerun = async () => {
+  const rerun = () => {
     const run = async () => {
+      setRerunError(null);
       try {
         const created = await api<ApiDeployment>('/api/deployments', {
           method: 'POST',
-          body: { product: d.product, env: d.env, version: d.message, sha: d.sha },
+          body: { product: d.product, env: d.env, version: d.version, sha: d.sha },
         });
-        toast.success('Re-run requested', { description: `${d.provider} picked up ${d.sha}.` });
+        toast.success('Re-run requested', { description: `${d.provider} picks up ${d.sha}.` });
         navigate(`/deployments/${created.id}`);
       } catch (e) {
-        toast.error('Re-run failed', {
-          description: e instanceof Error ? e.message : 'The deployments API did not respond.',
-        });
+        setRerunError(e);
       }
     };
     if (isProd) {
       requestReauth({
         title: 'Re-run production deploy',
-        description: 'Production re-runs need a fresh MFA check.',
+        description: 'Production re-runs need a fresh verification.',
         actionLabel: 'Verify & re-run',
         onConfirm: () => void run(),
       });
-    } else {
-      await run();
-    }
+    } else void run();
   };
 
   return (
@@ -146,7 +189,7 @@ export function DeploymentDetail() {
         title={
           <span>
             <span className="font-mono">{d.sha}</span>{' '}
-            <span className="font-normal text-muted">{d.message}</span>
+            <span className="font-normal text-muted">{d.version}</span>
           </span>
         }
         badges={
@@ -158,92 +201,176 @@ export function DeploymentDetail() {
         }
         actions={
           <>
-            {d.status === 'awaiting-approval' && (
-              <>
-                <Button onClick={() => void rollback(d.id)}>Reject</Button>
-                <Button
-                  variant="primary"
-                  icon={<ShieldCheckIcon className="h-3.5 w-3.5" />}
-                  onClick={approveThis}
-                >
-                  Approve
-                </Button>
-              </>
+            {d.status === 'awaiting-approval' && mayManage && (
+              <GuardedButton
+                allowed={mayManage}
+                reason="Needs Deployment: manage"
+                onClick={rollbackThis}
+              >
+                Reject
+              </GuardedButton>
+            )}
+            {d.status === 'awaiting-approval' && mayApprove && (
+              <GuardedButton
+                variant="primary"
+                allowed={!ownRequest}
+                reason="Two-person rule: you requested this deployment, so someone else must approve it"
+                icon={<ShieldCheckIcon className="h-3.5 w-3.5" />}
+                onClick={approveThis}
+              >
+                Approve
+              </GuardedButton>
             )}
             {d.status === 'failed' && (
-              <Button
+              <GuardedButton
                 variant="primary"
+                allowed={mayRequest}
+                reason="Needs Deployment: contribute"
                 icon={<RotateCcwIcon className="h-3.5 w-3.5" />}
-                onClick={() => void rerun()}
+                onClick={rerun}
               >
                 Re-run
-              </Button>
+              </GuardedButton>
             )}
-            {d.status === 'succeeded' && isProd && (
-              <Button
+            {(d.status === 'succeeded' || d.status === 'running') && mayManage && (
+              <GuardedButton
                 variant="danger"
+                allowed={mayManage}
+                reason="Needs Deployment: manage"
                 icon={<RotateCcwIcon className="h-3.5 w-3.5" />}
                 onClick={rollbackThis}
               >
                 Roll back
-              </Button>
+              </GuardedButton>
             )}
-            <Button
-              icon={<ExternalLinkIcon className="h-3.5 w-3.5" />}
-              onClick={() => toast('Opening provider logs', { description: d.provider })}
-            >
-              Provider logs
-            </Button>
           </>
         }
       />
 
+      {!!(errorHere || rerunError) && <InlineError error={errorHere ?? rerunError} />}
+      {d.status === 'awaiting-approval' && !mayApprove && (
+        <p className="rounded-md border border-line bg-sunken/50 px-3 py-2 text-[12px] text-muted">
+          Waiting for approval. Approving needs Deployment: manage — your role can view this
+          deployment but not approve it.
+        </p>
+      )}
+
+      <DeployRiskBadge deploymentId={d.id} />
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_272px]">
         <div className="space-y-4">
-          <Panel title="Pipeline" meta={<span>{d.duration}</span>}>
-            <ol className="grid grid-cols-1 divide-y divide-line sm:grid-cols-3 sm:divide-y-0 lg:grid-cols-6">
-              {stepNames.map((s, i) => {
-                const st = states[i];
-                return (
-                  <li
-                    key={s}
-                    className={`flex items-center gap-2 px-3.5 py-2.5 sm:flex-col sm:items-start sm:gap-1 ${st === 'failed' ? 'bg-bad-soft/50' : ''}`}
-                  >
-                    {st === 'done' && <CircleCheckIcon className="h-4 w-4 text-ok" />}
-                    {st === 'failed' && <CircleXIcon className="h-4 w-4 text-bad" />}
-                    {st === 'running' && (
-                      <LoaderCircleIcon className="h-4 w-4 animate-spin text-info" />
-                    )}
-                    {(st === 'pending' || st === 'skipped') && (
-                      <CircleDashedIcon className="h-4 w-4 text-subtle" />
-                    )}
-                    <span
-                      className={`flex-1 text-[12.5px] font-medium ${st === 'skipped' || st === 'pending' ? 'text-muted' : 'text-ink'}`}
-                    >
-                      {s}
-                    </span>
-                    <span className="text-[11px] tabular-nums text-subtle">
-                      {st === 'done' || st === 'failed' ? stepTimes[i] : st}
-                    </span>
-                  </li>
-                );
-              })}
+          <Panel title="Lifecycle" meta={<span>Recorded by DevHQ</span>}>
+            <ol className="grid grid-cols-1 divide-y divide-line sm:grid-cols-3 sm:divide-y-0">
+              {steps.map((s) => (
+                <li
+                  key={s.label}
+                  className={`flex items-center gap-2 px-3.5 py-2.5 sm:flex-col sm:items-start sm:gap-1 ${s.state === 'failed' ? 'bg-bad-soft/50' : ''}`}
+                >
+                  {icon[s.state]}
+                  <span className="flex-1 text-[12.5px] font-medium text-ink">{s.label}</span>
+                  <span className="text-[11px] text-subtle">{s.note}</span>
+                </li>
+              ))}
             </ol>
           </Panel>
 
-          <Panel title="Logs" meta={<span>Secrets are redacted before display</span>}>
-            <pre className="max-h-72 overflow-auto bg-[#0F1115] px-3.5 py-3 font-mono text-[11.5px] leading-[1.7] text-[#D4D4D8] scroll-thin">
-              {logs.map((l, i) => (
-                <div
-                  key={i}
-                  className={
-                    l.includes('✗') ? 'text-[#FCA5A5]' : l.includes('✓') ? 'text-[#A7F3D0]' : ''
-                  }
-                >
-                  {l}
+          <Panel title="Environments" meta={<span>Latest deploy per lane · {product?.name}</span>}>
+            <div className="space-y-2 p-2.5">
+              <EnvironmentPipeline lanes={lanes} />
+              <dl className="grid gap-x-4 gap-y-1 px-1 text-[12px] sm:grid-cols-2">
+                <div className="flex gap-1.5">
+                  <dt className="text-muted">Replaced</dt>
+                  <dd className="min-w-0 truncate">
+                    {replaced ? (
+                      <Link
+                        to={`/deployments/${replaced.id}`}
+                        className="font-mono hover:underline"
+                      >
+                        {replaced.sha} · {replaced.version}
+                      </Link>
+                    ) : (
+                      <span className="text-subtle">first deploy on record</span>
+                    )}
+                  </dd>
                 </div>
-              ))}
-            </pre>
+                <div className="flex gap-1.5">
+                  <dt className="text-muted">Superseded by</dt>
+                  <dd className="min-w-0 truncate">
+                    {replacedBy ? (
+                      <Link
+                        to={`/deployments/${replacedBy.id}`}
+                        className="font-mono hover:underline"
+                      >
+                        {replacedBy.sha} · {replacedBy.version}
+                      </Link>
+                    ) : (
+                      <span className="text-subtle">current in {d.env}</span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </Panel>
+
+          <Panel title="CI for this commit" meta={<SampleDataBadge source={runs.source} />}>
+            {runs.status !== 'ready' ? (
+              <div className="p-2.5">
+                <DataState
+                  status={runs.status}
+                  error={runs.error}
+                  what="CI runs"
+                  github
+                  rows={2}
+                  onRetry={() => void runs.reload()}
+                />
+              </div>
+            ) : commitRuns.length === 0 ? (
+              <p className="px-3.5 py-4 text-[12.5px] text-muted">
+                No CI runs recorded for {d.sha}.
+              </p>
+            ) : (
+              <table className="w-full text-[12.5px]" aria-label={`CI runs for ${d.sha}`}>
+                <thead>
+                  <tr className="border-b border-line text-left text-[11.5px] text-muted">
+                    <th scope="col" className="px-3.5 py-2 font-medium">
+                      Workflow
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Status
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Pull request
+                    </th>
+                    <th scope="col" className="px-3.5 py-2 text-right font-medium">
+                      Started
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {commitRuns.map((r) => (
+                    <tr key={r.id} className="border-b border-line last:border-0">
+                      <td className="px-3.5 py-2 font-medium text-ink">{r.workflow}</td>
+                      <td className="px-3 py-2 capitalize text-muted">{r.status}</td>
+                      <td className="px-3 py-2">
+                        {r.pr ? (
+                          <Link
+                            to={`/pull-requests/${r.pr}?repo=${encodeURIComponent(r.repoId)}`}
+                            className="font-mono text-accent hover:underline"
+                          >
+                            {r.repo}#{r.pr}
+                          </Link>
+                        ) : (
+                          <span className="text-subtle">—</span>
+                        )}
+                      </td>
+                      <td className="px-3.5 py-2 text-right text-[11.5px] text-muted">
+                        {formatDateTime(new Date(r.startedAt))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </Panel>
         </div>
 
@@ -252,61 +379,31 @@ export function DeploymentDetail() {
             <MetaList
               items={[
                 {
-                  label: 'Triggered by',
+                  label: 'Requested by',
                   value: (
                     <Link
-                      to={`/team/${d.author}`}
+                      to={`/team/${d.requestedBy}`}
                       className="flex items-center gap-1.5 hover:underline"
                     >
-                      <Avatar id={d.author} size="xs" />
-                      {memberById(d.author).name}
+                      <Avatar id={d.requestedBy} size="xs" />
+                      {memberById(d.requestedBy).name}
                     </Link>
                   ),
                 },
-                { label: 'Environment', value: <span className="capitalize">{d.env}</span> },
-                { label: 'Provider', value: d.provider },
-                { label: 'Started', value: `${d.ago}${d.ago === 'now' ? '' : ' ago'}` },
-                { label: 'Duration', value: d.duration },
                 {
-                  label: 'Approval',
-                  value: isProd
-                    ? 'Owner · MFA'
-                    : d.status === 'awaiting-approval'
-                      ? 'Pending'
-                      : 'Not required',
+                  label: 'Approved by',
+                  value: d.approvedBy ? memberById(d.approvedBy).name : '—',
                 },
+                { label: 'Environment', value: <span className="capitalize">{d.env}</span> },
+                { label: 'Version', value: <span className="font-mono">{d.version}</span> },
+                { label: 'Provider', value: d.provider },
+                { label: 'Requested', value: formatDateTime(new Date(d.createdAt)) },
               ]}
             />
           </Panel>
-          {pr && (
-            <Panel title="Change shipped">
-              <div className="space-y-1.5 px-3.5 py-2.5 text-[12.5px]">
-                <Link
-                  to={`/pull-requests/${pr.number}`}
-                  className="block truncate font-medium text-ink hover:underline"
-                >
-                  PR #{pr.number} {pr.title}
-                </Link>
-                {pr.taskKey && (
-                  <Link
-                    to={`/tasks/${pr.taskKey}`}
-                    className="block font-mono text-accent hover:underline"
-                  >
-                    {pr.taskKey}
-                  </Link>
-                )}
-                <Link
-                  to={`/repositories/${repoSlug(pr.repo)}`}
-                  className="block font-mono text-muted hover:underline"
-                >
-                  {pr.repo}
-                </Link>
-              </div>
-            </Panel>
-          )}
           <p className="rounded-lg border border-line bg-sunken/50 px-3 py-2.5 text-[12px] text-muted">
             DevHQ records and approves deployments. {d.provider} executes them with its own
-            credentials — DevHQ never holds server access.
+            credentials — build logs stay with the provider.
           </p>
         </div>
       </div>

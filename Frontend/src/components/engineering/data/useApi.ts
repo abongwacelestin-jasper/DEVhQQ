@@ -71,7 +71,12 @@ export interface ListState<T> {
   mutate: (fn: (items: T[]) => T[]) => void;
 }
 
-interface ListOptions {
+interface ListOptions<T, B> {
+  /**
+   * Maps the server's body to `{items,nextCursor,source}` in the UI's shape.
+   * Defaults to accepting `{items,…}` or a bare array as-is.
+   */
+  select?: (body: B) => ListResponse<T>;
   /** SSE event types that should trigger a refetch. */
   events?: readonly string[];
   /** Poll interval in ms while mounted (for data the server doesn't push). */
@@ -82,7 +87,19 @@ interface ListOptions {
  * A paginated list. `path === null` means "don't load" (e.g. not signed in, or
  * waiting on another value). Aborts in-flight requests on unmount or path change.
  */
-export function useApiList<T>(path: string | null, opts: ListOptions = {}): ListState<T> {
+export function useApiList<T, B = ListResponse<T> | T[]>(
+  path: string | null,
+  opts: ListOptions<T, B> = {},
+): ListState<T> {
+  const selectRef = useRef(opts.select);
+  selectRef.current = opts.select;
+  const read = useCallback(
+    (body: B): ListResponse<T> =>
+      selectRef.current
+        ? selectRef.current(body)
+        : normalise(body as unknown as ListResponse<T> | T[] | undefined),
+    [],
+  );
   const { session } = useAuth();
   const effective = session?.memberId ? path : null;
   const [items, setItems] = useState<T[]>([]);
@@ -111,7 +128,7 @@ export function useApiList<T>(path: string | null, opts: ListOptions = {}): List
       ctrl.current = c;
       if (background) setRefreshing(true);
       try {
-        const body = normalise(await api<ListResponse<T> | T[]>(effective, { signal: c.signal }));
+        const body = read(await api<B>(effective, { signal: c.signal }));
         if (c.signal.aborted || !mounted.current) return;
         setItems(body.items);
         setCursor(body.nextCursor ?? null);
@@ -130,7 +147,7 @@ export function useApiList<T>(path: string | null, opts: ListOptions = {}): List
         if (ctrl.current === c && mounted.current) setRefreshing(false);
       }
     },
-    [effective],
+    [effective, read],
   );
 
   useEffect(() => {
@@ -172,10 +189,10 @@ export function useApiList<T>(path: string | null, opts: ListOptions = {}): List
     setLoadingMore(true);
     const c = new AbortController();
     ctrl.current = c;
-    api<ListResponse<T> | T[]>(withCursor(effective, cursor), { signal: c.signal })
+    api<B>(withCursor(effective, cursor), { signal: c.signal })
       .then((raw) => {
         if (c.signal.aborted || !mounted.current) return;
-        const body = normalise(raw);
+        const body = read(raw);
         setItems((l) => [...l, ...body.items]);
         setCursor(body.nextCursor ?? null);
       })
@@ -186,7 +203,7 @@ export function useApiList<T>(path: string | null, opts: ListOptions = {}): List
       .finally(() => {
         if (mounted.current) setLoadingMore(false);
       });
-  }, [effective, cursor, loadingMore]);
+  }, [effective, cursor, loadingMore, read]);
 
   const reload = useCallback(() => fetchFirst(true), [fetchFirst]);
   const mutate = useCallback((fn: (items: T[]) => T[]) => setItems(fn), []);
@@ -215,10 +232,12 @@ export interface ResourceState<T> {
 }
 
 /** One resource. 404 from a real handler becomes `not-found`. */
-export function useApiResource<T>(
+export function useApiResource<T, B = T>(
   path: string | null,
-  opts: { events?: readonly string[] } = {},
+  opts: { events?: readonly string[]; select?: (body: B) => T } = {},
 ): ResourceState<T> {
+  const selectRef = useRef(opts.select);
+  selectRef.current = opts.select;
   const { session } = useAuth();
   const effective = session?.memberId ? path : null;
   const [data, setData] = useState<T | null>(null);
@@ -235,7 +254,8 @@ export function useApiResource<T>(
       const c = new AbortController();
       ctrl.current = c;
       try {
-        const body = await api<T>(effective, { signal: c.signal });
+        const raw = await api<B>(effective, { signal: c.signal });
+        const body = selectRef.current ? selectRef.current(raw) : (raw as unknown as T);
         if (c.signal.aborted) return;
         setData(body);
         setError(null);

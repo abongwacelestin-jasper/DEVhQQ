@@ -10,7 +10,7 @@
 
 import type { ApiProduct } from '../../../api/types';
 
-export type DataSource = 'github' | 'demo' | 'live' | 'ci' | 'webhook';
+export type DataSource = 'github' | 'demo' | 'live' | 'mixed' | 'manual' | 'ci' | 'webhook';
 
 export interface ListResponse<T> {
   items: T[];
@@ -30,6 +30,17 @@ export interface ApiGitHubApp {
   installedAt?: string;
   suspended?: boolean;
   source?: DataSource;
+  /** Server mode: `app` | `token` | `webhook-only` | `demo` | `unconfigured`. */
+  mode?: string;
+  configured?: boolean;
+  webhook?: {
+    url: string;
+    secretConfigured: boolean;
+    lastDeliveryAt: string | null;
+    deliveries24h: number;
+  };
+  installations?: { id: number; account: string; suspended: boolean; repositories: string[] }[];
+  linkedRepositories?: number;
 }
 
 /** GET /api/github/install-url */
@@ -72,6 +83,7 @@ export interface ApiRepo {
 export interface ApiRepoDetail extends ApiRepo {
   branchProtection?: { label: string; ok: boolean }[];
   recentCommits?: ApiCommit[];
+  recentRuns?: ApiCiRun[];
 }
 
 // ── Pull requests ────────────────────────────────────────────────────────
@@ -184,6 +196,8 @@ export interface ApiMonitorCheck {
   id?: string;
   at: string;
   ok: boolean;
+  /** The server's verdict, including `degraded` (slow but up). */
+  status?: 'up' | 'degraded' | 'down';
   httpStatus?: number;
   latencyMs?: number;
   error?: string;
@@ -206,11 +220,23 @@ export interface ApiIntegration {
   lastEventAt?: string;
   description?: string;
   source?: DataSource;
+  category?: string;
+  /** DevHQ built-ins (GitHub App, uptime checks) can't be connected/disconnected here. */
+  builtIn?: boolean;
+  /** Catalogue entry that can be connected with POST /connect. */
+  connectable?: boolean;
+  /** Outbound events this integration is subscribed to. */
+  events?: string[];
+  products?: string[];
+  credentialHint?: string;
+  authority?: string;
 }
 
 /** POST /api/integrations/:kind/connect — may hand back an OAuth/App install URL. */
 export interface ApiConnectResponse extends Partial<ApiIntegration> {
   redirectUrl?: string;
+  /** HMAC signing secret for receivers — shown once. */
+  signingSecret?: string;
 }
 
 export interface ApiWebhookDelivery {
@@ -224,6 +250,8 @@ export interface ApiWebhookDelivery {
   durationMs?: number;
   nextRetryAt?: string;
   error?: string;
+  state?: 'pending' | 'succeeded' | 'failed';
+  webhookId?: string;
 }
 
 /** GET /api/integrations/:id/webhooks (items) */
@@ -267,7 +295,9 @@ export interface ApiCodeFinding {
   fixedIn?: string;
   advisory?: string;
   detectedAt: string;
-  origin?: 'ci' | 'webhook';
+  origin?: 'ci' | 'webhook' | 'github' | 'demo';
+  /** Remediation advice. */
+  fix?: string;
   source?: DataSource;
 }
 

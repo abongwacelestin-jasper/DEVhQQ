@@ -23,6 +23,28 @@ export interface DeploymentRow extends Deployment {
  * transition is a request, and a failure puts the row back as the server has it.
  */
 
+/**
+ * "20h", "3d" — relative to the real clock. Records come from the API with
+ * real timestamps; older seeded records that predate the workspace's
+ * simulated clock fall back to its formatter.
+ */
+function agoOf(iso: string) {
+  const t = new Date(iso).getTime();
+  const ms = Date.now() - t;
+  if (t < NOW.getTime()) return relative(new Date(iso)).replace(/ ago$/, '');
+  const m = Math.max(0, Math.round(ms / 60_000));
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  if (m < 60 * 24) return `${Math.round(m / 60)}h`;
+  return `${Math.round(m / 1440)}d`;
+}
+
+export interface DeployActionError {
+  id: string;
+  action: 'approve' | 'rollback';
+  error: unknown;
+}
+
 export function toDeployment(d: ApiDeployment): DeploymentRow {
   return {
     id: d.id,
@@ -37,9 +59,7 @@ export function toDeployment(d: ApiDeployment): DeploymentRow {
     author: d.requestedBy,
     provider: d.provider,
     status: d.status,
-    // The workspace runs on a simulated clock; a record stamped after "now" reads as just-now
-    // rather than "in 7d".
-    ago: new Date(d.createdAt).getTime() > NOW.getTime() ? 'now' : relative(new Date(d.createdAt)),
+    ago: agoOf(d.createdAt),
     // Pipeline timings aren't recorded by the API, so they aren't invented here.
     duration: '—',
   };
@@ -51,6 +71,8 @@ export function useDeployments() {
   const [deployments, setDeployments] = useState<DeploymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  /** The last failed approve/rollback, for an inline message next to the action. */
+  const [actionError, setActionError] = useState<DeployActionError | null>(null);
 
   const reload = useCallback(async () => {
     const rows = await api<ApiDeployment[]>('/api/deployments');
@@ -98,6 +120,7 @@ export function useDeployments() {
 
   const transition = useCallback(
     async (id: string, action: 'approve' | 'rollback', success: string) => {
+      setActionError(null);
       try {
         const updated = await api<ApiDeployment>(
           `/api/deployments/${encodeURIComponent(id)}/${action}`,
@@ -107,9 +130,8 @@ export function useDeployments() {
         toast.success(success, { description: `${updated.sha} · ${updated.status}` });
         return updated;
       } catch (e) {
-        toast.error(`${action === 'approve' ? 'Approval' : 'Rollback'} failed`, {
-          description: e instanceof Error ? e.message : 'The deployments API did not respond.',
-        });
+        // Shown inline by the page (403 self-approval, 409 not pending, …).
+        setActionError({ id, action, error: e });
         void reload().catch(() => undefined);
         return null;
       }
@@ -126,5 +148,16 @@ export function useDeployments() {
     [transition],
   );
 
-  return { deployments, approve, rollback, reload, loading, error };
+  const clearActionError = useCallback(() => setActionError(null), []);
+
+  return {
+    deployments,
+    approve,
+    rollback,
+    reload,
+    loading,
+    error,
+    actionError,
+    clearActionError,
+  };
 }

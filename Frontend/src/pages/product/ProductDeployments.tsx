@@ -4,17 +4,17 @@ import { EnvironmentPipeline } from '../../components/delivery/EnvironmentPipeli
 import { useDateRange } from '../../contexts/DateRangeContext';
 import { useProductTab, textMatch } from '../../hooks/useProductTab';
 import { useDeployments } from '../../hooks/useDeployments';
-import { environments } from '../../data/operations';
-import { parseWhen } from '../../utils/date';
+import { lanesFromDeployments } from '../../components/delivery/environments';
+import { DataState } from '../../components/engineering/states';
 
 export function ProductDeployments() {
   const { product, filters } = useProductTab();
   const { inRange, label } = useDateRange();
-  const { deployments } = useDeployments();
+  const { deployments, loading, error, reload } = useDeployments();
   const rows = deployments.filter(
     (d) =>
       d.product === product.id &&
-      inRange(parseWhen(d.ago)) &&
+      inRange(new Date(d.createdAt)) &&
       textMatch(filters.q, d.sha, d.message, d.env) &&
       (!filters.person || d.author === filters.person) &&
       (!filters.status || d.status === filters.status),
@@ -23,7 +23,7 @@ export function ProductDeployments() {
     <div className="space-y-3.5">
       <Panel title="Environments">
         <div className="p-2.5">
-          <EnvironmentPipeline lanes={environments.filter((e) => e.product === product.id)} />
+          <EnvironmentPipeline lanes={lanesFromDeployments(deployments, product.id)} />
         </div>
       </Panel>
       <Panel
@@ -34,7 +34,17 @@ export function ProductDeployments() {
           </span>
         }
       >
-        {rows.length === 0 ? (
+        {loading || (error && deployments.length === 0) ? (
+          <div className="p-2.5">
+            <DataState
+              status={loading ? 'loading' : 'error'}
+              error={error}
+              what="Deployments"
+              rows={3}
+              onRetry={() => void reload()}
+            />
+          </div>
+        ) : rows.length === 0 ? (
           <p className="px-3.5 py-4 text-[12.5px] text-muted">No deployments in this range.</p>
         ) : (
           <DeploymentsTable rows={rows} showProvider />
