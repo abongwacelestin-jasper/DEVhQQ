@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Production email through Resend** (`MAIL_TRANSPORT=resend`): native `fetch`
+  to the Resend API with a per-attempt timeout, one retry on `429`/`5xx`
+  honouring `Retry-After`, an `Idempotency-Key` per message, a `category` tag
+  and masked recipients in logs. Production refuses to boot without
+  `RESEND_API_KEY` (or `RESEND_API_KEY_FILE`) and `MAIL_FROM`.
+- **Branded email layout:** one table-based, 600 px, dark-mode-aware layout
+  with Outlook (MSO/VML) support, preheaders, bulletproof buttons, a plain-text
+  part for every email and a compliance footer, configured by `BRAND_*` and
+  `APP_URL`.
+- **New emails:** invitation, sign-in from a new device or IP, authenticator or
+  passkey added/replaced, backup codes generated, backup code used, account
+  locked, access request, task assigned or review requested, incident declared
+  (owner), deployment awaiting approval, offboarding started; the reset,
+  password-changed, offboarding-completed and digest emails use the new layout
+  (`MAIL_DIGEST_MINUTES=1440` / `10080` for a daily or weekly summary).
+  Security notices are always sent; work notifications respect each member's
+  alert choices.
+- `npm run mail:preview` (Backend) writes every email as `.html` and `.txt`
+  for review. See `docs/operations/email.md`.
+
 ## [2.0.0] - 2026-11-07
 
 Major version: browser sessions are cookie-only, so clients that read the session

@@ -12,7 +12,7 @@ and `Models/`. What each one means and its defaults are in the
 hand-written [configuration reference](configuration.md); this page is the
 drift check: if code starts reading a new variable, it appears here.
 
-**81 variables.** "`_FILE`" means the container can pass the
+**98 variables.** "`_FILE`" means the container can pass the
 value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 
 | Variable | Backend | Frontend | Models | `_FILE` | In `.env.example` |
@@ -20,6 +20,7 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `ANTHROPIC_API_KEY` |  |  | `devhq_models/config.py` | yes | yes |
 | `APP_ENV` |  |  | `devhq_models/config.py` |  |  |
 | `APP_ORIGIN` | `config/env.ts` |  |  |  | yes |
+| `APP_URL` | `config/mail.ts` |  |  |  | yes |
 | `APP_VERSION` | `config/env.ts` |  |  |  | yes |
 | `ASSISTANT_FALLBACKS` |  |  | `devhq_models/config.py` |  |  |
 | `ASSISTANT_MAX_TOKENS` |  |  | `devhq_models/config.py` |  |  |
@@ -29,6 +30,15 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `BACKEND_URL` |  |  | `devhq_models/config.py` |  |  |
 | `BACKUP_DIR` | `config/env.ts` |  |  |  | yes |
 | `BACKUP_RETENTION_DAYS` | `config/env.ts` |  |  |  |  |
+| `BRAND_ACCENT_COLOR` | `config/mail.ts` |  |  |  | yes |
+| `BRAND_LEGAL_NAME` | `config/mail.ts` |  |  |  | yes |
+| `BRAND_LOGO_URL` | `config/mail.ts` |  |  |  | yes |
+| `BRAND_LOGO_WIDTH` | `config/mail.ts` |  |  |  | yes |
+| `BRAND_NAME` | `config/mail.ts` |  |  |  | yes |
+| `BRAND_POSTAL_ADDRESS` | `config/mail.ts` |  |  |  | yes |
+| `BRAND_PRIMARY_COLOR` | `config/mail.ts` |  |  |  | yes |
+| `BRAND_SUPPORT_EMAIL` | `config/mail.ts` |  |  |  | yes |
+| `BRAND_WEBSITE_URL` | `config/mail.ts` |  |  |  | yes |
 | `CORS_ORIGINS` | `config/env.ts` |  |  |  | yes |
 | `DATABASE_CONNECT_TIMEOUT_MS` | `db/pool.ts` |  |  |  |  |
 | `DATABASE_MIGRATION_URL` | `db/boot.ts`<br>`db/migrate.ts` |  |  |  | yes |
@@ -54,7 +64,9 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `HOST` |  |  | `devhq_models/cli.py` |  |  |
 | `LOG_LEVEL` | `lib/logger.ts` |  | `devhq_models/cli.py` |  | yes |
 | `MAIL_DIGEST_MINUTES` | `domain/collab/notify.ts` |  |  |  | yes |
-| `MAIL_TRANSPORT` | `mail/index.ts` |  |  |  | yes |
+| `MAIL_FROM` | `config/mail.ts` |  |  |  | yes |
+| `MAIL_REPLY_TO` | `config/mail.ts` |  |  |  | yes |
+| `MAIL_TRANSPORT` | `config/mail.ts` |  |  |  | yes |
 | `MAX_BODY_BYTES` | `config/env.ts` |  |  |  |  |
 | `ML_BOOTSTRAP_SYNTHETIC` |  |  | `devhq_models/config.py` |  |  |
 | `ML_MAX_BODY_BYTES` |  |  | `devhq_models/config.py` |  |  |
@@ -64,11 +76,16 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `ML_TRAIN_THREADS` |  |  | `devhq_models/training/pipeline.py` |  |  |
 | `MODEL_DIR` |  |  | `devhq_models/config.py` |  |  |
 | `MODEL_SIGNING_KEY` |  |  | `devhq_models/config.py` | yes |  |
+| `NAME` | `config/mail.ts` |  |  |  |  |
 | `NODE_ENV` | `config/env.ts`<br>`db/boot.ts`<br>`db/pool.ts`<br>`domain/collab/limits.ts` |  | `devhq_models/config.py` |  | yes |
 | `OMP_NUM_THREADS` |  |  | `devhq_models/cli.py` |  |  |
 | `OPENBLAS_NUM_THREADS` |  |  | `devhq_models/cli.py` |  |  |
 | `PORT` | `config/env.ts` |  | `devhq_models/cli.py` |  | yes |
 | `PUBLIC_URL` | `config/env.ts`<br>`routes/codespaces.routes.ts`<br>`routes/github.routes.ts` |  |  |  | yes |
+| `RESEND_API_KEY` | `config/mail.ts` |  |  | yes | yes |
+| `RESEND_API_KEY_FILE` | `config/mail.ts` |  |  |  |  |
+| `RESEND_BASE_URL` | `config/mail.ts` |  |  |  |  |
+| `RESEND_TIMEOUT_MS` | `config/mail.ts` |  |  |  | yes |
 | `S3_ACCESS_KEY_ID` | `config/env.ts` |  | `devhq_models/config.py` | yes | yes |
 | `S3_ALLOW_HTTP` | `config/env.ts` |  |  |  | yes |
 | `S3_BUCKET_AUDIT` | `config/env.ts` |  |  |  | yes |
@@ -84,7 +101,7 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `SESSION_IDLE_MS` | `config/env.ts` |  |  |  |  |
 | `SESSION_SECRET` | `config/env.ts` |  |  | yes | yes |
 | `SESSION_SECRET_PREVIOUS` | `config/env.ts` |  |  | yes | yes |
-| `SMTP_FROM` | `mail/index.ts` |  |  |  | yes |
+| `SMTP_FROM` | `config/mail.ts`<br>`mail/index.ts` |  |  |  | yes |
 | `SMTP_HOST` | `mail/index.ts` |  |  |  | yes |
 | `SMTP_PASSWORD` | `mail/index.ts` |  |  | yes | yes |
 | `SMTP_PORT` | `mail/index.ts` |  |  |  | yes |

@@ -169,8 +169,8 @@ changes what is returned rather than refusing the request.
 | Organization | `admin` | [Backend/routes/messaging.routes.ts:347](../../Backend/routes/messaging.routes.ts#L347) |
 | Project | `contribute` | [Backend/routes/messaging.routes.ts:361](../../Backend/routes/messaging.routes.ts#L361) |
 | Organization | `admin` | [Backend/routes/messaging.routes.ts:456](../../Backend/routes/messaging.routes.ts#L456) |
-| Administration | `manage` | [Backend/routes/offboarding.routes.ts:56](../../Backend/routes/offboarding.routes.ts#L56) |
-| Administration | `view` | [Backend/routes/offboarding.routes.ts:155](../../Backend/routes/offboarding.routes.ts#L155) |
+| Administration | `manage` | [Backend/routes/offboarding.routes.ts:57](../../Backend/routes/offboarding.routes.ts#L57) |
+| Administration | `view` | [Backend/routes/offboarding.routes.ts:156](../../Backend/routes/offboarding.routes.ts#L156) |
 | Administration | `view` | [Backend/routes/system.routes.ts:147](../../Backend/routes/system.routes.ts#L147) |
 | Project | `manage` | [Backend/routes/tasks.routes.ts:257](../../Backend/routes/tasks.routes.ts#L257) |
 | Administration | `admin` | [Backend/routes/tokens.routes.ts:110](../../Backend/routes/tokens.routes.ts#L110) |

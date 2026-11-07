@@ -17,6 +17,7 @@ at `/console`.
 | `npm run migrate` | run database migrations against `DATABASE_URL` / `DATABASE_MIGRATION_URL` |
 | `npm run smoke:pg` | smoke checks against a real PostgreSQL |
 | `npm run bootstrap-owner -- --email … --name …` | create the first Owner on an empty database; prints a single-use invite link ([first run](../docs/operations/deployment.md#first-run-production-setup)) |
+| `npm run mail:preview` | writes every email template with sample data as `.html` + `.txt` to `.mail-preview/` ([Email](../docs/operations/email.md#previewing)) |
 | `npm run typecheck` | `tsc --noEmit` — 0 errors expected |
 | `npm run lint` | ESLint, zero warnings allowed |
 | `npm run smoke` / `npm test` | boots the app in-process on a random port and runs the end-to-end smoke checks (157 today); exits non-zero on the first failure |
@@ -46,7 +47,7 @@ Backend/
 │   ├── ml/                bridge to the models service: HMAC signing, client, privacy-safe features
 │   └── webhooks/          outbound webhook dispatcher: signing, SSRF-safe delivery, retries
 ├── lib/                   http.ts (Router), validate.ts, query.ts, geo.ts, events.ts, logger.ts, metrics.ts
-├── mail/                  SMTP and console transports, templates
+├── mail/                  Resend, SMTP and console transports, branded layout, templates, event wiring
 ├── middleware/authenticate.ts   principal from cookie, CLI bearer token or personal access token
 ├── monitors/              uptime scheduler and the shared SSRF guard
 ├── resilience/            encrypted backups, restore planning, snapshot sources
