@@ -1,147 +1,113 @@
 name: Security
 
+# Repository-level supply-chain checks. Image scanning, SBOMs and signing are
+# in images.yml; static analysis is in codeql.yml; posture in scorecard.yml.
+
 on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main, develop]
   schedule:
-    # Run security scans daily at 2 AM UTC
-    - cron: "0 2 * * *"
+    - cron: "17 2 * * *"   # daily: new advisories against unchanged code
   workflow_dispatch:
 
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
-  # npm audit for security vulnerabilities
-  npm-audit:
-    name: npm audit
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        workspace: [Backend, Frontend, Models]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: ${{ matrix.workspace }}/package-lock.json
-
-      - name: Install dependencies
-        run: |
-          cd ${{ matrix.workspace }}
-          npm ci
-
-      - name: Run npm audit
-        run: |
-          cd ${{ matrix.workspace }}
-          npm audit --audit-level=high
-        continue-on-error: false
-
-  # CodeQL for static analysis
-  codeql:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
+  trivy-fs:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
-      actions: read
       contents: read
       security-events: write
-    strategy:
-      matrix:
-        language: ["javascript", "typescript"]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          languages: ${{ matrix.language }}
-          queries: security-extended,security-and-quality
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+          persist-credentials: false
+      # Gate: lockfile vulnerabilities, IaC misconfigurations (Dockerfiles,
+      # compose) and committed secrets, HIGH/CRITICAL with a fix available.
+      - name: Trivy fs (gate)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          category: "/language:${{matrix.language}}"
-
-  # Secret scanning for leaked secrets
-  trivy-scan:
-    name: Trivy Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: "fs"
-          scan-ref: "."
-          format: "sarif"
-          output: "trivy-results.sarif"
-          severity: "CRITICAL,HIGH"
-
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+          skip-dirs: infra/secrets
+      - name: Trivy fs (SARIF)
         if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          sarif_file: "trivy-results.sarif"
-
-  # Dependency review
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: MEDIUM,HIGH,CRITICAL
+          format: sarif
+          output: trivy-fs.sarif
+          exit-code: "0"
+          skip-dirs: infra/secrets
+          skip-setup-trivy: true
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        if: always() && hashFiles('trivy-fs.sarif') != ''
         with:
-          fail-on-severity: high
-          deny-licenses: GPL-3.0, AGPL-3.0
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
 
-  # Check for hardcoded secrets
   gitleaks:
-    name: Gitleaks Scan
-    runs-on: ubuntu-latest
+    name: Gitleaks (full history)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
+      # The CLI image (pinned by digest) instead of gitleaks-action, which
+      # requires a paid licence for organisation repositories.
+      - name: Gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git --redact --verbose --exit-code 1 /repo
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-
-  # Check for outdated dependencies
-  outdated:
-    name: Check Outdated Dependencies
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        workspace: [Backend, Frontend, Models]
+  npm-audit:
+    name: npm audit (production deps, high+)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: "22"
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.x"
+      # Reads package-lock.json only; nothing is installed or executed.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high --workspaces --include-workspace-root
 
-      - name: Install dependencies
-        run: |
-          cd ${{ matrix.workspace }}
-          npm ci
-
-      - name: Check for outdated packages
-        run: |
-          cd ${{ matrix.workspace }}
-          npm outdated || true
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write   # summary comment on the PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-3.0-only, GPL-3.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later
+          comment-summary-in-pr: on-failure
