@@ -4,11 +4,15 @@
  * every entry as an `audit` event), so the audit module itself is unchanged.
  *
  * Inserts are batched, retried with backoff, and flushed on shutdown. Each
- * process boot is a new in-memory chain, identified by `chain_id`.
+ * process boot is identified by `chain_id`; since v2.1 a boot continues the
+ * stored chain (its first row links to the newest row by `prev_hash`, with
+ * `seq` continued), so `pgAuditSource()` reads the table back in insertion
+ * order for resume and end-to-end verification (ADR 0008 addendum).
  */
 
 import { randomUUID } from 'node:crypto';
-import type { Pool } from 'pg';
+import type { Client, Pool } from 'pg';
+import type { AuditSource, ChainHead, StoredRecord } from '../audit/chain.ts';
 import { subscribe } from '../lib/events.ts';
 import { logger } from '../lib/logger.ts';
 
@@ -66,6 +70,7 @@ export function startAuditSink(pool: Pool) {
   let running: Promise<void> | null = null;
   let failures = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastPersisted: ChainHead | null = null;
 
   async function drainOnce(): Promise<boolean> {
     const batch = queue.slice(0, 500);
@@ -84,6 +89,8 @@ export function startAuditSink(pool: Pool) {
         batch.map((r) => r.hash),
       ]);
       queue.splice(0, batch.length);
+      const last = batch[batch.length - 1];
+      lastPersisted = { seq: last.seq, hash: last.hash };
       failures = 0;
       return true;
     } catch (err) {
@@ -124,6 +131,8 @@ export function startAuditSink(pool: Pool) {
   return {
     chainId,
     pending: () => queue.length,
+    /** The newest entry this process has committed to `audit_entries`. */
+    lastPersisted: () => lastPersisted,
     async close(timeoutMs = 5_000) {
       unsubscribe();
       if (timer) clearTimeout(timer);
@@ -135,5 +144,41 @@ export function startAuditSink(pool: Pool) {
       }
       if (queue.length) logger.error('db.audit_flush_incomplete', { pending: queue.length });
     },
+  };
+}
+
+const SCAN_SQL = `
+  SELECT id::text AS id, chain_id, seq, at, actor, action, target, sensitive,
+         request_id, prev_hash, hash
+  FROM audit_entries
+  WHERE audit_entries.id > $1::bigint
+  ORDER BY audit_entries.id -- the bigint column, not the text alias (that would sort 1, 10, 2…)
+  LIMIT $2`;
+
+const SCAN_PAGE = 5_000;
+
+/**
+ * `audit_entries` as an AuditSource: every row in insertion (`id`) order,
+ * paged by keyset so memory stays bounded. Parents always precede children
+ * in this order (a boot reads the head before inserting rows that link to it).
+ */
+export function pgAuditSource(
+  pool: Pick<Pool, 'query'> | Pick<Client, 'query'>,
+  sink?: { lastPersisted(): ChainHead | null },
+): AuditSource {
+  return {
+    kind: 'postgres',
+    async *scan(): AsyncGenerator<StoredRecord> {
+      let after = '0';
+      for (;;) {
+        const res = await (pool as Pick<Pool, 'query'>).query<
+          Record<string, unknown> & { id: string }
+        >(SCAN_SQL, [after, SCAN_PAGE]);
+        for (const row of res.rows) yield { raw: row, position: Number(row.id) };
+        if (res.rows.length < SCAN_PAGE) return;
+        after = String(res.rows[res.rows.length - 1].id);
+      }
+    },
+    ...(sink ? { expectedHead: () => sink.lastPersisted() } : {}),
   };
 }

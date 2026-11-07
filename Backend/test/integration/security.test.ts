@@ -41,7 +41,24 @@ describe('security — audit trail', () => {
   });
 
   it('the hash chain verifies and readiness reports it intact', async () => {
-    assert.deepEqual((await as.admin.get('/api/audit/verify')).json, { ok: true });
+    const verified = await as.admin.get<{
+      ok: boolean;
+      live: unknown;
+      store: { kind: string; ok: boolean; entries: number; firstBreak: unknown };
+      continuity: { source: string; status: string };
+    }>('/api/audit/verify');
+    // The live chain and the durable file, re-read end to end, both verify.
+    assert.equal(verified.json.ok, true);
+    assert.deepEqual(verified.json.live, { ok: true });
+    assert.deepEqual(
+      [verified.json.store.kind, verified.json.store.ok, verified.json.store.firstBreak],
+      ['file', true, null],
+    );
+    assert.ok(verified.json.store.entries > 0);
+    assert.deepEqual(
+      [verified.json.continuity.source, verified.json.continuity.status],
+      ['file', 'genesis'],
+    );
     const ready = await app.client().get<{ ready: boolean; auditChain: string }>('/api/ready');
     assert.deepEqual(
       [ready.status, ready.json.ready, ready.json.auditChain],
