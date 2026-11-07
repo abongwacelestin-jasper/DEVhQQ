@@ -5,8 +5,8 @@
  * labelled demo or heuristic data, never to a crash.
  */
 import { test, expect, uid } from '../support/fixtures';
-import { completeStepUp, enterCode, signInViaApi } from '../support/auth';
-import { apiSession, requestProductionDeploy } from '../support/api';
+import { completeStepUp, enterCode, requestJitAccess, signInViaApi } from '../support/auth';
+import { apiSession, decideGrantAs, myGrants, requestProductionDeploy } from '../support/api';
 import { DEMO_MFA_CODE, DEMO_PASSWORD, personas } from '../support/personas';
 
 test.describe('@wave4 F-SEC identity in the browser', () => {
@@ -42,10 +42,20 @@ test.describe('@wave4 F-SEC identity in the browser', () => {
     await expect(page.getByRole('dialog', { name: /Welcome back, Amara/ })).toBeHidden();
   });
 
-  test('Operations approves a deploy through step-up, with a wrong code then a retry @smoke', async ({ page, baseURL }) => {
-    const d = await requestProductionDeploy(baseURL!, 'admin', 'renewberry', uid('v'));
+  test('Operations approves a deploy through JIT access and step-up, with a wrong code then a retry @smoke', async ({ page, baseURL }) => {
+    // Approving a production deploy needs a just-in-time grant: the refusal opens the request
+    // dialog, a second admin (the Owner) approves the grant, then Operations approves the deploy.
+    // Mirror is this test's product so no parallel journey holds or needs the same grant.
+    const d = await requestProductionDeploy(baseURL!, 'admin', 'mirror', uid('v'));
     await signInViaApi(page, 'operations', '/deployments');
     const row = page.getByRole('listitem').filter({ hasText: d.sha }).filter({ has: page.getByRole('button', { name: 'Approve' }) });
+    await row.getByRole('button', { name: 'Approve' }).click();
+    await completeStepUp(page, { title: /Approve production deploy/, action: 'Verify & approve' });
+    await requestJitAccess(page, { scope: 'production:mirror', reason: `Approve ${d.version} on Mirror Acture` });
+    const pending = (await myGrants(page.request)).find((g) => g.scope === 'production:mirror' && g.status === 'pending');
+    expect(pending, 'the request is stored as pending').toBeTruthy();
+    expect((await decideGrantAs(baseURL!, 'admin', pending!.id, 'approve')).status).toBe('active');
+
     await row.getByRole('button', { name: 'Approve' }).click();
     const dialog = await completeStepUp(page, { title: /Approve production deploy/, action: 'Verify & approve', code: '111111' });
     await expect(dialog.getByRole('alert')).toContainText(/didn’t match|incorrect/i);
@@ -55,6 +65,7 @@ test.describe('@wave4 F-SEC identity in the browser', () => {
     const after = (await (await page.request.get('/api/deployments')).json()) as { id: string; approvedBy?: string }[];
     const list = Array.isArray(after) ? after : (after as unknown as { items: typeof after }).items;
     expect(list.find((x) => x.id === d.id)?.approvedBy).toBe('m11');
+    await decideGrantAs(baseURL!, 'admin', pending!.id, 'revoke');
   });
 
   test('sign out everywhere ends every session of the member', async ({ browser, baseURL }) => {

@@ -77,6 +77,10 @@ test.describe('Project manager journey', () => {
     // The server is the authority either way.
     const res = await page.request.post(`/api/deployments/${d.id}/approve`);
     expect(res.status()).toBe(403);
+    // Refused by role (Deployment: view), before any JIT check: a grant would not help, so
+    // the app must not offer to request production access.
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('forbidden');
+    await expect(page.getByRole('dialog', { name: 'Request production access' })).toHaveCount(0);
     await expect(page.getByRole('heading', { level: 1, name: 'Deployments' })).toBeVisible();
   });
 

@@ -6,7 +6,7 @@
  */
 import { test, expect, uid } from '../support/fixtures';
 import { completeStepUp, enterCode, signInViaApi, signInWithPassword, signOutViaUi } from '../support/auth';
-import { apiSession, requestProductionDeploy, type ApiDeployment } from '../support/api';
+import { apiSession, myGrants, requestProductionDeploy, type ApiDeployment } from '../support/api';
 import { DEMO_PASSWORD } from '../support/personas';
 
 test.describe('Owner journey', () => {
@@ -136,6 +136,9 @@ test.describe('Owner journey', () => {
     await row.getByRole('button', { name: 'Approve' }).click();
     await completeStepUp(page, { title: /Approve production deploy/, action: 'Verify & approve' });
     await expect(page.getByText('Deployment approved').first()).toBeVisible();
+    // The Owner holds standing production rights: no just-in-time grant is asked for.
+    await expect(page.getByRole('dialog', { name: 'Request production access' })).toHaveCount(0);
+    expect((await myGrants(page.request)).filter((g) => g.status === 'active')).toEqual([]);
 
     const after = await page.request.get('/api/deployments?product=renewberry&env=production');
     const mine = ((await after.json()) as ApiDeployment[]).find((x) => x.id === d.id);
