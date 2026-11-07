@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -7,23 +7,60 @@ import { Panel } from '../ui/Panel';
 import { Button } from '../ui/Button';
 import { StatusBadge } from '../ui/StatusBadge';
 import { useReauth } from '../../contexts/ReauthContext';
-import { apiTokens, tokenScopes } from '../../data/security';
-import { currentUserId } from '../../data/team';
-import { firstName } from '../../utils/status';
-import type { ApiToken } from '../../types/security';
+import { ApiError } from '../../api/client';
+import { createAccessToken, listAccessTokens, revokeAccessToken } from '../../api/auth/endpoints';
+import type { ApiAccessToken } from '../../api/types';
+import { tokenScopes } from '../../data/security';
 
-const expiryOptions = ['7 days', '30 days', '90 days'];
+const expiryOptions = [
+  { days: 7, label: '7 days' },
+  { days: 30, label: '30 days' },
+  { days: 90, label: '90 days' },
+];
 
+const DAY = 86_400_000;
+
+function relative(iso?: string | null) {
+  if (!iso) return 'never';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
+}
+
+function statusOf(t: ApiAccessToken): 'revoked' | 'expired' | 'expiring' | 'active' {
+  if (t.revokedAt) return 'revoked';
+  const left = new Date(t.expiresAt).getTime() - Date.now();
+  if (left <= 0) return 'expired';
+  if (left < 7 * DAY) return 'expiring';
+  return 'active';
+}
+
+/** Personal access tokens (`/api/tokens`): scoped, expiring, hashed at rest and shown exactly once. */
 export function ApiTokens() {
   const { requestReauth } = useReauth();
   const [params, setParams] = useSearchParams();
-  const [tokens, setTokens] = useState<ApiToken[]>(apiTokens);
+  const [tokens, setTokens] = useState<ApiAccessToken[]>([]);
+  const [state, setState] = useState<'loading' | 'ready' | 'unavailable' | 'error'>('loading');
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [scopes, setScopes] = useState<string[]>(['tasks:read']);
-  const [expiry, setExpiry] = useState(expiryOptions[1]);
+  const [expiryDays, setExpiryDays] = useState(30);
   const [created, setCreated] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const nameId = useId();
+  const errorId = useId();
+
+  const load = useCallback(async () => {
+    try {
+      setTokens(await listAccessTokens());
+      setState('ready');
+    } catch (e) {
+      setState(e instanceof ApiError && e.isUnavailable ? 'unavailable' : 'error');
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   useEffect(() => {
     if (params.get('token') === 'new') setOpen(true);
@@ -41,43 +78,50 @@ export function ApiTokens() {
   const create = () => {
     if (!name.trim()) return setError('Give the token a name so you know where it is used.');
     if (scopes.length === 0) return setError('Choose at least one scope.');
+    setError('');
     requestReauth({
       title: 'Create API token',
-      description: `“${name}” with ${scopes.length} scope${scopes.length > 1 ? 's' : ''}, expiring in ${expiry}.`,
+      description: `“${name.trim()}” with ${scopes.length} scope${scopes.length > 1 ? 's' : ''}, expiring in ${expiryDays} days.`,
       actionLabel: 'Verify & create',
       successMessage: 'Token created',
-      onConfirm: () => {
-        const secret = `dhq_live_${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 10)}`;
-        setTokens((t) => [
-          {
-            id: `t${t.length + 1}`,
-            name,
-            prefix: secret.slice(0, 13),
+      onConfirm: async () => {
+        try {
+          const t = await createAccessToken({
+            name: name.trim(),
             scopes,
-            createdBy: currentUserId,
-            created: 'Today',
-            lastUsed: 'Never',
-            expires: `in ${expiry}`,
-            status: 'active',
-          },
-          ...t,
-        ]);
-        setCreated(secret);
+            expiresInDays: expiryDays,
+          });
+          const { token, ...listed } = t;
+          setTokens((l) => [listed, ...l.filter((x) => x.id !== listed.id)]);
+          setCreated(token);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'The token could not be created.');
+          throw e;
+        }
       },
     });
   };
 
-  const revoke = (t: ApiToken) =>
+  const revoke = (t: ApiAccessToken) =>
     requestReauth({
       title: `Revoke “${t.name}”`,
       description: 'Anything using this token stops working immediately.',
       actionLabel: 'Verify & revoke',
       successMessage: 'Token revoked',
-      onConfirm: () =>
-        setTokens((l) =>
-          l.map((x) => (x.id === t.id ? { ...x, status: 'revoked', expires: '—' } : x)),
-        ),
+      onConfirm: async () => {
+        await revokeAccessToken(t.id);
+        await load();
+      },
     });
+
+  const copy = async (secret: string) => {
+    try {
+      await navigator.clipboard.writeText(secret);
+      toast.success('Token copied');
+    } catch {
+      toast.error('Copy failed — select the token and copy it manually.');
+    }
+  };
 
   return (
     <>
@@ -89,45 +133,71 @@ export function ApiTokens() {
             variant="primary"
             icon={<PlusIcon className="h-3.5 w-3.5" />}
             onClick={() => setOpen(true)}
+            disabled={state !== 'ready'}
           >
             New token
           </Button>
         }
       >
+        {state === 'loading' && (
+          <p className="px-3.5 py-3 text-[12px] text-muted">Loading tokens…</p>
+        )}
+        {state === 'unavailable' && (
+          <p className="px-3.5 py-3 text-[12px] text-muted">
+            Personal access tokens aren’t available on this server yet.
+          </p>
+        )}
+        {state === 'error' && (
+          <p role="alert" className="flex items-center gap-2 px-3.5 py-3 text-[12px] text-bad">
+            Couldn’t load tokens.
+            <button className="font-medium underline" onClick={() => void load()}>
+              Retry
+            </button>
+          </p>
+        )}
+        {state === 'ready' && tokens.length === 0 && (
+          <p className="px-3.5 py-3 text-[12px] text-muted">
+            No tokens yet. Create one for scripts and integrations — never share your password.
+          </p>
+        )}
         <ul className="divide-y divide-line">
-          {tokens.map((t) => (
-            <li
-              key={t.id}
-              className={`flex flex-col gap-1.5 px-3.5 py-2.5 sm:flex-row sm:items-center ${t.status === 'revoked' ? 'opacity-60' : ''}`}
-            >
-              <div className="flex min-w-0 flex-1 items-start gap-2.5">
-                <KeyRoundIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
-                <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-medium text-ink">
-                    {t.name}
-                    {t.status === 'expiring' && (
-                      <StatusBadge tone="warn" label={`Expires ${t.expires}`} />
-                    )}
-                    {t.status === 'revoked' && <StatusBadge tone="neutral" label="Revoked" />}
-                  </p>
-                  <p className="truncate text-[11.5px] text-muted">
-                    <span className="font-mono">{t.prefix}…</span> · {t.scopes.join(', ')} · by{' '}
-                    {firstName(t.createdBy)} · used {t.lastUsed}
-                  </p>
+          {tokens.map((t) => {
+            const status = statusOf(t);
+            return (
+              <li
+                key={t.id}
+                className={`flex flex-col gap-1.5 px-3.5 py-2.5 sm:flex-row sm:items-center ${status === 'revoked' || status === 'expired' ? 'opacity-60' : ''}`}
+              >
+                <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                  <KeyRoundIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-medium text-ink">
+                      {t.name}
+                      {status === 'expiring' && (
+                        <StatusBadge tone="warn" label={`Expires ${relative(t.expiresAt)}`} />
+                      )}
+                      {status === 'expired' && <StatusBadge tone="neutral" label="Expired" />}
+                      {status === 'revoked' && <StatusBadge tone="neutral" label="Revoked" />}
+                    </p>
+                    <p className="truncate text-[11.5px] text-muted">
+                      <span className="font-mono">{t.prefix}…</span> · {t.scopes.join(', ')} ·
+                      expires {relative(t.expiresAt)} · used {relative(t.lastUsedAt)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              {t.status !== 'revoked' && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="self-end text-bad hover:text-bad sm:self-auto"
-                  onClick={() => revoke(t)}
-                >
-                  Revoke
-                </Button>
-              )}
-            </li>
-          ))}
+                {(status === 'active' || status === 'expiring') && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="self-end text-bad hover:text-bad sm:self-auto"
+                    onClick={() => revoke(t)}
+                  >
+                    Revoke
+                  </Button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </Panel>
 
@@ -145,7 +215,7 @@ export function ApiTokens() {
             <motion.div
               role="dialog"
               aria-modal="true"
-              aria-label="Create API token"
+              aria-label={created ? 'Copy your token' : 'Create API token'}
               initial={{ opacity: 0, y: 12, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -171,16 +241,16 @@ export function ApiTokens() {
                     This is the only time the token is shown. DevHQ stores only a hash.
                   </div>
                   <div className="flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate rounded-md border border-line bg-sunken/60 px-2.5 py-2 font-mono text-[12px] text-ink">
+                    <code
+                      className="min-w-0 flex-1 select-all break-all rounded-md border border-line bg-sunken/60 px-2.5 py-2 font-mono text-[12px] text-ink"
+                      aria-label="New token"
+                    >
                       {created}
                     </code>
                     <Button
                       size="sm"
                       icon={<CopyIcon className="h-3.5 w-3.5" />}
-                      onClick={() => {
-                        navigator.clipboard?.writeText(created);
-                        toast.success('Token copied');
-                      }}
+                      onClick={() => void copy(created)}
                     >
                       Copy
                     </Button>
@@ -191,12 +261,16 @@ export function ApiTokens() {
                 </div>
               ) : (
                 <div className="space-y-3.5 px-4 py-4">
-                  <label className="block">
+                  <label className="block" htmlFor={nameId}>
                     <span className="text-[12px] font-medium text-ink">Name</span>
                     <input
+                      id={nameId}
                       value={name}
+                      maxLength={60}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g. Status page sync"
+                      aria-invalid={!!error && !name.trim()}
+                      aria-describedby={error ? errorId : undefined}
                       className="mt-1 h-8 w-full rounded-md border border-line px-2.5 text-[12.5px] outline-none focus:border-accent"
                     />
                   </label>
@@ -229,23 +303,28 @@ export function ApiTokens() {
                   <label className="block">
                     <span className="text-[12px] font-medium text-ink">Expires in</span>
                     <select
-                      value={expiry}
-                      onChange={(e) => setExpiry(e.target.value)}
+                      value={expiryDays}
+                      onChange={(e) => setExpiryDays(Number(e.target.value))}
                       className="mt-1 h-8 w-full rounded-md border border-line bg-white px-2 text-[12.5px]"
                     >
                       {expiryOptions.map((o) => (
-                        <option key={o}>{o}</option>
+                        <option key={o.days} value={o.days}>
+                          {o.label}
+                        </option>
                       ))}
                     </select>
                     <span className="mt-1 block text-[11px] text-subtle">
                       Tokens without an expiry are not allowed by policy.
                     </span>
                   </label>
-                  {error && (
-                    <p role="alert" className="text-[12px] text-bad">
-                      {error}
-                    </p>
-                  )}
+                  <p
+                    id={errorId}
+                    role="alert"
+                    aria-live="assertive"
+                    className="text-[12px] text-bad"
+                  >
+                    {error}
+                  </p>
                   <div className="flex justify-end gap-2">
                     <Button onClick={close}>Cancel</Button>
                     <Button variant="primary" onClick={create}>
