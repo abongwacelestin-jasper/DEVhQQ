@@ -25,21 +25,26 @@ this page is about what is in it and how to read it.
 
 ## Actions recorded
 
-From `audit.append` calls in the backend:
+From `audit.append` calls in the backend (the prefix names the module):
 
-| Prefix | Actions |
+| Prefix | Examples |
 |---|---|
 | `server.` | `started`, `stopping` |
-| `auth.` | `demo_sign_in`, `password_ok`, `mfa_ok`, `mfa_failed`, `locked`, `blocked_risk`, `step_up`, `passkey_ok`, `passkey_registered`, `passkey_removed`, `session_revoked`, `signed_out`, `revoked_all`, `invite_accepted` |
-| `team.` | `invited`, `updated` (role/products/status, with before → after and the number of sessions revoked) |
+| `auth.` | `password_ok`, `mfa_ok`, `mfa_failed`, `locked`, `blocked_risk`, `step_up`, `step_up_failed`, `totp_enroll_started`, `totp_enrolled`, `totp_enroll_failed`, `passkey_ok`, `passkey_failed`, `passkey_registered`, `passkey_removed`, `passkey_suspended`, `session_revoked`, `signed_out`, `revoked_all`, `invite_accepted`, `recovery_requested`, `password_reset`, `demo_sign_in` |
+| `team.` | `invited`, `updated`, `owner_bootstrapped` |
+| `token.` | `created`, `revoked` |
+| `security.` | `member_access_revoked`, `totp_secrets_sealed` |
 | `jit.` | `requested`, `approved`, `denied`, `revoked`, `expired` |
-| `task.` | `created`, `updated` (changed field names), `deleted` |
-| `doc.` | `created`, `updated`, `deleted` |
-| `deploy.` | `requested`, `approved`, `rolled_back` |
-| `incident.` | `declared`, `updated` |
-| `backup.` | `created`, `pruned`, `drill_passed`, `drill_failed` |
-| `console.` | `query` (collection and row count) |
-| `codespace.` | `created`, `start`, `stop` |
+| `task.`, `doc.` | `created`, `updated`, `deleted`, `linked`; `doc.version_snapshot` |
+| `deploy.`, `incident.` | `requested`, `approved`, `rolled_back`; `declared`, `updated`, `auto_opened` |
+| `onboarding.`, `offboarding.` | `nda_signed`, `profile_completed`; offboarding steps and completion |
+| `channel.`, `message.`, `workspace.`, `notification.` | collaboration changes (never message bodies) |
+| `repo.`, `pr.`, `github.`, `code_findings.` | linking repositories, review decisions, applied webhook deliveries |
+| `monitor.`, `integration.`, `webhook.` | monitor changes and checks, connecting integrations, outbound webhook subscriptions and failures |
+| `file.` | `upload_requested`, `uploaded`, `rejected`, `download_issued`, `swept` |
+| `backup.` | `created`, `pruned`, `drill_passed`, `drill_failed`, restores |
+| `ml.`, `assistant.` | `export`, `train.requested`, `train.failed`; `asked` (length and outcome, never the question) |
+| `console.`, `codespace.` | `query`; `created`, `start`, `stop` |
 
 Task comments, subtasks and time logs are recorded as **task events**
 (`db.taskEvents`, served by `GET /api/tasks/_activity`), not as audit entries.
@@ -65,7 +70,7 @@ returns `503` when it is broken. See
 
 The web app's **Audit log** page (Owner only in the UI) and each member's
 detail page read this endpoint. Live entries also stream over
-`GET /api/_events` as `event: audit`.
+`GET /api/_events` as `event: audit`, to Administration ≥ `view` only.
 
 ## Where it is stored
 
@@ -74,10 +79,11 @@ detail page read this endpoint. Live entries also stream over
   entry per line, opened in append mode. The file keeps history across
   restarts; each process lifetime starts a new chain at `seq` 1 with the
   genesis `prevHash`.
+- With PostgreSQL, mirrored into the append-only `audit_entries` table, one
+  `chain_id` per boot.
+- Archived in batches to the write-once audit bucket (`S3_BUCKET_AUDIT`,
+  Object Lock), with each batch linked to the previous one by hash. See
+  [Audit verification](../operations/audit-verification.md).
 
 Access: today any signed-in member can read the whole trail through the API
 (see [Roles and permissions](roles-and-permissions.md#routes-open-to-every-signed-in-member)).
-
-> [!NOTE]
-> **Planned: Wave 4 (STORAGE).** The audit archive is shipped to
-> `S3_BUCKET_AUDIT` with object lock in production.

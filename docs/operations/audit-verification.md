@@ -57,17 +57,26 @@ file it printed `broken at line 12 (seq 12)` and exited 1.
 
 Limits: a restart boundary (`seq` back to 1) is where an attacker could cut
 the tail of a chain without detection, and the file is only as safe as the
-disk it is on. Off-host, write-once copies close that gap.
+disk it is on. Two more copies exist for that reason:
 
-> [!NOTE]
-> **Planned: Wave 4 (STORAGE).** The audit archive is shipped to
-> `S3_BUCKET_AUDIT` with object lock (WORM).
+- **Database:** with PostgreSQL, every entry is mirrored into the append-only
+  `audit_entries` table, one `chain_id` per process boot
+  (`Backend/db/auditSink.ts`).
+- **Object storage (WORM):** batches of up to 200 entries are written to
+  `S3_BUCKET_AUDIT` under `audit/YYYY/MM/DD/<bootId>/<fromSeq>-<toSeq>.jsonl`,
+  in a bucket with Object Lock (`COMPLIANCE` in production). Line 1 of each
+  batch is a header with the sequence range, the `prevHash` it chains from
+  and its `headHash`; batch N's `headHash` is batch N+1's `prevHash`, so a
+  missing or altered batch is detectable. Skip the header line and the script
+  above verifies each batch's entries. `GET /api/storage/status` →
+  `auditArchive` shows pending entries, batches written and the last error.
 
 ## What to do when verification fails
 
 1. Treat it as a security incident: declare one and keep the instance for
    forensics rather than restarting it (a restart starts a fresh chain).
-2. Compare the in-memory trail (`GET /api/audit?limit=500`) with the JSONL file
-   and any off-host copy to find the altered range.
+2. Compare the in-memory trail (`GET /api/audit?limit=500`) with the JSONL
+   file, the `audit_entries` table and the archived batches to find the
+   altered range. The archive in the locked bucket is the copy to trust.
 3. Use the `requestId` of the surrounding entries to find the matching log
    lines (`GET /api/_logs?q=<requestId>`).

@@ -1,26 +1,29 @@
 # Local development
 
-Run the API and the web app on your machine, sign in with a demo account, and
-use the backend console. Everything here was run on Node 22/24 on macOS with
-the outputs shown.
+Two ways to run DevHQ on your machine:
 
-## Prerequisites
+- **Docker (the whole platform).** `make secrets && make up-dev` starts the
+  edge, the Vite dev server with hot reload, the backend from your checkout
+  (`node --watch`, demo mode, seed data), PostgreSQL, MinIO and the models
+  service. The backend is published on `127.0.0.1:8080`, the app on
+  <http://localhost:5173> and behind the edge on <https://localhost>. See the
+  root [README.md](../../README.md#development-mode) and the
+  [runbook](../deploy/RUNBOOK.md). Requires Docker Engine 24+ with Compose,
+  `make` and `openssl`.
+- **Two processes, no Docker** (below). The API keeps everything in memory and
+  reseeds demo data on every start; storage uses a local directory; insights
+  fall back to heuristics and the assistant answers
+  `503 integration_unconfigured`. This is the fastest loop for backend and
+  frontend work, and what the examples in these docs were captured against.
+
+## Prerequisites (two-process setup)
 
 | Tool | Version | Why |
 |---|---|---|
 | Node.js | ≥ 22.6 | The API runs TypeScript with `--experimental-strip-types` ([ADR 0002](../architecture/adr/0002-strip-only-typescript.md)). |
 | npm | ≥ 10 | Workspaces. |
 | curl | any | Optional, for the API examples. |
-
-No database, object store or Python is needed today: the API keeps its data in
-memory and seeds demo data on every start.
-
-> [!NOTE]
-> **Planned: Wave 4 (INFRA).** A Docker Compose stack (`docker-compose.yml`,
-> services `edge`, `frontend`, `backend`, `models`, `postgres`, `minio`) and a
-> rewritten `.env.example` will become the recommended way to run the whole
-> platform. Until INFRA lands, use the two-process setup below. The deploy
-> guide will live in `docs/deploy/`.
+| Python 3.12 + uv | optional | Only to run the models service outside Docker ([Models/README.md](../../Models/README.md#quick-start)). |
 
 ## 1. Install
 
@@ -33,9 +36,9 @@ npm install                     # root workspaces: Backend, Frontend, Models
 and git hooks are not installed automatically. Install them once with
 `npm run hooks:install` if you want the `lint-staged` pre-commit hook.
 
-The backend has **no runtime dependencies**; `npm install` only brings dev tools
-(TypeScript, ESLint, Prettier). You can start the API without installing
-anything.
+The backend's only runtime dependency is the PostgreSQL driver, loaded only
+when `DATABASE_URL` is set, so you can start the API in memory without
+installing anything.
 
 ## 2. Start the API
 
@@ -47,7 +50,7 @@ npm run dev                     # node --experimental-strip-types server.ts
 It listens on port 8080 and logs one JSON line per request:
 
 ```json
-{"t":"2026-11-07T00:35:57.602Z","level":"info","msg":"listening","url":"http://localhost:8080","env":"development","routes":90,"console":"http://localhost:8080/console","demo":true}
+{"t":"2026-11-07T05:40:07.408Z","level":"info","msg":"listening","url":"http://localhost:8080","env":"development","routes":181,"console":"http://localhost:8080/console","demo":true}
 ```
 
 Check it:
@@ -56,12 +59,13 @@ Check it:
 $ curl -s http://localhost:8080/api/health
 {"ok":true,"uptimeSec":4}
 $ curl -s http://localhost:8080/api/ready
-{"ready":true,"members":12,"auditChain":"intact"}
+{"ready":true,"database":"up","persistence":{"mode":"memory","pending":0,"saturated":false},"members":12,"bootstrapRequired":false,"auditChain":"intact"}
 ```
 
 Outside production the API needs no configuration: it uses a development
-session secret, `APP_ORIGIN=http://localhost:5173`, writes the audit log to
-`./.audit/audit.jsonl` and backup snapshots to `./.backups/` (both relative to
+session secret and a data key derived from it, `APP_ORIGIN=http://localhost:5173`,
+writes the audit log to `./.audit/audit.jsonl` and object storage (backups,
+uploads, the audit archive) under `./.backups/object-store/` (both relative to
 the directory you start it from, both git-ignored), and takes a first snapshot
 two seconds after boot. Every variable is listed in the
 [configuration reference](../operations/configuration.md).
@@ -77,7 +81,7 @@ npm run dev                     # vite, on http://127.0.0.1:5173
 
 Vite proxies every `/api/*` request to `http://127.0.0.1:8080`
 (`Frontend/vite.config.ts`; override the target with `DEVHQ_API_URL`), so the
-app and the API share one origin, exactly as they will behind the edge in
+app and the API share one origin, exactly as they do behind the edge in
 production. There is no CORS preflight and the session cookie behaves
 normally.
 
@@ -101,7 +105,8 @@ address.
 ## 4. Sign in with a demo account
 
 Outside production six demo accounts exist, one per role. They all use the
-password `devhq-demo` and the MFA code `246810`:
+password `devhq-demo` and the MFA code `246810` (the code works only for these
+seeded accounts; anyone you invite must enrol a real authenticator):
 
 | Demo key | Role | Member | Email | Products |
 |---|---|---|---|---|
@@ -133,7 +138,9 @@ full password + MFA flow and the bearer-token option are in the
 [authentication guide](../api/authentication.md).
 
 Demo mode is off when `NODE_ENV=production` or `DEMO_DISABLED=1`: the demo
-routes answer `404` and seeded members have no usable password.
+routes answer `404` and seeded members have no usable password. **Turn it off
+on any server reachable from the internet**
+([Known limits](../operations/known-limits.md#disable-demo-mode-on-anything-internet-facing)).
 
 ## 5. The backend console
 
@@ -150,9 +157,11 @@ signs in against the same endpoints and shows, for the signed-in member:
 
 Every action goes through the same authorisation and audit as the web app. Any
 signed-in member can open the console today; see the note in
-`Backend/routes/system.routes.ts`. The web app has its own developer console at
-`/console/*` (`Frontend/src/pages/console/`), which can also run against an
-in-browser preview server; it is a different program.
+`Backend/routes/system.routes.ts`. The console signs in with the same cookie as
+the web app and does not yet restore the session after a page reload. The web
+app has its own developer console at `/console/*`
+(`Frontend/src/pages/console/`), which can also run against an in-browser
+preview server; it is a different program.
 
 ## 6. Run the checks
 
@@ -162,15 +171,17 @@ cd Frontend && npm run typecheck && npm run lint && npm run build
 cd docs     && npm run check
 ```
 
-`npm run smoke` boots the app in-process on a random port and runs 32
-end-to-end checks; it prints `32 checks passed` and exits 0.
+`npm run smoke` boots the app in-process on a random port and runs the
+end-to-end checks; on the merged Wave 4 branch it prints `157 checks passed`
+and exits 0. With Docker, `make test` runs the package checks and `make smoke`
+checks the running stack through the edge.
 
 ## Resetting state
 
-Stop the API and start it again: all data, sessions and grants are reseeded.
-The audit JSONL file and snapshots on disk are kept; delete `.audit/` and
-`.backups/` in `Backend/` to clear them (snapshots are read-only files, so use
-`rm -rf`).
+Without a database, stop the API and start it again: all data, sessions and
+grants are reseeded. The audit JSONL file and the local object store are kept;
+delete `.audit/` and `.backups/` in `Backend/` to clear them. With Docker,
+`make down-v` deletes every data volume.
 
 Next: [Troubleshooting](troubleshooting.md) ·
 [Architecture](../architecture/overview.md) ·

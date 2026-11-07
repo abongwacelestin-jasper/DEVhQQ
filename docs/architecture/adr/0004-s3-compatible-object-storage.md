@@ -1,6 +1,6 @@
 # 0004. S3-compatible object storage (MinIO locally)
 
-- **Status:** Accepted, planned for Wave 4 (STORAGE lane)
+- **Status:** Accepted, implemented (Wave 4, STORAGE lane)
 - **Date:** 2026-11-07 (owner decision)
 
 ## Context
@@ -18,23 +18,19 @@ API that caps JSON bodies at 256 KB (`MAX_BODY_BYTES`) is a poor fit.
 Use the S3 API, with MinIO in local and Compose environments and any
 S3-compatible service in production.
 
-> [!NOTE]
-> **Planned: Wave 4 (STORAGE).** Contract from `docs/agents/WAVE4.md` §6:
->
-> - `POST /api/files/uploads` `{purpose, contentType, size, name, refId}` →
->   `{fileId, uploadUrl, headers, expiresAt}`: a presigned `PUT` with a size
->   and content-type allow-list. `purpose` is one of `doc-attachment`,
->   `avatar`, `message-attachment`.
-> - `POST /api/files/:fileId/complete` verifies the object exists and checks
->   size, type and magic bytes; `GET /api/files/:fileId` returns a short-lived
->   presigned `GET`; `DELETE /api/files/:fileId`.
-> - Buckets: `S3_BUCKET_UPLOADS`, `S3_BUCKET_BACKUPS`, `S3_BUCKET_AUDIT`,
->   `S3_BUCKET_MODELS`; connection via `S3_ENDPOINT`, `S3_REGION`,
->   `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`.
-> - Backups and the audit archive ship to their buckets with object lock
->   (WORM) in production.
-> - Code lives in `Backend/storage/`, `Backend/routes/files.routes.ts` and
->   `infra/minio/`.
+- Four buckets: `S3_BUCKET_UPLOADS`, `S3_BUCKET_BACKUPS`, `S3_BUCKET_AUDIT`,
+  `S3_BUCKET_MODELS`; MinIO in Compose, any S3-compatible service (AWS S3,
+  Cloudflare R2) in production. Bucket set-up, object lock and least-privilege
+  service users: `infra/minio/bootstrap.sh` and
+  [infra/minio/README.md](../../../infra/minio/README.md).
+- Uploads use presigned URLs: `POST /api/files/uploads` → browser `PUT` →
+  `POST /api/files/:fileId/complete` (size, type and magic-byte checks) →
+  short-lived presigned `GET` (`Backend/routes/files.routes.ts`).
+- Backups and the audit archive go to buckets with Object Lock
+  (`COMPLIANCE` in production).
+- The S3 client is our own SigV4 signer (`Backend/storage/sigv4.ts`), keeping
+  the backend free of runtime dependencies; without `S3_ENDPOINT` a local
+  driver is used.
 
 ## Consequences
 
@@ -47,8 +43,8 @@ S3-compatible service in production.
 - Object lock gives backups and the audit trail a retention guarantee the
   local filesystem cannot.
 - One more service to run locally (MinIO, internal network, console only in
-  the Compose dev profile). Without the `S3_*` variables, file endpoints must
-  answer `503 integration_unconfigured` rather than crash.
+  the Compose dev profile). Bucket encryption (`sse-s3`) needs a KMS key on
+  the MinIO server in production.
 
 ## References
 

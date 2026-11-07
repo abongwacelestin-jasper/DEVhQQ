@@ -28,8 +28,10 @@ Build the HTTP layer on `node:http` with a small router of our own
   `router.inventory()` (also `GET /api/_inventory`), `GET /api/openapi.json`
   (OpenAPI 3.1, built in `Backend/routes/system.routes.ts`) and the generated
   [API reference](../../api/reference.md).
-- The backend has no runtime dependencies. `Backend/package.json` has an empty
-  `dependencies` object; everything listed is a dev tool.
+- The backend has one runtime dependency, the PostgreSQL driver `pg`, added
+  with ADR [0003](0003-postgres-jsonb-collections.md) and loaded only when
+  `DATABASE_URL` is set. Everything else (HTTP, crypto, S3 signing, SMTP,
+  WebAuthn) uses Node's standard library.
 
 ## Consequences
 
@@ -41,7 +43,7 @@ Build the HTTP layer on `node:http` with a small router of our own
   themselves (`/api/_events`, `/console`, fonts, Prometheus metrics).
 - Matching is a linear scan of regexes in registration order, so a static path
   must be registered before a parameterised sibling
-  (`/api/incidents/_stats` before `/api/incidents/:id`). With about 90 routes
+  (`/api/incidents/_stats` before `/api/incidents/:id`). With about 180 routes
   this costs nothing measurable.
 - The OpenAPI document describes paths, auth and status codes but not request
   or response schemas; the validation schemas in the route files are the

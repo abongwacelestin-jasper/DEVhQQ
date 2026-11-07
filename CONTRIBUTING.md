@@ -15,6 +15,8 @@ This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
 | Node.js | ≥ 22.6 | the API runs TypeScript with `--experimental-strip-types` |
 | npm | ≥ 10 | workspaces |
 | Git | recent | |
+| Docker Engine + Compose | 24+ | optional: the full stack (`make up-dev`) |
+| Python + uv | 3.12 | optional: the models service outside Docker |
 
 ```bash
 npm install              # root workspaces: Backend, Frontend, Models
@@ -33,9 +35,9 @@ git-ignored).
 ## Repository layout
 
 ```text
-Backend/    the API (Node, strip-only TypeScript, no runtime dependencies) — see Backend/README.md
+Backend/    the API (Node, strip-only TypeScript, only `pg` at runtime) — see Backend/README.md
 Frontend/   the web app (Vite + React) — see Frontend/README.md
-Models/     placeholder for the Python ML service (Wave 4)
+Models/     the Python ML service (FastAPI) — see Models/README.md
 docs/       documentation, generators and the docs linter — see docs/index.md
 docs/agents/  internal coordination for the delivery lanes (BOARD, WAVE4)
 .github/    CI, security scans, Dependabot
@@ -53,8 +55,14 @@ From the root (all workspaces) or inside a package:
 | build | — (no build step) | `npm run build` | `npm run gen` |
 | format | `npm run format:check` | `npm run format:check` | — |
 
+Models (`cd Models`): `uv run pytest`, `uv run ruff check .`, `uv run mypy`
+(see [Models/README.md](Models/README.md#quick-start)).
+
 Root shortcuts: `npm run typecheck`, `npm run lint`, `npm test`,
-`npm run dev:backend`, `npm run dev:frontend`.
+`npm run dev:backend`, `npm run dev:frontend`; with Docker, `make test`
+(backend and frontend checks), `make smoke` (the running stack through the
+edge), `make lint-infra` and `make scan`. The independent security checks are
+in `security-tests/` (see `docs/security/assessment/REPORT.md`).
 
 ## Hard rules
 
@@ -120,6 +128,8 @@ During a delivery wave, lanes commit as `wave4(<LANE>): <subject>`, e.g.
 - [ ] One logical change; files touched are listed
 - [ ] `Backend`: `npm run typecheck && npm run lint && npm run smoke` — 0 / 0 / all pass
 - [ ] `Frontend`: `npm run typecheck && npm run lint && npm run build` — 0 / 0 / exit 0
+- [ ] `Models` (if touched): pytest, ruff and mypy pass
+- [ ] New environment variables are in `.env.example` and `docs/operations/configuration.md`
 - [ ] Ran the checks twice on fresh processes
 - [ ] New routes: registered with summary and tag, guarded, validated, audited, scoped, smoke-tested
 - [ ] `cd docs && npm run gen && npm run check` passes; docs updated for changed behaviour or configuration

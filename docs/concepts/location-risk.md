@@ -15,7 +15,8 @@ Each entry has a city, country, region, coordinates and a network type:
 Anything not in the table is `Unknown`.
 
 The table is a stand-in. The code comment says to replace it with a MaxMind
-GeoLite2 database in production behind the same interface; that is not done.
+GeoLite2 database in production behind the same interface; that is not done,
+so most real-world IPs resolve to `Unknown`.
 
 The client IP is the socket address, or the first `X-Forwarded-For` entry when
 `TRUST_PROXY=1`.
@@ -89,7 +90,10 @@ Location is not only checked at sign-in. A session whose client IP changes is
 kept but loses its recent verification, so the next sensitive action needs a
 [step-up](step-up.md); its stored location is updated.
 
-> [!NOTE]
-> **Planned: Wave 4 (ML).** `GET /api/insights/signins/:id` returns an anomaly
-> score from the Python service, with `source: 'model'`, and falls back to
-> these rules with `source: 'heuristic'` when the service is unavailable.
+## Model score
+
+`GET /api/insights/signins/:id` adds an anomaly score from the ML service
+(`source: "model"`, IsolationForest per organisation) next to these rules, and
+falls back to the rules (`source: "heuristic"`) when the service is
+unavailable. The score is advisory: sign-ins are still allowed, challenged or
+blocked by `riskDecision()` above. See [ML](../ml/index.md).

@@ -34,7 +34,7 @@ security headers are added.
 |---|---|---|---|
 | `400` | `invalid_json`, `invite_invalid`, WebAuthn format errors | malformed request | no; fix the request |
 | `401` | `unauthenticated`, `session_*`, `mfa_required`, `step_up_required` | who you are is not established (enough) | after re-authenticating or step-up; see [Authentication](authentication.md#status-codes-you-will-see) |
-| `403` | `forbidden`, `bad_origin`, `self_approval`, `self_close`, `risk_blocked` | you are known and this is not allowed | no |
+| `403` | `forbidden`, `bad_origin`, `self_approval`, `self_close`, `risk_blocked`, `step_up_unavailable`, `session_required` | you are known and this is not allowed | no |
 | `404` | `not_found` | does not exist **or is outside your scope** — the API does not distinguish | no |
 | `405` | `method_not_allowed` | the path exists with other methods (see `Allow`) | no |
 | `409` | `not_pending`, `already_rolled_back`, `last_owner`, `member_exists`, `exists` | conflicts with current state | after re-reading state |
@@ -43,10 +43,10 @@ security headers are added.
 | `422` | `validation_failed`, `assignee_invalid`, `weak_password`, `no_change`, … | well-formed but invalid; `message` names the field | no; fix input |
 | `423` | `locked` | account locked | after `details.retryAfterSec` |
 | `429` | `rate_limited` | too many requests | after `Retry-After` seconds |
-| `501` | `not_configured` | an optional integration has no configuration | no |
-| `502` / `504` | `upstream_error`, `upstream_timeout` | GitHub failed or timed out (Codespaces proxy) | yes, with backoff |
+| `501` | `not_configured` | Codespaces OAuth without `GITHUB_CLIENT_ID` | no |
+| `502` / `504` | `upstream_error`, `upstream_timeout`, `storage_error` | GitHub, object storage or the ML service failed or timed out | yes, with backoff |
 | `500` | `internal` | bug | report with the `requestId` |
-| `503` | — | `GET /api/ready` only: not ready (body `{"ready":false,…}`) | yes |
+| `503` | `integration_unconfigured`, `storage_unavailable`, `assistant_unavailable`, `ml_unavailable`, `scan_unavailable`, `stream_capacity`, and `GET /api/ready` when not ready | a dependency is missing or down | after configuration / with backoff |
 
 ## Examples
 
@@ -81,8 +81,6 @@ The web app wraps all of this in `ApiError` (`Frontend/src/api/client.ts`),
 with `status`, `code`, `message`, `requestId` and `details`. Network failures
 become `ApiError(0, 'network', …)`; that code exists only in the client.
 
-> [!NOTE]
-> **Planned: Wave 4.** Optional integrations (GitHub App, SMTP, S3, ML) answer
-> `503 {code: "integration_unconfigured"}` when their environment variables are
-> missing (`docs/agents/WAVE4.md` §4). The existing Codespaces OAuth route
-> answers `501 not_configured` in that situation today.
+Optional integrations (GitHub in production, SMTP, ML, the assistant) answer
+`503 {code: "integration_unconfigured"}` when their configuration is missing;
+the older Codespaces OAuth route answers `501 not_configured`.

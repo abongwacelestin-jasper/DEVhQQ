@@ -1,7 +1,7 @@
 # DevHQ API (`@devhq/backend`)
 
 The DevHQ API: Node 22, TypeScript run directly with Node's type stripping,
-no build step and no runtime dependencies. It also serves the backend console
+no build step, and a single runtime dependency (`pg`, the PostgreSQL driver). It also serves the backend console
 at `/console`.
 
 - Architecture: [docs/architecture/overview.md](../docs/architecture/overview.md)
@@ -13,10 +13,13 @@ at `/console`.
 | Script | What it does |
 |---|---|
 | `npm run dev` / `npm start` | `node --experimental-strip-types server.ts` on `PORT` (8080) |
-| `npm run start:prod` | the same with `NODE_ENV=production` (needs `SESSION_SECRET`, `APP_ORIGIN`, `WEBAUTHN_RP_ID`) |
+| `npm run start:prod` | the same with `NODE_ENV=production` (needs `SESSION_SECRET`, `APP_ORIGIN`, `WEBAUTHN_RP_ID`, `DATA_ENCRYPTION_KEY`) |
+| `npm run migrate` | run database migrations against `DATABASE_URL` / `DATABASE_MIGRATION_URL` |
+| `npm run smoke:pg` | smoke checks against a real PostgreSQL |
+| `npm run bootstrap-owner -- --email … --name …` | create the first Owner on an empty database; prints a single-use invite link ([first run](../docs/operations/deployment.md#first-run-production-setup)) |
 | `npm run typecheck` | `tsc --noEmit` — 0 errors expected |
 | `npm run lint` | ESLint, zero warnings allowed |
-| `npm run smoke` / `npm test` | boots the app in-process on a random port and runs the end-to-end smoke checks (32 today); exits non-zero on the first failure |
+| `npm run smoke` / `npm test` | boots the app in-process on a random port and runs the end-to-end smoke checks (157 today); exits non-zero on the first failure |
 | `npm run format` / `format:check` | Prettier |
 | `npm run validate` | typecheck + lint |
 
@@ -27,38 +30,31 @@ the code does. Run `npm run smoke` before you push.
 
 ```text
 Backend/
-├── server.ts              entry point: buildApp() seeds, builds the router, registers route modules; main() listens, schedules backups, handles SIGTERM
+├── server.ts              entry point: buildApp() initialises persistence, builds the router, registers route modules; main() listens, schedules backups, handles SIGTERM
 ├── types.ts               shared domain types and HttpError
-├── backend.html           the backend console (single page, served with a CSP nonce)
-├── fonts/                 self-hosted console webfonts
+├── backend.html, fonts/   the backend console (single page, served with a CSP nonce) and its webfonts
+├── Dockerfile             container image (see docs/deploy/)
 ├── audit/auditLog.ts      hash-chained audit log + JSONL file
-├── auth/
-│   ├── rbac.ts            permission matrix, can(), requireArea, requireStepUp, requireElevation, assertProduct
-│   ├── sessions.ts        session store, continuous verification, rotation, revocation
-│   ├── jit.ts             just-in-time production access grants
-│   ├── totp.ts            RFC 6238 one-time codes
-│   └── webauthn.ts        passkey registration and assertion (node:crypto only)
+├── auth/                  rbac.ts (matrix, can, guards, effectiveLevel), sessions.ts, jit.ts, totp.ts, webauthn.ts
 ├── config/env.ts          configuration from the environment; fails closed in production
-├── lib/
-│   ├── http.ts            Router, request pipeline, error envelope, body parsing
-│   ├── validate.ts        allow-list schema validation (v.object, v.string, …), sanitizeForPrompt
-│   ├── query.ts           safe JSON query engine for the console
-│   ├── geo.ts             offline IP geolocation and sign-in risk scoring
-│   ├── events.ts          in-process event bus (SSE source)
-│   ├── logger.ts          JSON logger with secret redaction and a ring buffer
-│   └── metrics.ts         per-route counters and latency percentiles, Prometheus text
-├── middleware/authenticate.ts   builds the principal from cookie or bearer token
-├── resilience/backups.ts  immutable snapshots, restore drill, pruning
+├── db/                    PostgreSQL: boot sequence, collection driver, migrations, audit sink, pool (see db/README.md)
+├── domain/
+│   ├── collab/            channels, messages, workspaces, notifications, onboarding/NDA, recovery, realtime hub, limits
+│   └── engineering/       repos, pulls, CI, findings stores and views, demo data, sealed secrets
+├── integrations/
+│   ├── github/            GitHub App client, config, webhook receiver, task linker
+│   ├── ml/                bridge to the models service: HMAC signing, client, privacy-safe features
+│   └── webhooks/          outbound webhook dispatcher: signing, SSRF-safe delivery, retries
+├── lib/                   http.ts (Router), validate.ts, query.ts, geo.ts, events.ts, logger.ts, metrics.ts
+├── mail/                  SMTP and console transports, templates
+├── middleware/authenticate.ts   principal from cookie, CLI bearer token or personal access token
+├── monitors/              uptime scheduler and the shared SSRF guard
+├── resilience/            encrypted backups, restore planning, snapshot sources
 ├── routes/                one module per domain, each exporting registerXRoutes(router)
-├── security/
-│   ├── headers.ts         security headers, CSP, origin guard (CORS + CSRF)
-│   ├── rateLimit.ts       token buckets (api, auth)
-│   └── crypto.ts          scrypt passwords, token signing, constant-time compare
-├── store/
-│   ├── db.ts              in-memory store and demo seed
-│   ├── taskActivity.ts    seed task events, comments, subtasks, time logs
-│   └── collection.ts      Wave 4 persistence seam (Collection, setDriver, hydrateAll)
-└── scripts/smoke.ts       end-to-end smoke test
+├── security/              headers + origin guard, rate limiting, crypto, PATs, event delivery policy, password policy, sealing
+├── storage/               object storage: S3 (SigV4) and local drivers, presigned uploads, magic bytes, scanner hook, audit archive
+├── store/                 collection.ts (persistence seam), db.ts (core collections + demo seed), signInLog.ts, taskActivity.ts
+└── scripts/               smoke.ts (end-to-end checks), bootstrap-owner.ts (first Owner on an empty database)
 ```
 
 ## Conventions
@@ -89,14 +85,21 @@ These are enforced in review. Each one exists because a control depends on it.
 7. **Strip-only syntax.** No `enum`, `namespace`, parameter properties or
    decorators. Import with the `.ts` extension and use `import type` for types.
    See [ADR 0002](../docs/architecture/adr/0002-strip-only-typescript.md).
-8. **No runtime dependencies** without a decision record
+8. **No new runtime dependencies** without a decision record
    ([ADR 0001](../docs/architecture/adr/0001-no-framework-backend.md)).
-9. **Persist through collections** (Wave 4): create stores with
+9. **Persist through collections**: create stores with
    `createCollection<T>('name')` from `store/collection.ts`; after an in-place
-   mutation call `.save(key)`. Never write SQL in a route module.
-10. **No `any`, no `@ts-ignore`, no weakened checks** (BOARD hard rules). An
+   mutation call `.save(key)`, or the change is lost on restart. Never write
+   SQL in a route module.
+10. **Degrade, don't crash**: an optional integration without configuration
+    answers `503 integration_unconfigured` (or labelled `source: "demo"` data
+    outside production).
+11. **Outbound HTTP to user-supplied URLs** goes through `monitors/ssrf.ts`.
+12. **New bus event types** must be added to `security/eventPolicy.ts`, or
+    they are delivered to nobody.
+13. **No `any`, no `@ts-ignore`, no weakened checks** (BOARD hard rules). An
     `eslint-disable` needs a one-line justification.
-11. **Log through `lib/logger.ts`**, never log bodies, tokens or passwords.
+14. **Log through `lib/logger.ts`**, never log bodies, tokens or passwords.
 
 ## Adding a route
 

@@ -49,16 +49,19 @@ Node's ESM loader does not guess extensions. Import `'../store/db.ts'`.
 ### `Missing required environment variable …`
 
 In production (`NODE_ENV=production`) the API refuses to start without
-`SESSION_SECRET`, `APP_ORIGIN` and `WEBAUTHN_RP_ID`, and with a
-`SESSION_SECRET` shorter than 64 characters:
+`SESSION_SECRET`, `APP_ORIGIN`, `WEBAUTHN_RP_ID` and `DATA_ENCRYPTION_KEY`, with
+a `SESSION_SECRET` shorter than 64 characters, or with demo settings:
 
 ```text
 Error: Missing required environment variable WEBAUTHN_RP_ID
 Error: SESSION_SECRET must be at least 32 bytes encoded as hex (64 chars) in production
+Error: Demo settings are not allowed in production: DEMO_PASSWORD
 ```
 
-Set them (see [Configuration](../operations/configuration.md)). Outside
-production all three have development defaults.
+Set or unset them (see [Configuration](../operations/configuration.md#production-fails-closed)).
+With Docker, `make secrets` generates the secret files; the container entrypoint
+also stops if both `NAME` and `NAME_FILE` are set or a secret file is
+unreadable. Outside production the required values have development defaults.
 
 ### `EADDRINUSE`
 
@@ -113,15 +116,31 @@ secure). Behind any other plain-`http` hostname — a LAN IP, a container name,
   pointing elsewhere) also loses the cookie, because it is `SameSite=Strict`
   and host-only. Keep the app and the API on one origin.
 
-The current web app also keeps a bearer-token copy in `sessionStorage`, which
-can mask a cookie problem; Wave 4 removes it
-([ADR 0006](../architecture/adr/0006-cookie-only-browser-sessions.md)).
+The web app relies on the cookie alone
+([ADR 0006](../architecture/adr/0006-cookie-only-browser-sessions.md)), so a
+dropped cookie shows up immediately as a sign-out.
 
 ### `401 mfa_required`
 
 The password step succeeded but the second factor has not. The session is
-partial and can only reach `GET /api/auth/pending`, `POST /api/auth/mfa/totp`
-and `POST /api/auth/sign-out`. Submit the code (`246810` in demo mode).
+partial and can only reach the MFA and enrolment routes and sign-out. Submit
+the code, or enrol a first authenticator if the sign-in response said
+`enrollRequired: true`.
+
+### `401 mfa_invalid` with the demo code
+
+`246810` works only in demo mode and only for the seeded demo accounts that
+have no factor of their own. Invited members, and every account in production,
+must use their own authenticator or passkey. A member with no factor yet must
+enrol one ([Authentication](../api/authentication.md#first-factor-enrolment)).
+
+### Nobody can sign in to a new production deployment
+
+Production never creates demo accounts. `GET /api/ready` shows
+`"bootstrapRequired": true`. Create the first Owner with `bootstrap-owner`
+([Deployment and first run](../operations/deployment.md#first-run-production-setup)).
+If the command says an Owner exists but you cannot see one, the backend was
+running while you ran it: restart the backend so it reloads the collections.
 
 ### `401 session_context_changed`
 
@@ -163,17 +182,31 @@ travel, …). Locally this only happens if you send `X-Forwarded-For` with
 The proxy could not connect. Start the API, or point the proxy at it with
 `DEVHQ_API_URL`. Check with `curl -s http://127.0.0.1:5173/api/health`.
 
-### A page shows data the API does not have
+### A page shows "demo" or "sample data"
 
-Several pages still render seed data from `Frontend/src/data/`; see the table
-in the [user guide](../user-guide/index.md#which-pages-read-the-api). Changes
-there are not saved anywhere.
+The GitHub-backed pages (repositories, pull requests, CI, code security) show
+labelled demo data outside production when no GitHub credentials are set; see
+[Webhooks](../api/webhooks.md#inbound-github-app). The assistant and model
+insights say `integration_unconfigured` / `source: "heuristic"` without the
+models service.
 
 ### Everything I created is gone
 
-The API keeps data in memory; a restart reseeds it. Persistence arrives with
-PostgreSQL in Wave 4
-([ADR 0003](../architecture/adr/0003-postgres-jsonb-collections.md)).
+Without `DATABASE_URL` the API keeps data in memory and reseeds it on restart.
+Use the Docker stack (or set `DATABASE_URL`) to persist
+([Storage](../operations/storage.md)).
+
+## Docker
+
+- **Ports 80/443 busy:** `EDGE_HTTP_PORT=8880 EDGE_HTTPS_PORT=8443 make up`.
+- **Browser warns about the certificate on <https://localhost>:** the edge uses
+  Caddy's local CA. Copy it out and trust it:
+  `docker compose cp edge:/data/caddy/pki/authorities/local/root.crt ./devhq-local-ca.crt`.
+- **A service is unhealthy:** `docker compose ps -a`, then
+  `make logs SERVICE=backend` (or `migrate`, `minio-init`, `models`).
+- **Changed a secret file and nothing happened:** secrets are read at
+  container start; `docker compose up -d --force-recreate <service>`.
+- More in the [runbook](../deploy/RUNBOOK.md#useful-commands).
 
 ### Proxy or network surprises
 

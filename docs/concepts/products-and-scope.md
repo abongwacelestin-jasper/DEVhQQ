@@ -71,14 +71,18 @@ API returns.
 
 ## What scope does not cover today
 
-- The audit trail (`GET /api/audit`), logs, metrics and the event stream are
-  not product-scoped. See
+- The audit trail (`GET /api/audit`), logs and metrics are not
+  product-scoped (the event stream `/api/_events` is). See
   [Roles and permissions](roles-and-permissions.md#routes-open-to-every-signed-in-member).
 - Location data is scoped by person instead: members see their own sign-ins
   and sessions; Administration ≥ `view` sees everyone's.
 
-> [!NOTE]
-> **Planned: Wave 4 (B-COLLAB, B-DOMAIN).** New domains (repositories, pull
-> requests, CI runs, monitors, integrations, channels, workspaces,
-> notifications) follow the same rules: product scoping per BOARD rules and
-> `404` for anything out of scope (`docs/agents/WAVE4.md` §6).
+## Scope in the other modules
+
+The same rules apply to every module: repositories, pull requests, CI runs
+and code findings are scoped by the repository's product; monitors and
+integrations by their product; files by the resource they are attached to;
+channels by membership, privacy and product. Anything out of scope answers
+`404`. Realtime events are filtered the same way at delivery time
+([Realtime](../api/realtime.md)). Personal access tokens additionally narrow
+what a member can do, never what they can see beyond their products.

@@ -14,6 +14,6 @@ Inès Moreau (`m9`, renewberry and mirror).
 3. **Docs** (`/docs`) — write specs and handover docs; restricted docs are
    visible only to their editors.
 4. **Work activity** (`/activity`) — what changed on the tasks you can see.
-5. **Messages** (`/messages`) — sample data until Wave 4.
+5. **Messages** (`/messages`) — channels and DMs; attach design files.
 
 Designers do not see Deployments, Incidents, Monitors, Repositories or Team.

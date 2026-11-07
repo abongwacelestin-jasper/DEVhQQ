@@ -69,10 +69,9 @@ added and guarded with it.
 
 The Team page's **Access review** lists pending grants next to members without
 a second factor, and approves or denies them through the routes above after a
-re-verification (`Frontend/src/components/team/AccessReview.tsx`). The
-Security Center's grant list still reads seed data
-(`Frontend/src/data/security.ts`).
+re-verification (`Frontend/src/components/team/AccessReview.tsx`).
 
-> [!NOTE]
-> **Planned: Wave 4 (B-DATA).** Grants are stored in a module-level `Map`
-> today and vanish on restart; B-DATA persists them in PostgreSQL.
+Grants are persisted (`jitGrants` collection), so they survive restarts.
+Completing an offboarding revokes the member's grants; deactivating a member
+through `PATCH /api/team/:memberId` does not yet (listed in
+[docs/security/CONTROLS.md](../security/CONTROLS.md#known-gaps--follow-ups)).

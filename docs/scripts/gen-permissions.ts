@@ -107,6 +107,14 @@ Routes that require a fresh strong verification (\`requireStepUp\`) but no
 |---|---|---|
 `;
 const handlerRule: Record<string, string> = {
+  'POST /api/auth/totp/enroll': 'your own account only',
+  'POST /api/auth/passkeys/options': 'your own account only',
+  'DELETE /api/auth/passkeys/:credentialId': 'your own passkeys only',
+  'POST /api/offboarding/:memberId':
+    'yourself (resignation), or Administration ≥ `manage` for anyone else',
+  'PATCH /api/offboarding/:memberId':
+    'Administration ≥ `manage`; the member may only withdraw their own resignation; nobody completes their own',
+  'POST /api/tokens': 'interactive session; requested scopes cannot exceed your role',
   'POST /api/access/grants': 'caller must be assigned to the product in `scope`',
   'POST /api/access/grants/:grantId/approve':
     'approver must be Owner or Operations and not the requester (`Backend/auth/jit.ts`)',

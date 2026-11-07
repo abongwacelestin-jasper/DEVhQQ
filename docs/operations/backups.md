@@ -1,75 +1,67 @@
 # Backups and restore
 
-`Backend/resilience/backups.ts` writes immutable snapshots of the data store
-and can prove that the latest one is readable.
+There are two independent backup paths. Use both.
 
-## What a snapshot contains
+| | Application snapshots | Database dumps |
+|---|---|---|
+| What | every registered collection, as the app sees it | the whole PostgreSQL database (`pg_dump -Fc`) |
+| Code | `Backend/resilience/backups.ts` | `infra/scripts/backup-db.sh`, `infra/scripts/restore-db.sh` |
+| Encryption | gzip, then AES-256-GCM with `DATA_ENCRYPTION_KEY` (backup id as associated data) | AES-256-CBC (PBKDF2-SHA256) + HMAC-SHA256 with `backup_encryption_key` |
+| Where | `S3_BUCKET_BACKUPS`: `snapshots/YYYY/MM/DD/<id>.json.gz.enc` + `manifests/<id>.json` | `S3_BUCKET_BACKUPS`: `postgres/` |
+| When | 2 s after start outside production, then every 24 h of uptime; on demand `POST /api/backups` | cron (`make backup`), and before every deploy |
+| Restore | `POST /api/backups/:id/restore` (dry run by default) | `infra/scripts/restore-db.sh … --yes` |
+| Drill | `POST /api/backups/drill` | `make restore-drill` |
 
-`snapshot-<ISO time>.json` in `BACKUP_DIR`:
-`{version: 1, createdAt, data}` where `data` holds `members`, `projects`,
-`docs`, `tasks`, `taskEvents`, `taskComments`, `subtasks`, `timeLogs`,
-`deployments` and `incidents` (`snapshot()` in `Backend/store/db.ts`).
+Database dumps, their schedule, off-site mirroring and the real restore
+procedure are in the [runbook §3](../deploy/RUNBOOK.md#3-backups-and-restore).
+The rest of this page covers application snapshots.
 
-Not included: sessions, sign-in records, JIT grants, rate-limit state and the
-audit log (which has its own file). Member records include password hashes and
-any TOTP secret, so **treat snapshots as secrets**.
+## Application snapshots
 
-Each snapshot is:
+Each snapshot is checksummed twice: SHA-256 of the stored ciphertext (detects
+storage corruption before decrypting) and of the plaintext (proves a restore
+produced exactly what was snapshotted). The backups bucket has Object Lock, so
+the app's own credential cannot delete or overwrite a snapshot; expiry after
+`BACKUP_RETENTION_DAYS` (35) is done by the bucket lifecycle.
 
-- written with the `wx` flag — create only, never overwrite;
-- made read-only (`0444`) straight after writing;
-- recorded in `manifest.jsonl` with its SHA-256 and size.
+Snapshots contain password hashes and sealed secrets. They are encrypted, but
+keep `DATA_ENCRYPTION_KEY` away from wherever the snapshots are copied.
 
-## When snapshots are taken
-
-- Outside production, 2 seconds after the server starts.
-- Every 24 hours of uptime, in every environment; after each daily run,
-  snapshots older than `BACKUP_RETENTION_DAYS` (35) are pruned.
-- On demand: `POST /api/backups` (Infrastructure ≥ `manage` — Owner,
-  Operations — plus step-up).
-
-Every create, prune and drill is audited (`backup.created`, `backup.pruned`,
-`backup.drill_passed` / `backup.drill_failed`).
-
-```console
-$ curl -s -X POST http://localhost:8080/api/backups -H "Authorization: Bearer $TOKEN"
-{"file":"snapshot-2026-11-07T00-38-39-697Z.json","sha256":"673e8019dccf3b0063f233b1029227b4545b9fe3a794d7840401adfada4088f5","createdAt":"2026-11-07T00:38:39.697Z","bytes":22695}
-```
-
-## Checking backups
+Permissions: listing and creating need Infrastructure ≥ `manage` (create also
+step-up); restore needs Administration ≥ `admin` (the Owner) and step-up.
 
 ```console
-$ curl -s http://localhost:8080/api/backups -H "Authorization: Bearer $TOKEN"
-{"count":2,"latest":{"file":"snapshot-2026-11-07T00-38-39-697Z.json","sha256":"673e8019…88f5","createdAt":"2026-11-07T00:38:39.697Z","bytes":22695,"verified":true},"retentionDays":35}
+$ curl -s -b owner -X POST http://localhost:8080/api/backups
+{"id":"bk-20261107T054024Z-9d3809","file":"snapshots/2026/11/07/bk-20261107T054024Z-9d3809.json.gz.enc","bucket":"devhq-backups","store":"local","createdAt":"2026-11-07T05:40:24.388Z","bytes":8815,"sha256":"ce09d2a4…3fc3","plainSha256":"53cd293c…3fd8","keyId":"dev-derived","encryption":"aes-256-gcm",…}
+
+$ curl -s -b owner http://localhost:8080/api/backups/snapshots      # newest first, limit ≤ 100
+{"items":[{"id":"bk-20261107T054024Z-9d3809",…}]}
+
+$ curl -s -b owner -X POST http://localhost:8080/api/backups/drill
+{"ok":true,"id":"bk-20261107T054024Z-9d3809","file":"snapshots/2026/11/07/bk-20261107T054024Z-9d3809.json.gz.enc","ms":4,"records":180}
 ```
 
-`verified` re-hashes the latest file and compares it with the manifest.
+(`keyId: "dev-derived"`: without `DATA_ENCRYPTION_KEY` outside production the
+key is derived from the session secret. Production requires a real key.)
 
-## Restore drill
+## Restore
 
-`POST /api/backups/drill` (same permissions) loads the newest snapshot,
-verifies its checksum and parses it **without touching live data**, and
-reports how long that took:
+`POST /api/backups/:id/restore` downloads the snapshot, verifies both
+checksums, decrypts, and diffs it against live data. **It is a dry run unless
+the body says `{"dryRun": false, "confirm": "<backup id>"}`.** `collections`
+limits it to named collections.
 
 ```console
-$ curl -s -X POST http://localhost:8080/api/backups/drill -H "Authorization: Bearer $TOKEN"
-{"ok":true,"file":"snapshot-2026-11-07T00-38-39-697Z.json","ms":1,"records":134}
+$ curl -s -b owner -X POST http://localhost:8080/api/backups/bk-20261107T054024Z-9d3809/restore \
+    -H 'content-type: application/json' -d '{}'
+{"id":"bk-20261107T054024Z-9d3809","dryRun":true,"verified":true,"createdAt":"…","plan":[{"name":"auth.personal_access_tokens","restorable":true,"inBackup":1,"current":1,"add":0,"update":0,"remove":0,"unchanged":1},…]}
 ```
 
-## Restoring
+A real restore first takes a safety backup of the current state, then writes
+the rows back through the collections (so they are persisted and audited).
+Errors: `404 not_found` (unknown id), `422` with `backup_missing`,
+`checksum_mismatch`, `format_unsupported` and similar codes when verification
+fails (see [Error codes](../api/error-codes.md)).
 
-There is **no restore endpoint or script**. Today a restart reseeds demo data;
-nothing reads a snapshot back into the store. A manual restore would mean
-loading the `data` object into the `db` maps in code. With PostgreSQL
-(Wave 4) the database itself becomes the primary copy and restore procedures
-belong with it.
-
-> [!NOTE]
-> **Planned: Wave 4 (B-DATA, STORAGE, INFRA).** Snapshots ship to
-> `S3_BUCKET_BACKUPS` with object lock in production; PostgreSQL backup and
-> restore procedures are documented by INFRA in `docs/deploy/`.
-
-## Production guidance (from the code comments)
-
-Point `BACKUP_DIR` at storage with object lock / WORM retention in a separate
-account. File modes alone do not stop an attacker with root on the host.
+Afterwards restart the backend if other processes (a second replica, a
+one-shot command) might hold stale in-memory state, and check `/api/ready`.

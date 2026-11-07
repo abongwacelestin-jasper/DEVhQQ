@@ -5,8 +5,14 @@
 | Endpoint | Use | Healthy | Unhealthy |
 |---|---|---|---|
 | `GET /api/health` | liveness: is the process serving? | `200 {"ok":true,"uptimeSec":4}` | no response |
-| `GET /api/ready` | readiness: store seeded **and** audit chain intact | `200 {"ready":true,"members":12,"auditChain":"intact"}` | `503 {"ready":false,…}` |
+| `GET /api/ready` | readiness: database reachable, write queue not saturated, audit chain intact | `200 {"ready":true,"database":"up","persistence":{"mode":"memory","pending":0,"saturated":false},"members":12,"bootstrapRequired":false,"auditChain":"intact"}` | `503 {"ready":false,…}` |
 | `GET /api/version` | which build is running | `{"version":"1.4.0","env":"development","node":"v24.22.0","startedAt":"…"}` | — |
+
+`bootstrapRequired: true` means the database has no members yet: create the
+first Owner ([Deployment and first run](deployment.md#first-run-production-setup)).
+An empty database is still "ready" so the deploy gate passes. The Compose
+health checks and the deploy gate use these probes
+([runbook §2](../deploy/RUNBOOK.md#2-routine-deploys)).
 
 Probes go through the global rate limiter like every request; with
 `TRUST_PROXY=1` the probe's own IP is used, so a busy load balancer health
@@ -33,13 +39,10 @@ devhq_requests_total{route="GET /api/tasks",status="401"} 2
 …
 ```
 
-The endpoint needs a session, so a Prometheus scraper needs a bearer token
-today; the session expires after 12 h. Unmatched paths are counted under the
-route `unmatched`.
-
-> [!NOTE]
-> **Planned: Wave 4 (SEC).** Personal access tokens with an expiry are the
-> intended credential for scrapers and scripts.
+The endpoint needs authentication; give a scraper a personal access token
+(`Authorization: Bearer dhq_pat_…`, expiry at most 90 days; see
+[Authentication](../api/authentication.md#personal-access-tokens)). Unmatched
+paths are counted under the route `unmatched`.
 
 What to alert on (from the code comments: these numbers are how DevHQ tracks
 time to detect):
@@ -67,19 +70,25 @@ The last 500 lines are kept in memory: `GET /api/_logs?level=&q=&limit=`.
 
 ## Live views
 
-- `GET /api/_events` — Server-Sent Events of audit, sign-in, task, deployment,
-  incident and team events.
+- `GET /api/_events` — Server-Sent Events of the internal bus, filtered per
+  subscriber: security events (audit, sign-in, team, tokens, JIT) only for
+  Administration ≥ `view`, product events only for that product's members
+  (`Backend/security/eventPolicy.ts`). Collaboration events use
+  `GET /api/stream` instead; see [Realtime](../api/realtime.md).
+- `GET /api/storage/status` — storage driver, buckets, lock mode and audit
+  archive state.
+- `GET /api/insights/status` — ML service reachability and served models
+  (Administration ≥ `view`).
 - `GET /api/security/posture` — active members, passkeys, live sessions,
   locked accounts, rate-limit settings, inventoried routes, active and pending
   JIT grants, crypto settings, audit chain and backup status.
 - `GET /api/security/rate-limits` — the 50 most-drained buckets.
 - The backend console (`/console`) charts all of the above.
 
-All of these are open to any signed-in member today; see
+Logs, metrics, config, posture and rate limits are open to any signed-in
+member today; see
 [Roles and permissions](../concepts/roles-and-permissions.md#routes-open-to-every-signed-in-member).
 
 Metrics, logs, rate limits and events are per process and reset on restart.
-
-> [!NOTE]
-> **Planned: Wave 4 (INFRA).** Container health checks, log shipping and the
-> deployment's monitoring set-up are documented in `docs/deploy/`.
+Container health checks, log rotation and the incident checklist are in the
+[runbook](../deploy/RUNBOOK.md).

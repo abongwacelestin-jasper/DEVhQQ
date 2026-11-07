@@ -21,18 +21,20 @@ Administration — invitations, roles, access review, offboarding — is in
    [Local development](../getting-started/local-development.md#4-sign-in-with-a-demo-account).
 2. Enter the 6-digit code from your authenticator on the **Verify** screen
    (`/verify`). Demo accounts use `246810`.
-3. Every role except the Owner then goes through two onboarding screens once:
+3. **First sign-in only:** if you have no authenticator yet (a new invite),
+   you enrol one. The web app's Verify screen does not offer this step yet;
+   an admin can walk you through the API steps in
+   [Deployment and first run](../operations/deployment.md#first-run-production-setup).
+4. Every role except the Owner then goes through two onboarding screens once:
    **NDA** (`/onboarding/nda`) and **Complete profile**
-   (`/onboarding/profile`).
+   (`/onboarding/profile`). The server records them
+   (`GET /api/onboarding`, `POST /api/onboarding/nda`,
+   `POST /api/onboarding/profile`): the signature stores the agreement version,
+   your typed name, time, IP and a hash of the text.
 
-> [!NOTE]
-> **Planned: Wave 4 (B-COLLAB, F-SEC).** The NDA and profile are kept in the
-> browser's `sessionStorage` today, so they are asked again in a new browser
-> and are not recorded on the server. Wave 4 makes the server the authority
-> (`GET /api/onboarding`, `POST /api/onboarding/nda`,
-> `POST /api/onboarding/profile`). "Forgot password" (`/forgot-password`,
-> `/reset-password`) is UI only today; account recovery
-> (`POST /api/auth/recovery/request`, `/reset`) arrives with B-COLLAB.
+Forgot your password? **Forgot password** (`/forgot-password`) sends a
+single-use reset link valid for 30 minutes; the reset signs you out
+everywhere.
 
 The app locks after a period of inactivity (configurable in the app, with a
 30-second warning) and asks you to re-verify; the server independently
@@ -49,25 +51,22 @@ Everything is limited to the products you are assigned to; the product picker
 in the top bar narrows it further. A link to something outside your products
 shows "not found".
 
-## Which pages read the API
+## Where page data comes from
 
-Some pages still show sample data from `Frontend/src/data/`. Changes you make
-on those pages are not saved anywhere.
+Every page reads the API. A few panels still use fixed presentation data from
+`Frontend/src/data/`, and some modules show labelled demo data when an
+integration is not configured.
 
 | Page | Data |
 |---|---|
-| Overview, My work, Assigned to me, Projects, Project detail, Task detail, Assignments, Work activity, Test queue (tasks) | **API** — tasks, comments, subtasks, time logs, products, projects, team. Project cards add presentation fields from `Frontend/src/data/work.ts`. My work's approvals and mentions panel is sample data. |
-| Docs | **API** — list, read, create, edit, delete. Version history and inline comments are kept only in the browser. |
-| Deployments, Deployment detail | **API** — list, approve, roll back. Detail pages add sample topology and commit data. |
-| Incidents, Incident detail | **API** — list, declare, update. Incident history and next steps are sample data. |
-| Team, Member detail | **API** — directory, roles, invitations, deactivation, access review, member audit trail. |
-| Audit log | **API** — `GET /api/audit`. |
-| Product pages (`/products/:id/…`) | Mixed: work, deployments and incidents from the API; code, analytics and people panels partly sample data. |
-| Repositories, Pull requests, Code security, IDE & dev tools, Monitors, Integrations, Messages, Workspaces | **Sample data.** Backends arrive in Wave 4. |
-| Security Center | **Sample data** (policies, checks, sign-ins, grants). The live equivalents are in the backend console and the Team page's access review. |
-| Code workspace (`/code`) | Local editor and sandbox; can create GitHub Codespaces through the API when `GITHUB_TOKEN` is configured. |
-
-> [!NOTE]
-> **Planned: Wave 4 (F-ENG, F-COLLAB).** Every page in the "Sample data" rows
-> moves onto a real backend module; no page may present seed data as live
-> (`docs/agents/WAVE4.md`). This table will be updated as the lanes merge.
+| Overview, My work, Assigned to me, Projects, Project detail, Task detail, Assignments, Work activity, Test queue | API — tasks, comments, subtasks, time logs, notifications, products, projects, team; task insights from the ML bridge. Project cards add presentation fields (colours, descriptions) from `Frontend/src/data/work.ts`. |
+| Docs | API — documents, versions with diff and restore, inline comments, attachments. |
+| Messages | API — channels, DMs, threads, reactions, pins, polls, attachments; live over `/api/stream`. |
+| Workspaces | API — workspaces; the module catalogue and templates are presentation data. |
+| Deployments, Incidents | API — including approvals behind step-up and deployment risk insights. |
+| Repositories, Pull requests, Code security, CI | API — GitHub App data; labelled **demo** outside production when GitHub is not configured. |
+| Monitors, Integrations | API — real checks and outbound webhooks; seeded demo monitors are labelled and never probed. |
+| Team, Member detail, Audit log | API — directory, roles, invites, deactivation, access review, offboarding, member audit trail. |
+| Security Center | API for sessions, passkeys, authenticator, personal access tokens, sign-ins and grants; the policy and check list is presentation data (`Frontend/src/data/security.ts`). |
+| IDE & dev tools | the IDE list is presentation data; Codespaces through the API when configured. |
+| Assistant panel | `POST /api/assistant/ask`; unavailable without the models service and an API key. |

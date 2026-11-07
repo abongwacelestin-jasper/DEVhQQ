@@ -52,20 +52,45 @@ scoped by product in its handler.
 
 | Area | Minimum level | Method | Path | Step-up |
 |---|---|---|---|---|
+| Administration | `admin` | `POST` | `/api/backups/:id/restore` | yes |
+| Administration | `admin` | `POST` | `/api/insights/train/:model` | yes |
+| Administration | `manage` | `DELETE` | `/api/integrations/:id/webhooks/:webhookId` |  |
+| Administration | `manage` | `DELETE` | `/api/integrations/:id/webhooks` |  |
+| Administration | `manage` | `DELETE` | `/api/integrations/:id` | yes |
+| Administration | `manage` | `GET` | `/api/github/install-url` |  |
+| Administration | `manage` | `POST` | `/api/integrations/:id/webhooks/:webhookId/test` |  |
+| Administration | `manage` | `POST` | `/api/integrations/:id/webhooks` | yes |
+| Administration | `manage` | `POST` | `/api/integrations/:kind/connect` | yes |
 | Administration | `view` | `GET` | `/api/access/grants` |  |
+| Administration | `view` | `GET` | `/api/insights/status` |  |
+| Administration | `view` | `GET` | `/api/integrations/:id/webhooks` |  |
+| Administration | `view` | `GET` | `/api/integrations` |  |
+| Administration | `view` | `GET` | `/api/offboarding` |  |
 | Deployment | `contribute` | `POST` | `/api/deployments` |  |
 | Deployment | `manage` | `POST` | `/api/access/grants/:grantId/revoke` | yes |
 | Deployment | `manage` | `POST` | `/api/deployments/:id/approve` | yes |
 | Deployment | `manage` | `POST` | `/api/deployments/:id/rollback` |  |
 | Deployment | `view` | `GET` | `/api/deployments` |  |
+| Deployment | `view` | `GET` | `/api/insights/deployments/:id` |  |
+| Infrastructure | `manage` | `DELETE` | `/api/monitors/:id` |  |
+| Infrastructure | `manage` | `GET` | `/api/backups/snapshots` |  |
+| Infrastructure | `manage` | `PATCH` | `/api/monitors/:id` |  |
 | Infrastructure | `manage` | `POST` | `/api/backups/drill` | yes |
 | Infrastructure | `manage` | `POST` | `/api/backups` | yes |
+| Infrastructure | `manage` | `POST` | `/api/monitors/:id/check` |  |
+| Infrastructure | `manage` | `POST` | `/api/monitors` |  |
+| Infrastructure | `view` | `GET` | `/api/monitors/:id/checks` |  |
+| Infrastructure | `view` | `GET` | `/api/monitors` |  |
+| Infrastructure | `view` | `GET` | `/api/storage/status` |  |
 | Organization | `admin` | `PATCH` | `/api/team/:memberId` | yes |
 | Organization | `admin` | `POST` | `/api/team/invites` | yes |
+| Organization | `admin` | `POST` | `/api/workspaces` |  |
 | Organization | `view` | `GET` | `/api/team` |  |
 | Project | `contribute` | `PATCH` | `/api/docs/:docId` |  |
 | Project | `contribute` | `PATCH` | `/api/tasks/:key/subtasks/:subtaskId` |  |
 | Project | `contribute` | `PATCH` | `/api/tasks/:key` |  |
+| Project | `contribute` | `POST` | `/api/docs/:docId/versions/:versionId/restore` |  |
+| Project | `contribute` | `POST` | `/api/docs/:docId/versions` |  |
 | Project | `contribute` | `POST` | `/api/docs` |  |
 | Project | `contribute` | `POST` | `/api/tasks/:key/comments` |  |
 | Project | `contribute` | `POST` | `/api/tasks/:key/subtasks` |  |
@@ -73,11 +98,31 @@ scoped by product in its handler.
 | Project | `contribute` | `POST` | `/api/tasks` |  |
 | Project | `manage` | `DELETE` | `/api/docs/:docId` |  |
 | Project | `manage` | `DELETE` | `/api/tasks/:key` |  |
+| Project | `view` | `GET` | `/api/docs/:docId/comments` |  |
+| Project | `view` | `GET` | `/api/docs/:docId/versions/:versionId/diff` |  |
+| Project | `view` | `GET` | `/api/docs/:docId/versions/:versionId` |  |
+| Project | `view` | `GET` | `/api/docs/:docId/versions` |  |
 | Project | `view` | `GET` | `/api/docs` |  |
+| Project | `view` | `GET` | `/api/insights/tasks/:key` |  |
 | Project | `view` | `GET` | `/api/projects/:projectId` |  |
 | Project | `view` | `GET` | `/api/projects` |  |
 | Project | `view` | `GET` | `/api/tasks/_activity` |  |
 | Project | `view` | `GET` | `/api/tasks` |  |
+| Project | `view` | `PATCH` | `/api/docs/:docId/comments/:commentId` |  |
+| Project | `view` | `POST` | `/api/assistant/ask` |  |
+| Project | `view` | `POST` | `/api/channels` |  |
+| Project | `view` | `POST` | `/api/docs/:docId/comments` |  |
+| Repository | `contribute` | `POST` | `/api/pulls/:repoId/:number/review` |  |
+| Repository | `manage` | `POST` | `/api/repos` |  |
+| Repository | `manage` | `POST` | `/api/security/code-findings` |  |
+| Repository | `view` | `GET` | `/api/ci/runs/:runId` |  |
+| Repository | `view` | `GET` | `/api/ci/runs` |  |
+| Repository | `view` | `GET` | `/api/github/app` |  |
+| Repository | `view` | `GET` | `/api/pulls/:repoId/:number` |  |
+| Repository | `view` | `GET` | `/api/pulls` |  |
+| Repository | `view` | `GET` | `/api/repos/:repoId` |  |
+| Repository | `view` | `GET` | `/api/repos` |  |
+| Repository | `view` | `GET` | `/api/security/code-findings` |  |
 
 ### Step-up without an area guard
 
@@ -86,8 +131,14 @@ Routes that require a fresh strong verification (`requireStepUp`) but no
 
 | Method | Path | Rule in handler |
 |---|---|---|
+| `POST` | `/api/auth/totp/enroll` | your own account only |
+| `POST` | `/api/auth/passkeys/options` | your own account only |
+| `DELETE` | `/api/auth/passkeys/:credentialId` | your own passkeys only |
+| `POST` | `/api/offboarding/:memberId` | yourself (resignation), or Administration ≥ `manage` for anyone else |
+| `PATCH` | `/api/offboarding/:memberId` | Administration ≥ `manage`; the member may only withdraw their own resignation; nobody completes their own |
 | `POST` | `/api/access/grants` | caller must be assigned to the product in `scope` |
 | `POST` | `/api/access/grants/:grantId/approve` | approver must be Owner or Operations and not the requester (`Backend/auth/jit.ts`) |
+| `POST` | `/api/tokens` | interactive session; requested scopes cannot exceed your role |
 
 ### In-handler checks (`can(...)`)
 
@@ -96,11 +147,25 @@ changes what is returned rather than refusing the request.
 
 | Area | Level | Location |
 |---|---|---|
+| Deployment | `view` | [Backend/routes/assistant.routes.ts:142](../../Backend/routes/assistant.routes.ts#L142) |
+| Project | `manage` | [Backend/routes/doc-collab.routes.ts:370](../../Backend/routes/doc-collab.routes.ts#L370) |
+| Administration | `manage` | [Backend/routes/files.routes.ts:286](../../Backend/routes/files.routes.ts#L286) |
+| Administration | `manage` | [Backend/routes/files.routes.ts:512](../../Backend/routes/files.routes.ts#L512) |
+| Project | `manage` | [Backend/routes/files.routes.ts:512](../../Backend/routes/files.routes.ts#L512) |
+| Administration | `view` | [Backend/routes/insights.routes.ts:179](../../Backend/routes/insights.routes.ts#L179) |
 | Administration | `view` | [Backend/routes/locations.routes.ts:70](../../Backend/routes/locations.routes.ts#L70) |
 | Administration | `view` | [Backend/routes/locations.routes.ts:91](../../Backend/routes/locations.routes.ts#L91) |
 | Administration | `view` | [Backend/routes/locations.routes.ts:136](../../Backend/routes/locations.routes.ts#L136) |
 | Administration | `view` | [Backend/routes/locations.routes.ts:154](../../Backend/routes/locations.routes.ts#L154) |
+| Organization | `admin` | [Backend/routes/messaging.routes.ts:344](../../Backend/routes/messaging.routes.ts#L344) |
+| Project | `contribute` | [Backend/routes/messaging.routes.ts:358](../../Backend/routes/messaging.routes.ts#L358) |
+| Organization | `admin` | [Backend/routes/messaging.routes.ts:453](../../Backend/routes/messaging.routes.ts#L453) |
+| Administration | `manage` | [Backend/routes/offboarding.routes.ts:56](../../Backend/routes/offboarding.routes.ts#L56) |
+| Administration | `view` | [Backend/routes/offboarding.routes.ts:155](../../Backend/routes/offboarding.routes.ts#L155) |
 | Project | `manage` | [Backend/routes/tasks.routes.ts:256](../../Backend/routes/tasks.routes.ts#L256) |
+| Administration | `admin` | [Backend/routes/tokens.routes.ts:110](../../Backend/routes/tokens.routes.ts#L110) |
+| Organization | `admin` | [Backend/routes/workspaces.routes.ts:66](../../Backend/routes/workspaces.routes.ts#L66) |
+| Organization | `admin` | [Backend/routes/workspaces.routes.ts:197](../../Backend/routes/workspaces.routes.ts#L197) |
 
 ## How the web app uses the matrix
 
@@ -222,7 +287,7 @@ can call them. Most scope their rows by product in the handler; the ones that
 return organisation-wide data are noted in
 [Roles and permissions](roles-and-permissions.md#routes-open-to-every-signed-in-member).
 
-`POST /api/auth/step-up` · `POST /api/auth/passkeys/options` · `POST /api/auth/passkeys` · `DELETE /api/auth/passkeys/:credentialId` · `GET /api/auth/session` · `DELETE /api/auth/sessions/:sessionPrefix` · `POST /api/auth/sign-out-everywhere` · `GET /api/codespaces/oauth/url` · `GET /api/codespaces` · `POST /api/codespaces` · `GET /api/codespaces/:name` · `POST /api/codespaces/:name/<action>` · `GET /api/docs/:docId` · `GET /api/locations/me` · `GET /api/locations/lookup` · `GET /api/locations/regions` · `GET /api/locations/sign-ins` · `GET /api/locations/summary` · `GET /api/locations/sessions` · `POST /api/locations/assess` · `GET /api/incidents` · `GET /api/incidents/_stats` · `GET /api/incidents/:id` · `POST /api/incidents` · `PATCH /api/incidents/:id` · `GET /api/products` · `GET /api/scope` · `GET /api/audit` · `GET /api/audit/verify` · `GET /api/security/posture` · `GET /api/security/rate-limits` · `GET /api/backups` · `GET /api/_inventory` · `GET /api/_config` · `GET /api/_metrics` · `GET /api/_logs` · `GET /api/_events` · `GET /api/_query/collections` · `POST /api/_query` · `GET /api/tasks/:key` · `GET /api/team/roles` · `GET /api/me/capabilities` · `POST /api/access/grants` · `POST /api/access/grants/:grantId/approve`
+`POST /api/auth/step-up` · `POST /api/auth/totp/enroll` · `POST /api/auth/totp/confirm` · `GET /api/auth/passkeys` · `POST /api/auth/passkeys/options` · `POST /api/auth/passkeys` · `DELETE /api/auth/passkeys/:credentialId` · `GET /api/auth/session` · `DELETE /api/auth/sessions/:sessionPrefix` · `POST /api/auth/sign-out-everywhere` · `GET /api/codespaces/oauth/url` · `GET /api/codespaces` · `POST /api/codespaces` · `GET /api/codespaces/:name` · `POST /api/codespaces/:name/<action>` · `GET /api/docs/:docId` · `POST /api/files/uploads` · `POST /api/files/:fileId/complete` · `GET /api/files` · `GET /api/files/:fileId` · `DELETE /api/files/:fileId` · `GET /api/insights/signins/:id` · `GET /api/insights/_export` · `GET /api/locations/me` · `GET /api/locations/lookup` · `GET /api/locations/regions` · `GET /api/locations/sign-ins` · `GET /api/locations/summary` · `GET /api/locations/sessions` · `POST /api/locations/assess` · `GET /api/stream` · `GET /api/channels` · `GET /api/channels/:id` · `PATCH /api/channels/:id` · `POST /api/channels/:id/join` · `POST /api/channels/:id/leave` · `POST /api/channels/:id/read` · `GET /api/channels/:id/messages` · `GET /api/channels/:id/pins` · `POST /api/channels/:id/messages` · `PATCH /api/messages/:id` · `DELETE /api/messages/:id` · `POST /api/messages/:id/reactions` · `POST /api/messages/:id/pin` · `POST /api/messages/:id/vote` · `GET /api/notifications` · `POST /api/notifications/read` · `GET /api/offboarding/:memberId` · `POST /api/offboarding/:memberId` · `PATCH /api/offboarding/:memberId` · `GET /api/onboarding` · `GET /api/onboarding/nda` · `POST /api/onboarding/nda` · `POST /api/onboarding/profile` · `PATCH /api/onboarding/profile` · `GET /api/incidents` · `GET /api/incidents/_stats` · `GET /api/incidents/:id` · `POST /api/incidents` · `PATCH /api/incidents/:id` · `GET /api/products` · `GET /api/scope` · `GET /api/audit` · `GET /api/audit/verify` · `GET /api/security/posture` · `GET /api/security/rate-limits` · `GET /api/backups` · `GET /api/_inventory` · `GET /api/_config` · `GET /api/_metrics` · `GET /api/_logs` · `GET /api/_events` · `GET /api/_query/collections` · `POST /api/_query` · `GET /api/tasks/:key` · `GET /api/team/roles` · `GET /api/me/capabilities` · `POST /api/access/grants` · `POST /api/access/grants/:grantId/approve` · `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` · `GET /api/workspaces` · `GET /api/workspaces/:id` · `PATCH /api/workspaces/:id`
 
 Role copy in `Frontend/src/data/team.ts` (`roleDetails`) is prose and is not
 checked here. Per the Wave 4 owner decision, Developer keeps `Deployment:

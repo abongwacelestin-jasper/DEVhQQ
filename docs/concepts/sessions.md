@@ -11,6 +11,7 @@ stateDiagram-v2
   [*] --> Verified: POST /api/auth/webauthn/verify (passkey, single step)
   [*] --> Verified: POST /api/auth/demo (demo mode only)
   Partial --> Verified: POST /api/auth/mfa/totp (code ok) — token rotated
+  Partial --> Verified: POST /api/auth/mfa/enroll + /confirm (no factor yet) — token rotated
   Partial --> [*]: 10 min cookie expiry / sign-out
   Verified --> Verified: POST /api/auth/step-up — token rotated
   Verified --> [*]: sign-out · revoked · 12 h absolute · UA change
@@ -26,19 +27,25 @@ stateDiagram-v2
    response says which second factors are available:
 
    ```json
-   {"next":"totp","methods":["totp"]}
+   {"next":"totp","methods":["totp"],"enrollRequired":false}
    ```
+
+   A member with no factor yet gets `{"next":"enroll","methods":[],"enrollRequired":true}`
+   and enrols a first authenticator from the partial session
+   ([Authentication](../api/authentication.md#first-factor-enrolment)).
 
 2. **Second factor.** `POST /api/auth/mfa/totp` with a 6-digit code (RFC 6238,
    30-second steps; a code cannot be replayed within the same session), or a
    passkey through `POST /api/auth/webauthn/options` + `/verify`. Success
    **rotates** the session: a new token is issued and the partial one is
    revoked, which prevents session fixation. In demo mode the shared code
-   `246810` is accepted for every account.
+   `246810` is accepted only for the seeded demo accounts that have no factor
+   of their own; invited members must use a real one.
 
 3. A partial session can reach only `GET /api/auth/pending`,
-   `POST /api/auth/mfa/totp` and `POST /api/auth/sign-out`. Anything else
-   answers `401 mfa_required`.
+   `POST /api/auth/mfa/totp`, `POST /api/auth/mfa/enroll`,
+   `POST /api/auth/mfa/enroll/confirm` and `POST /api/auth/sign-out`. Anything
+   else answers `401 mfa_required`.
 
 Passwords are hashed with scrypt (N = 2¹⁵, r = 8, p = 1, 64-byte key, random
 salt) in the format `scrypt-v1$N$r$p$salt$hash`; a hash with older parameters
@@ -52,9 +59,10 @@ HMAC over it with `SESSION_SECRET` (`signToken` in
 any lookup (`401 invalid_token`). `SESSION_SECRET_PREVIOUS` is accepted for
 verification only, so the key can be rotated without signing everyone out.
 
-Browsers receive it as `__Host-devhq_session` (`HttpOnly`, `Secure`,
-`SameSite=Strict`, `Path=/`); other clients can send
-`Authorization: Bearer <token>`. See
+Browsers receive it only as `__Host-devhq_session` (`HttpOnly`, `Secure`,
+`SameSite=Strict`, `Path=/`); a command-line sign-in can ask for it in the body
+and send `Authorization: Bearer <token>`. Unattended clients use personal
+access tokens instead, which are not sessions. See
 [Authentication](../api/authentication.md) and
 [ADR 0006](../architecture/adr/0006-cookie-only-browser-sessions.md).
 
@@ -102,13 +110,8 @@ $ curl -s -b dev http://localhost:8080/api/auth/session
 
 ## Where sessions live
 
-In a `Map` inside the API process. A restart signs everyone out.
-
-> [!NOTE]
-> **Planned: Wave 4 (B-DATA, SEC, F-SEC).** Sessions, sign-in records and JIT
-> grants are persisted in PostgreSQL, so they survive restarts. Real WebAuthn
-> for sign-in, step-up and lock-screen unlock goes through the existing
-> `/api/auth/webauthn/*` and `/api/auth/passkeys*` routes, and TOTP enrolment
-> is added (`POST /api/auth/totp/enroll` and `/api/auth/totp/confirm`, secret
-> encrypted at rest with `DATA_ENCRYPTION_KEY`). Today a member has a TOTP
-> secret only if `DEMO_TOTP_SECRET` is set, and there is no enrolment route.
+In the `sessions` collection: in memory for reads, persisted to PostgreSQL
+when `DATABASE_URL` is set, so a restart does not sign anyone out. TOTP replay
+counters (`auth.totp_counters`), sign-in records and JIT grants are persisted
+the same way. TOTP secrets are sealed with `DATA_ENCRYPTION_KEY` before they are
+stored.

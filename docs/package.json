@@ -8,11 +8,12 @@
     "node": ">=22.6.0"
   },
   "scripts": {
-    "gen": "npm run gen:api && npm run gen:permissions && npm run gen:errors",
+    "gen": "npm run gen:api && npm run gen:permissions && npm run gen:errors && npm run gen:config",
     "gen:api": "node --experimental-strip-types scripts/gen-api.ts",
     "gen:permissions": "node --experimental-strip-types scripts/gen-permissions.ts",
     "gen:errors": "node --experimental-strip-types scripts/gen-errors.ts",
+    "gen:config": "node --experimental-strip-types scripts/gen-config.ts",
     "links": "node --experimental-strip-types scripts/check-links.ts",
-    "check": "node --experimental-strip-types scripts/gen-api.ts --check && node --experimental-strip-types scripts/gen-permissions.ts --check && node --experimental-strip-types scripts/gen-errors.ts --check && npm run links"
+    "check": "node --experimental-strip-types scripts/gen-api.ts --check && node --experimental-strip-types scripts/gen-permissions.ts --check && node --experimental-strip-types scripts/gen-errors.ts --check && node --experimental-strip-types scripts/gen-config.ts --check && npm run links"
   }
 }

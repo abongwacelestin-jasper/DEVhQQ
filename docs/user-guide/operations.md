@@ -22,11 +22,17 @@ all three products).
    products without approval.
 3. **Access requests** — approve or deny JIT grants from other members
    (Team page access review, or the backend console). Not your own.
-4. **Monitors** (`/monitors`) and **Security** (`/security`) — sample data
-   today; live sign-ins, sessions, rate limits, posture, backups and the audit
-   integrity check are in the backend console (`/console`).
-5. **Backups** — create a snapshot or run a restore drill (step-up) from the
-   backend console. See [Backups and restore](../operations/backups.md).
+4. **Monitors** (`/monitors`) — create HTTP monitors for your products
+   (Infrastructure ≥ `manage`). A scheduler checks each one (SSRF-safe, ≥ 30 s
+   interval), marks it `degraded` when slow and opens an incident after
+   repeated failures; on recovery it adds a timeline note and auto-resolves the
+   incident if nobody has touched it.
+5. **Security** (`/security`) — everyone's sign-ins and grants (Administration
+   `view`). Rate limits, posture, storage status and the audit integrity check
+   are in the backend console (`/console`).
+6. **Backups** — create a snapshot or run a restore drill (step-up) from the
+   backend console. Restoring needs the Owner. See
+   [Backups and restore](../operations/backups.md).
 
 With Administration `view` you also see everyone's sign-ins and live sessions
 (`/api/locations/*`) and the full JIT grant list.
@@ -34,7 +40,3 @@ With Administration `view` you also see everyone's sign-ins and live sessions
 The curated Operations workspace lists "create doc" and "log time", but your
 Project level is `view`, so the app hides them and the API would refuse them
 (see the [consistency checks](../concepts/permission-matrix.md#curated-actions-the-server-denies)).
-
-> [!NOTE]
-> **Planned: Wave 4 (B-DOMAIN).** Real monitors: HTTP checks run by a
-> scheduler (SSRF-safe), opening an incident after repeated failures.

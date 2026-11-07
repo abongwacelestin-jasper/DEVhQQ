@@ -45,16 +45,18 @@ Frontend/src/
 - Every request goes through `api<T>(path, opts)` in `src/api/client.ts`.
   Never call `fetch` for `/api` elsewhere.
 - Same origin: requests go to `/api/...` (or `VITE_API_BASE`, which should stay
-  empty), with `credentials: 'include'` so the `__Host-devhq_session` cookie is
-  sent.
+  empty), with `credentials: 'same-origin'` so the `__Host-devhq_session`
+  cookie is sent.
 - Errors are thrown as `ApiError {status, code, message, requestId,
   details}`. The client handles two cases centrally: a dead session
   (`unauthenticated`, `session_revoked`, `session_expired`, `mfa_required`)
   signs the user out; `step_up_required` opens the re-verification dialog
   (`ReauthContext`).
-- The client also keeps a bearer-token copy in `sessionStorage`; that is being
-  removed in Wave 4
+- The client never sees the session token: it relies on the cookie alone
   ([ADR 0006](../docs/architecture/adr/0006-cookie-only-browser-sessions.md)).
+- Realtime collaboration uses `EventSource('/api/stream')`
+  ([Realtime](../docs/api/realtime.md)); file uploads go straight to object
+  storage through `components/ui/FileUpload.tsx` and `hooks/useUpload.ts`.
 
 ## Conventions
 
@@ -62,9 +64,9 @@ Frontend/src/
    `useAuth()`; they come from `GET /api/me/capabilities` through
    `api/capabilities.ts`. Never hard-code a role check in a page. Hiding a
    button is presentation; the API is the control.
-2. **No seed data presented as live.** A page either reads the API or shows
-   clearly that it is sample data. Do not add new reads from `src/data/` for
-   domain data (Wave 4 rule).
+2. **No seed data presented as live.** A page reads the API; data from
+   `src/data/` is presentation only (labels, catalogues). When the API returns
+   `source: "demo"`, show the demo badge.
 3. **Treat `404` as "no access or not found"** — the API does not distinguish,
    and the UI should not guess.
 4. **Sensitive actions ask first**: call `requestReauth({ title, description,

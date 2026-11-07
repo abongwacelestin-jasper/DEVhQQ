@@ -116,7 +116,6 @@ open to any member "until the console is signed off":
 |---|---|
 | `GET /api/audit`, `GET /api/audit/verify` | the whole audit trail, all products |
 | `POST /api/_query` with `from: "audit"` | the same, through the query runner |
-| `GET /api/_events` | every event on the bus, including audit entries and sign-in events |
 | `GET /api/_logs` | recent request logs (paths, IPs, member ids) |
 | `GET /api/_metrics`, `GET /api/_config`, `GET /api/_inventory` | runtime metrics, redacted config, route table |
 | `GET /api/security/posture`, `GET /api/security/rate-limits`, `GET /api/backups` | security summary, rate-limit buckets (keyed by IP), backup status |
@@ -126,12 +125,24 @@ any member can declare or update an incident in a product in their scope. The
 web app offers "Declare incident" only to roles with Infrastructure ≥
 `contribute`.
 
-These are recorded as open items for the security lane; this page will change
-when the guards are added. The generated list of every authenticated route
+`GET /api/_events` used to belong in this list; it now filters every event per
+subscriber (security events only for Administration ≥ `view`), see
+[Realtime](../api/realtime.md). The rows above are open items for the security
+lane (the independent assessment in
+[docs/security/assessment/REPORT.md](../security/assessment/REPORT.md) covers
+the event stream); this page will change when the guards are added. The generated list of every authenticated route
 without an area guard is at the end of the
 [permission matrix page](permission-matrix.md#authenticated-routes-without-an-area-guard).
 
-> [!NOTE]
-> **Planned: Wave 4 (SEC).** Scoped personal access tokens
-> (`/api/tokens`) carry their own scopes on top of the member's role; the
-> details will be documented when the routes land.
+## Personal access tokens
+
+A personal access token carries scopes such as `project:view` or
+`deployment:contribute`. On every request the token's level in an area is the
+**lower** of its scope and the member's current role (`effectiveLevel` in
+`Backend/auth/rbac.ts`); an area the token has no scope for is `none`. Tokens
+can never pass step-up and cannot manage tokens or credentials
+(`requireSession`). Routes without an area guard do not consult scopes, so a
+token with any scope can read them; `GET /api/me/capabilities` still reports
+the role's matrix for a token rather than the token's effective levels (an
+open item in [docs/security/CONTROLS.md](../security/CONTROLS.md#known-gaps--follow-ups)).
+See [Authentication](../api/authentication.md#personal-access-tokens).

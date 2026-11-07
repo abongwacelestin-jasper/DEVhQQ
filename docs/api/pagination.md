@@ -1,7 +1,28 @@
 # Pagination
 
-Today one list pages properly; the others return everything the caller may
-see, some with a `limit` cap.
+Lists come in three shapes. New modules use the first.
+
+## `{items, nextCursor?}`
+
+Engineering, collaboration, files, tokens and backup lists return
+
+```json
+{"items":[…],"nextCursor":"1"}
+```
+
+No `nextCursor` means the end. Treat the cursor as opaque. How to pass it
+back:
+
+| Lists | Parameter |
+|---|---|
+| repositories, pull requests, CI runs, monitors, integrations, code findings (`Backend/domain/engineering/store.ts`; `limit` 1–200, default 100) | `?cursor=<nextCursor>` |
+| notifications | `?before=<nextCursor>` |
+| channel messages (`GET /api/channels/:id/messages`, pages backwards from the newest) | `?before=<nextCursor>` |
+
+```console
+$ curl -s -b owner 'http://localhost:8080/api/repos?limit=1'
+{"items":[{"id":"demo-blog-platform","name":"blog/platform","product":"blog",…}],"nextCursor":"1"}
+```
 
 ## Tasks: offset pagination
 
@@ -9,8 +30,6 @@ see, some with a `limit` cap.
 sorts by due date, and returns an envelope plus an `X-Total-Count` header:
 
 ```console
-$ curl -s -D - -o /dev/null -b pm 'http://localhost:8080/api/tasks?limit=2&offset=0&status=review,in-progress' | grep X-Total-Count
-X-Total-Count: 4
 $ curl -s -b pm 'http://localhost:8080/api/tasks?limit=2&offset=0&status=review,in-progress'
 {"total":4,"limit":2,"offset":0,"items":[{"key":"RB-231",…},{"key":"RB-221",…}]}
 ```
@@ -20,27 +39,19 @@ lists), `assignee` (`me` for yourself), `q` (substring of key, title and
 description, first 100 characters). `total` counts the filtered rows before
 paging.
 
-## Lists with a cap
+## Plain arrays
+
+The older core routes return every visible row as a plain array:
+`GET /api/projects`, `/api/docs`, `/api/team`, `/api/deployments`,
+`/api/incidents`, `/api/access/grants`; `/api/tasks/_activity` returns an
+object of arrays. A few take a `limit` cap instead of pages:
 
 | Route | Parameter | Default | Max | Order |
 |---|---|---|---|---|
 | `GET /api/audit` | `limit` | 200 | 500 | newest first |
 | `GET /api/_logs` | `limit` | 200 | 500 | newest first |
 | `GET /api/locations/sign-ins` | `limit` | 100 | 500 | newest first |
+| `GET /api/backups/snapshots` | `limit` | — | 100 | newest first |
 | `POST /api/_query` | `limit`, `offset` in the body | — | 500 / 100,000 | `orderBy` |
 
-The query runner returns `{from, total, returned, offset, limit, ms, rows}`.
-
-## Lists without paging
-
-`GET /api/projects`, `/api/docs`, `/api/team`, `/api/deployments`,
-`/api/incidents`, `/api/access/grants`, `/api/tasks/_activity` return plain
-arrays (or, for `_activity`, an object of arrays) of every visible row. They
-are small in this organisation.
-
-> [!NOTE]
-> **Planned: Wave 4.** New list endpoints return `{items: […], nextCursor?}`
-> (`docs/agents/WAVE4.md` §6): pass `nextCursor` back to get the next page;
-> its absence means the end. Message history uses `?before=` on
-> `GET /api/channels/:id/messages`. Existing lists keep their current shape
-> unless their lane changes them; this page will be updated as they merge.
+Check the [reference](reference.md) summary of each route for its parameters.

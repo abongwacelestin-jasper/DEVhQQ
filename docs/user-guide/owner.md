@@ -26,7 +26,7 @@ The Owner has `admin` in every area and sees every product
   active Owner cannot be demoted.
 - Read restricted docs you are not an editor of.
 - Create backups and run restore drills (Infrastructure ≥ `manage`; also
-  Operations) — from the backend console today.
+  Operations) — from the backend console; restoring a backup is Owner-only.
 - See every page, including Security, Integrations, Workspaces and Audit.
 
 The Owner also passes every JIT elevation check without a grant

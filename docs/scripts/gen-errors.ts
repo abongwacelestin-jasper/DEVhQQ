@@ -43,11 +43,96 @@ for (const abs of files) {
   }
 }
 
+/**
+ * Domain errors that a route rethrows as `new HttpError(<status>, e.code, e.message)`.
+ * Their codes are collected from `new <Class>('code', 'message')` call sites.
+ * Add a row when a module introduces another such wrapper.
+ */
+const WRAPPERS: { cls: string; status: number }[] = [{ cls: 'BackupError', status: 422 }];
+
+for (const w of WRAPPERS) {
+  const wre = new RegExp(
+    `new ${w.cls}\\(\\s*'([a-z_]+)',\\s*(?:(['\`"])((?:\\\\.|(?!\\2)[\\s\\S])*?)\\2)?`,
+    'g',
+  );
+  for (const abs of files) {
+    const src = readFileSync(abs, 'utf8');
+    for (const m of src.matchAll(wre))
+      hits.push({
+        status: w.status,
+        code: m[1],
+        message: m[2] ? m[3].replace(/\s+/g, ' ') : '_(computed at runtime)_',
+        file: rel(abs),
+        line: src.slice(0, m.index).split('\n').length,
+      });
+  }
+}
+
+/**
+ * Call sites whose status or code is computed. Each is listed by hand with the
+ * values it can produce; the check below fails if a new computed site appears
+ * that is not listed here.
+ */
+const COMPUTED: { file: string; marker: string; status: number; code: string; message: string }[] =
+  [
+    {
+      file: 'Backend/routes/files.routes.ts',
+      marker: "e.code === 'StorageUnavailable'",
+      status: 503,
+      code: 'storage_unavailable',
+      message: 'Object storage request failed',
+    },
+    {
+      file: 'Backend/routes/files.routes.ts',
+      marker: "e.code === 'StorageUnavailable'",
+      status: 502,
+      code: 'storage_error',
+      message: 'Object storage request failed',
+    },
+    ...(['bad_signature', 'replayed', 'signature_expired'] as const).map((code) => ({
+      file: 'Backend/routes/insights.routes.ts',
+      marker: 'new HttpError(401, err,',
+      status: 401,
+      code,
+      message: 'Invalid service signature',
+    })),
+  ];
+for (const c of COMPUTED) {
+  const src = readFileSync(join(ROOT, c.file), 'utf8');
+  const at = src.indexOf(c.marker);
+  if (at < 0) {
+    console.error(
+      `✗ ${c.file}: computed HttpError marker not found — update COMPUTED in gen-errors.ts`,
+    );
+    process.exit(1);
+  }
+  hits.push({
+    status: c.status,
+    code: c.code,
+    message: c.message,
+    file: c.file,
+    line: src.slice(0, at).split('\n').length,
+  });
+}
+
 // Errors raised with a non-literal code would be invisible to this scan; make that loud.
 for (const abs of files) {
   const src = readFileSync(abs, 'utf8');
   for (const m of src.matchAll(/new HttpError\(([^)]{0,80})/g)) {
-    if (!/^\s*\d{3},\s*'[a-z_]+'/.test(m[1]) && !/^\s*e\.status/.test(m[1])) {
+    const wrapped = WRAPPERS.some((w) =>
+      new RegExp(`instanceof ${w.cls}\\)\\s*throw\\s*$`).test(src.slice(0, m.index)),
+    );
+    const listed = COMPUTED.some(
+      (c) =>
+        c.file === rel(abs) &&
+        src.slice(m.index, m.index + 200).includes(c.marker.replace(/^new HttpError\(/, '')),
+    );
+    if (
+      !/^\s*\d{3},\s*'[a-z_]+'/.test(m[1]) &&
+      !/^\s*e\.status/.test(m[1]) &&
+      !wrapped &&
+      !listed
+    ) {
       console.error(`✗ ${rel(abs)}: HttpError with a non-literal status/code: ${m[0]}`);
       process.exit(1);
     }

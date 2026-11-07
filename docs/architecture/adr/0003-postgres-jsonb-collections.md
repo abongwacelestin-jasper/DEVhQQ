@@ -1,14 +1,13 @@
 # 0003. PostgreSQL through JSONB collections behind the `Collection` seam
 
-- **Status:** Accepted. The seam is implemented; the PostgreSQL driver is
-  planned for Wave 4 (B-DATA lane).
+- **Status:** Accepted, implemented (Wave 4, B-DATA lane).
 - **Date:** 2026-11-07 (owner decision: PostgreSQL)
 
 ## Context
 
-Every piece of state lives in process memory (`Backend/store/db.ts`, and the
-session and JIT-grant maps). A restart loses everything except the audit JSONL
-file and backup snapshots. Handlers are synchronous and read from those maps
+Before Wave 4 every piece of state lived in process memory
+(`Backend/store/db.ts`, and the session and JIT-grant maps), and a restart lost
+everything except the audit JSONL file and backup snapshots. Handlers are synchronous and read from those maps
 directly, and ten lanes are adding backend modules in parallel. If each lane
 wrote its own SQL and its own schema migrations, the merge would be hard and
 the handlers would all have to become asynchronous at once.
@@ -31,12 +30,15 @@ the handlers would all have to become asynchronous at once.
    `CollectionDriver` (`write`, `remove`, `load`).
 3. The default driver is in memory and does nothing, so smoke tests and a
    quick local start need no database.
-4. The B-DATA lane installs the PostgreSQL driver at boot with `setDriver()`,
-   runs migrations, then `hydrateAll()` loads every registered collection
-   before the server accepts traffic. Rows are stored generically in one table:
-   `documents(collection text, key text, data jsonb, updated_at timestamptz,
-   primary key (collection, key))` (or per-collection tables, B-DATA's call).
-   Writes are queued and flushed in order. Other lanes never write SQL.
+4. With `DATABASE_URL`, `initPersistence()` (`Backend/db/boot.ts`) runs
+   migrations (`Backend/db/migrate.ts`, optionally with a separate DDL role in
+   `DATABASE_MIGRATION_URL`), installs the PostgreSQL driver with
+   `setDriver()`, then `hydrateAll()` loads every registered collection
+   before the server accepts traffic. Rows are stored generically in a
+   `documents` table keyed by `(collection, key)` with a JSONB payload.
+   Writes are queued and flushed in order. Other modules never write SQL.
+5. Demo data is seeded only when `NODE_ENV !== 'production'` **and** the table
+   is empty, under an advisory lock.
 
 ## Consequences
 
@@ -53,16 +55,16 @@ the handlers would all have to become asynchronous at once.
 - Collection names are registered once; registering a name twice throws at
   module load.
 
-> [!NOTE]
-> **Planned: Wave 4 (B-DATA).** Not yet in the code: the driver and migration
-> runner (`Backend/db/`), `DATABASE_URL` / `DATABASE_SSL`, converting
-> `db.*` maps to collections, persisting sessions, sign-ins and JIT grants,
-> and loading seed data **only** when `NODE_ENV !== 'production'` **and** the
-> database is empty. Today `seed()` runs on every boot, in every environment;
-> in production the seeded members get an unusable password hash (`!disabled`)
-> but projects, tasks, deployments and incidents are still the demo set.
+- `GET /api/ready` reports the write queue (`persistence.pending`,
+  `saturated`) and turns `503` when the database is down or the queue is
+  saturated.
+- **One backend replica.** Because each process holds its own copy, the
+  deployment runs a single backend until cross-instance invalidation exists
+  ([Known limits](../../operations/known-limits.md)). Commands that write
+  (`bootstrap-owner`) run with the backend stopped.
 
 ## References
 
-- `Backend/store/collection.ts`, `Backend/store/db.ts`
+- `Backend/store/collection.ts`, `Backend/store/db.ts`, `Backend/db/`
+- [Storage](../../operations/storage.md)
 - `docs/agents/WAVE4.md` §3 (persistence contract)

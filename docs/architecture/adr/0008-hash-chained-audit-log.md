@@ -1,7 +1,7 @@
 # 0008. Hash-chained, append-only audit log
 
-- **Status:** Accepted, implemented. Shipping the chain to write-once object
-  storage is planned for Wave 4 (STORAGE lane).
+- **Status:** Accepted, implemented; database mirror and write-once archive
+  added in Wave 4 (B-DATA, STORAGE).
 - **Date:** 2026-10-30 (recorded 2026-11-07)
 
 ## Context
@@ -51,12 +51,11 @@ Every state change appends an entry to one audit log
   only shows the Audit page to the Owner. See
   [Roles and permissions](../../concepts/roles-and-permissions.md#routes-open-to-every-signed-in-member).
 
-> [!NOTE]
-> **Planned: Wave 4 (STORAGE, B-DATA).** The audit archive ships to
-> `S3_BUCKET_AUDIT` with object lock (WORM) in production, so an attacker with
-> server access still cannot rewrite history. With PostgreSQL in place the
-> chain can survive restarts; the exact approach is B-DATA's and STORAGE's to
-> define.
+- Two more copies defend against tail truncation and host compromise: the
+  append-only `audit_entries` table in PostgreSQL (`Backend/db/auditSink.ts`)
+  and batches in the audit bucket under Object Lock, each batch linked to the
+  previous by hash (`Backend/storage/auditArchive.ts`). Chains still restart at
+  each boot; batches carry a `bootId`.
 
 ## References
 

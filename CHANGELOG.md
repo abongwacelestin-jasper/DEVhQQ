@@ -7,34 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Wave 4 — in progress
+### Wave 4 — finalise the platform (build lanes merged into `wave4/integration`)
 
-> Placeholder. Wave 4 lanes (INFRA, B-DATA, SEC, STORAGE, B-DOMAIN, B-COLLAB,
-> ML, F-SEC, F-ENG, F-COLLAB, then TEST, QA, CYBER, DOCS) add their entries
-> here as they merge into `wave4/integration`. Scope: PostgreSQL persistence
-> behind the `Collection` seam, S3-compatible object storage, a Python ML
-> service and assistant, Docker Compose with an edge proxy, a GitHub App,
-> messaging/workspaces/notifications backends, personal access tokens and
-> real WebAuthn (`docs/agents/WAVE4.md`).
+Owner decisions: PostgreSQL, S3-compatible object storage (MinIO locally), a
+Python ML service, Docker Compose behind a Caddy edge; every domain gets a
+real backend module (`docs/agents/WAVE4.md`). The API grew from 90 to 181
+routes; the backend smoke suite from 32 to 157 checks.
 
 #### Added
 
-- Persistence seam `Backend/store/collection.ts` (`Collection`, `setDriver`,
-  `hydrateAll`), in-memory driver by default.
-- Documentation set under `docs/`: architecture overview and ADRs 0001–0008,
-  getting started and troubleshooting, concepts, API guides, a user guide per
-  role, operations, ML overview and glossary; `Backend/README.md` and
-  `Frontend/README.md`.
-- Generated docs that cannot drift: API reference from the live route table,
-  permission matrix from `Backend/auth/rbac.ts` and the frontend capability
-  mapping, error-code catalogue from every `HttpError` call site
-  (`cd docs && npm run gen`), plus a link and file-path checker
-  (`npm run check`).
+- **Persistence (B-DATA):** PostgreSQL behind the `Collection` seam — generic
+  JSONB `documents` table, ordered write queue, migrations, `hydrateAll()` at
+  boot, seeding only outside production on an empty database, append-only
+  `audit_entries` mirror; sessions, sign-ins, JIT grants and TOTP counters
+  persisted; DB-aware `/api/ready`.
+- **Security (SEC):** personal access tokens (`/api/tokens`; scoped, hashed,
+  expiring, never step-up); real WebAuthn for sign-in, step-up and unlock;
+  TOTP enrolment (`/api/auth/totp/*`) and first-factor enrolment during sign-in
+  (`/api/auth/mfa/enroll`, `/confirm`); secrets sealed with
+  `DATA_ENCRYPTION_KEY`; per-account rate limiting; per-subscriber filtering of
+  `/api/_events`; production refuses demo settings; `bootstrap-owner` command.
+- **Storage (STORAGE):** S3 client with SigV4, presigned uploads with
+  size/type/magic-byte checks (`/api/files/*`), encrypted application
+  backups in an Object-Lock bucket with dry-run restore
+  (`POST /api/backups/:id/restore`), audit archive to a WORM bucket, MinIO
+  bootstrap with least-privilege users.
+- **Engineering (B-DOMAIN):** GitHub App (webhook with HMAC and replay
+  protection, install status), repositories, pull requests with reviews, CI
+  runs, code findings, SSRF-safe uptime monitors that open incidents,
+  integrations (Slack, generic webhook, PagerDuty) with signed, retried
+  outbound webhooks.
+- **Collaboration (B-COLLAB):** channels, DMs, messages, threads, reactions,
+  pins and polls; authenticated realtime stream `/api/stream`; workspaces;
+  notifications with mail digests; server-side onboarding (NDA, profile);
+  account recovery without enumeration; offboarding; doc versions, diffs and
+  comments; SMTP/console mail.
+- **ML (ML):** Python FastAPI service with task ETA, overdue, deploy-risk and
+  sign-in anomaly models, signed model registry, promotion gate, assistant on
+  the Anthropic API; backend bridge `/api/insights/*`, `/api/assistant/ask`
+  with heuristic fallbacks.
+- **Infrastructure (INFRA):** Dockerfiles, `docker-compose.yml` (+ dev
+  override), Caddy edge, nginx, secrets generation, database backup/restore
+  scripts, deploy script with health gate and automatic rollback, CI with
+  image signing, SBOM and provenance; `docs/deploy/` runbook and architecture.
+- **Frontend (F-SEC, F-ENG, F-COLLAB):** cookie-only API client, real WebAuthn
+  and lock screen, server-driven onboarding, sandboxed code runner, CSP;
+  engineering pages on the new APIs with demo badges; messaging, workspaces,
+  docs collaboration, team and offboarding on the new APIs.
+- **Docs (DOCS):** documentation set under `docs/` (architecture and ADRs
+  0001–0008, getting started, concepts, API guides including realtime and
+  webhooks, a user guide per role, operations including deployment and first
+  run, storage, backups, known limits, ML, glossary), `Backend/README.md`,
+  `Frontend/README.md`; generated API reference, permission matrix, error-code
+  catalogue and environment-variable list (`cd docs && npm run gen`), and a
+  link and file-path checker (`npm run check`).
 
 #### Changed
 
+- Browsers no longer receive or store the session token; the body token is
+  returned only to CLI clients (`X-DevHQ-Client: cli`, no `Origin`).
+- The demo MFA code is accepted only for seeded demo accounts without a factor.
 - `CONTRIBUTING.md` rewritten to match the actual scripts, hard rules and
   checks.
+
+#### Security
+
+- Addressed in code after the phase-1 assessment
+  (`docs/security/assessment/REPORT.md`): unscoped `/api/_events` broadcast
+  (CYBER-001, `Backend/security/eventPolicy.ts`), universal demo MFA code
+  (CYBER-002, `demoCodeAllowed` in `Backend/routes/auth.routes.ts`), bearer
+  token in response bodies and `sessionStorage` (CYBER-003, cookie-only client
+  and `wantsBodyToken`). The assessment's second pass will confirm.
+
+#### Known limits
+
+- One backend replica; synthetic ML models until real history passes the
+  promotion gate; demo mode must be off on internet-facing staging; MinIO SSE
+  needs a KMS key in production; first-factor enrolment has no web UI yet; see
+  `docs/operations/known-limits.md`.
 
 ### Wave 2 — core domain over the API (accepted 2026-10-30)
 

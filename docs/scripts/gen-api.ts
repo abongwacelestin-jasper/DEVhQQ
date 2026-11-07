@@ -56,8 +56,8 @@ How to read the columns:
 
 | Column | Meaning |
 |---|---|
-| Auth | \`public\`: no credentials. \`session\`: a fully verified session (password + second factor), sent as the \`__Host-devhq_session\` cookie or \`Authorization: Bearer\`. \`partial\`: a password-only session that has not finished MFA. See [Authentication](authentication.md). |
-| Guards | Route-level middleware read from the source: \`Area ≥ level\` is \`requireArea\`, \`step-up\` is \`requireStepUp\` (strong verification in the last 5 minutes), \`auth rate limit\` is the tight \`authLimiter\` bucket. Handlers apply further checks (product scope → \`404\`, two-person rules, role checks); those are described in [Concepts](../concepts/index.md). |
+| Auth | \`public\`: no credentials. \`session\`: a fully verified session (password + second factor) sent as the \`__Host-devhq_session\` cookie or \`Authorization: Bearer\`, or a personal access token (\`Bearer dhq_pat_…\`) whose scopes cover the route. \`partial\`: a password-only session that has not finished MFA. See [Authentication](authentication.md). |
+| Guards | Route-level middleware read from the source: \`Area ≥ level\` is \`requireArea\`, \`step-up\` is \`requireStepUp\` (strong verification in the last 5 minutes), \`interactive session\` is \`requireSession\` (personal access tokens are refused), \`auth rate limit\` is the tight \`authLimiter\` bucket. Personal access tokens never pass step-up. Handlers apply further checks (product scope → \`404\`, two-person rules, role checks); those are described in [Concepts](../concepts/index.md). |
 | Responses | Status codes declared in the route's metadata, besides \`200\`/\`201\`/\`204\`. Declared, not exhaustive: every route can also return \`429\` and \`5xx\`. The full error catalogue is in [Error codes](error-codes.md). |
 
 Tags: ${tags.map((t) => `[${t}](#${t})`).join(' · ')}

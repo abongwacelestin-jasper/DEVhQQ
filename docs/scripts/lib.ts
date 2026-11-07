@@ -95,7 +95,18 @@ export interface RouteGuards {
   session: boolean;
   partial: boolean;
   authLimited: boolean;
+  /** `requireSession`: an interactive session, not a personal access token. */
+  interactive: boolean;
+  /** Route-specific middleware not covered above, by identifier. */
+  other: string[];
 }
+
+/** Route-local middleware identifiers and how the reference labels them. */
+const LOCAL_GUARDS: Record<string, string> = {
+  accountLimiter: 'per-account rate limit',
+  perMemberLimit: 'per-member rate limit',
+  serviceOrAdmin: 'ML service HMAC, or Administration ≥ admin',
+};
 
 /** Returns the source text of the call whose `(` is at `open`, without the parens. */
 function callArgs(src: string, open: number): string {
@@ -159,9 +170,11 @@ export function readRouteGuards(): RouteGuards[] {
         areas,
         stepUp: /\brequireStepUp\(/.test(args),
         elevation: /\brequireElevation\(/.test(args),
-        session: /\bauthenticate\b/.test(args),
+        session: /\bauthenticate\b|\bserviceOrAdmin\b/.test(args),
         partial: /\bauthenticatePartial\b/.test(args),
         authLimited: /\bauthLimiter\b/.test(args),
+        interactive: /\brequireSession\b/.test(args),
+        other: Object.keys(LOCAL_GUARDS).filter((k) => new RegExp(`\\b${k}\\b`).test(args)),
       });
     }
   }
@@ -181,6 +194,8 @@ export function guardLabel(g: RouteGuards | undefined): string {
   const parts = g.areas.map((a) => `${a.area} ≥ ${a.level}`);
   if (g.stepUp) parts.push('step-up');
   if (g.elevation) parts.push('JIT elevation');
+  if (g.interactive) parts.push('interactive session');
+  for (const o of g.other) parts.push(LOCAL_GUARDS[o]);
   if (g.authLimited) parts.push('auth rate limit');
   return parts.length ? parts.join(' · ') : '—';
 }

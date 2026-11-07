@@ -30,9 +30,11 @@ The invited member already appears in the directory and in scope. (`mfa: true`
 in the response above is an artefact of demo mode, where every member is
 reported as having MFA.)
 
-> [!NOTE]
-> **Planned: Wave 4 (B-COLLAB).** Invitation and notification email through
-> `Backend/mail/` (`SMTP_*`, `MAIL_TRANSPORT=console` in development).
+Invites are not emailed; the mail transport (`Backend/mail/`) sends password
+recovery links and notification digests only.
+
+On first sign-in the invitee must enrol an authenticator; see
+[Authentication](../api/authentication.md#first-factor-enrolment).
 
 ## Change a role, products or status
 
@@ -61,13 +63,25 @@ The **Access review** panel on the Team page lists:
 every session ends, and history stays in the audit log. Reactivate with
 `status: "active"`.
 
-> [!NOTE]
-> **Planned: Wave 4 (B-COLLAB).** The offboarding checklist (resignation, last
-> day, handover, reassigning tasks, revoking tokens and devices, NDA exit) is
-> kept only in the browser today (`Frontend/src/contexts/OffboardingContext.tsx`).
-> Wave 4 adds `POST /api/offboarding/:memberId` (start) and
-> `PATCH /api/offboarding/:memberId` (checklist), requiring Administration ≥
-> `manage` and step-up.
+**Offboarding** is the full leaver flow (`Backend/routes/offboarding.routes.ts`):
+
+1. A member resigns themselves, or an admin (Administration ≥ `manage`) starts
+   it: `POST /api/offboarding/:memberId` with last day, reason and handover
+   person (step-up).
+2. Work the checklist with `PATCH /api/offboarding/:memberId`: open tasks
+   reassigned, handover doc written, personal API tokens revoked, trusted
+   devices removed, repository and production access removed, NDA exit
+   confirmation. The member may only withdraw their own resignation.
+3. **Complete** it (another admin; nobody completes their own): the member is
+   deactivated, their sessions and JIT grants are revoked, and their personal
+   access tokens are revoked through the `member.deactivated` event.
+
+`GET /api/offboarding` lists all of them (Administration ≥ `view`).
+
+Deactivating directly with `PATCH /api/team/:memberId` revokes sessions, and
+tokens stop working at once, but does not revoke JIT grants (open item in
+[docs/security/CONTROLS.md](../security/CONTROLS.md#known-gaps--follow-ups)).
+Prefer offboarding for leavers.
 
 ## Review the audit trail
 
@@ -79,5 +93,5 @@ See [Audit verification](../operations/audit-verification.md).
 
 - No way to delete a member or re-issue an invite link; an expired invite
   leaves the member in `invited`.
-- No password reset for another member, and no self-service reset yet.
-- Changes made here live in memory until PostgreSQL lands (Wave 4).
+- No password reset for another member (members reset their own through
+  **Forgot password**).
