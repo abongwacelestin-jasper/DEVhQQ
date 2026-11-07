@@ -43,7 +43,11 @@ export const check: Check = {
     const apiCsp = api.headers.get('content-security-policy') ?? '';
     const apiScript = scriptSrc(apiCsp);
     if (/unsafe-inline|unsafe-eval/.test(apiScript)) problems.push(`api script-src has unsafe directive: ${apiScript}`);
-    if (!/strict-dynamic/.test(apiScript)) problems.push('api script-src missing strict-dynamic');
+    // Since SEC (wave 4) JSON responses carry `default-src 'none'` with no script-src at all,
+    // which is stricter than nonce + strict-dynamic: no script can execute.
+    const apiLockedDown = /default-src 'none'/.test(apiCsp) && !/script-src/.test(apiCsp);
+    if (!apiLockedDown && !/strict-dynamic/.test(apiScript))
+      problems.push("api CSP neither default-src 'none' nor script-src strict-dynamic");
 
     for (const csp of [conCsp, apiCsp]) {
       if (!/frame-ancestors 'none'/.test(csp)) problems.push('missing frame-ancestors none');

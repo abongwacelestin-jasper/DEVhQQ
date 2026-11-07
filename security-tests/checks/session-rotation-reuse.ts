@@ -22,8 +22,7 @@ export const check: Check = {
     const t1 = await signInDemo(base, 'developer');
     const su = await req(base, 'POST', '/api/auth/step-up', {
       token: t1,
-      origin: 'http://localhost:5173',
-      headers: { 'x-devhq-client': 'console' },
+      headers: { 'x-devhq-client': 'cli' },
       body: { code: (await (await fetch(`${base}/api/auth/demo-accounts`)).json()).mfaCode },
     });
     const t2 = su.json?.token;
@@ -43,8 +42,7 @@ export const check: Check = {
     // 3. UA binding: a token minted under UA "A" must die when reused under UA "B".
     const r = await req(base, 'POST', '/api/auth/demo', {
       body: { role: 'designer' },
-      origin: 'http://localhost:5173',
-      headers: { 'x-devhq-client': 'console' },
+      headers: { 'x-devhq-client': 'cli' },
       ua: 'Mozilla/5.0 UA-ALPHA',
     });
     const t4 = r.json?.token;

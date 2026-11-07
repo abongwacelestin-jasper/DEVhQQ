@@ -152,13 +152,14 @@ export async function req(
 
 /**
  * Demo sign-in by role, returning a fully-verified bearer token.
- * `X-DevHQ-Client: console` makes the API echo the token in the body.
+ * Since SEC (wave 4) browsers get cookie-only sessions; a body token is only
+ * issued to non-browser clients: `X-DevHQ-Client: cli` with no Origin and no
+ * Sec-Fetch-Site header.
  */
 export async function signInDemo(base: string, role: string): Promise<string> {
   const r = await req(base, 'POST', '/api/auth/demo', {
     body: { role },
-    origin: 'http://localhost:5173',
-    headers: { 'x-devhq-client': 'console' },
+    headers: { 'x-devhq-client': 'cli' },
     ua: 'cyber-suite/1.0',
   });
   if (r.status !== 200 || !r.json?.token)

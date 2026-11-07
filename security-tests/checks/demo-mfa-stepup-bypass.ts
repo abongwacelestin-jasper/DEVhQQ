@@ -30,14 +30,12 @@ export const check: Check = {
     const email = accts.accounts[2].email as string;
     const step1 = await req(base, 'POST', '/api/auth/sign-in', {
       body: { email, password: 'devhq-demo' },
-      origin: 'http://localhost:5173',
-      headers: { 'x-devhq-client': 'console' },
+      headers: { 'x-devhq-client': 'cli' },
     });
     const partial = step1.json?.token;
     const mfa = await req(base, 'POST', '/api/auth/mfa/totp', {
       token: partial,
-      origin: 'http://localhost:5173',
-      headers: { 'x-devhq-client': 'console' },
+      headers: { 'x-devhq-client': 'cli' },
       body: { code: accts.mfaCode },
     });
     const mfaBypassed = mfa.status === 200 && !!mfa.json?.ok;
