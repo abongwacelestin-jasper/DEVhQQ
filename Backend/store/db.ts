@@ -179,6 +179,12 @@ const seedMembers: SeedMember[] = [
   },
 ];
 
+/**
+ * Ids of the seeded demo accounts. The shared demo MFA code is honoured only for
+ * these, never for real members invited into a demo-enabled (dev/staging) system.
+ */
+export const DEMO_MEMBER_IDS: ReadonlySet<string> = new Set(seedMembers.map((m) => m.id));
+
 const seedProjects: Project[] = [
   { id: 'p1', product: 'renewberry', name: 'Payments v2', lead: 'm2', status: 'at-risk' },
   {

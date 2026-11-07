@@ -75,7 +75,14 @@ import { looksLikePat } from '../security/pats.ts';
 import { assessRisk, lookupIp, riskDecision } from '../lib/geo.ts';
 import { publish } from '../lib/events.ts';
 import { audit } from '../audit/auditLog.ts';
-import { db, DEMO, demoAccounts, findMemberByEmail, publicMember } from '../store/db.ts';
+import {
+  db,
+  DEMO,
+  DEMO_MEMBER_IDS,
+  demoAccounts,
+  findMemberByEmail,
+  publicMember,
+} from '../store/db.ts';
 import { config } from '../config/env.ts';
 import { HttpError, type Member, type SignInRecord } from '../types.ts';
 import { randomToken } from '../security/crypto.ts';
@@ -172,7 +179,13 @@ function deliver(ctx: Ctx, token: string, maxAge: number, extra: Record<string, 
  * their own. It never stands in for a member's real TOTP secret or passkey.
  */
 function demoCodeAllowed(member: Member): boolean {
-  return DEMO.enabled && !member.totpSecret && member.passkeys.length === 0;
+  // Seeded demo accounts only: an invited real member must enroll a real factor (CYBER-002).
+  return (
+    DEMO.enabled &&
+    DEMO_MEMBER_IDS.has(member.id) &&
+    !member.totpSecret &&
+    member.passkeys.length === 0
+  );
 }
 
 function usablePasskeys(member: Member) {
@@ -184,6 +197,17 @@ function secondFactors(member: Member): string[] {
     ...(usablePasskeys(member).length ? ['passkey'] : []),
     ...(member.totpSecret || demoCodeAllowed(member) ? ['totp'] : []),
   ];
+}
+
+/**
+ * True when a member has no usable second factor (no authenticator, no passkey,
+ * no demo code). Such a member can only finish sign-in by enrolling one: the
+ * password step was already proven, and the account was activated through a
+ * single-use invite or recovery link, so this is first-factor enrollment, not
+ * a bypass. Members who already have a factor can never use this path.
+ */
+function needsEnrollment(member: Member): boolean {
+  return secondFactors(member).length === 0;
 }
 
 /** Resolves the session behind the request for handlers that also accept anonymous callers. */
@@ -472,8 +496,9 @@ export function registerAuthRoutes(r: Router) {
       });
       const methods = secondFactors(member);
       return deliver(ctx, token, 10 * 60, {
-        next: methods[0] ?? 'totp',
+        next: methods[0] ?? 'enroll',
         methods,
+        enrollRequired: methods.length === 0,
         risk: decision === 'challenge' ? { reasons } : undefined,
       });
     },
@@ -496,7 +521,105 @@ export function registerAuthRoutes(r: Router) {
     authenticatePartial,
     (ctx) => {
       const member = db.members.get(ctx.principal!.memberId)!;
-      return { member: publicMember(member), methods: secondFactors(member) };
+      const methods = secondFactors(member);
+      return { member: publicMember(member), methods, enrollRequired: methods.length === 0 };
+    },
+  );
+
+  r.add(
+    'POST',
+    '/api/auth/mfa/enroll',
+    {
+      summary:
+        'First authenticator enrollment during sign-in (only for members with no second factor)',
+      tag: 'auth',
+      auth: 'partial',
+      responses: [401, 403, 409, 429],
+    },
+    authLimiter,
+    authenticatePartial,
+    accountLimiter,
+    (ctx) => {
+      const member = db.members.get(ctx.principal!.memberId)!;
+      const session = sessionOf(ctx);
+      if (!needsEnrollment(member))
+        throw new HttpError(
+          409,
+          'factor_exists',
+          'Verify with your existing authenticator or passkey',
+        );
+      const { secret, otpauthUri, expiresAt } = beginEnrollment(member, session.id);
+      audit.append({
+        actor: member.id,
+        action: 'auth.totp_enroll_started',
+        target: 'first authenticator (during sign-in)',
+        sensitive: true,
+        requestId: ctx.requestId,
+      });
+      ctx.status = 201;
+      return {
+        secret,
+        otpauthUri,
+        expiresAt: new Date(expiresAt).toISOString(),
+        expiresInSec: Math.floor(ENROLLMENT_TTL_MS / 1000),
+      };
+    },
+  );
+
+  r.add(
+    'POST',
+    '/api/auth/mfa/enroll/confirm',
+    {
+      summary: 'Confirm the first authenticator with one valid code and finish sign-in',
+      tag: 'auth',
+      auth: 'partial',
+      responses: [400, 401, 403, 409, 422, 429],
+    },
+    authLimiter,
+    authenticatePartial,
+    accountLimiter,
+    (ctx) => {
+      const { code } = parse(totpBody, ctx.body);
+      const member = db.members.get(ctx.principal!.memberId)!;
+      const session = sessionOf(ctx);
+      if (!needsEnrollment(member))
+        throw new HttpError(
+          409,
+          'factor_exists',
+          'Verify with your existing authenticator or passkey',
+        );
+      const result = confirmEnrollment(member, session.id, code);
+      if (!result.ok) {
+        audit.append({
+          actor: member.id,
+          action: 'auth.totp_enroll_failed',
+          target: result.reason,
+          sensitive: true,
+          requestId: ctx.requestId,
+        });
+        if (result.reason === 'invalid_code')
+          throw new HttpError(401, 'mfa_invalid', 'Code is incorrect or expired');
+        throw new HttpError(
+          409,
+          'enrollment_invalid',
+          'No enrollment in progress for this session — start again',
+          {
+            reason: result.reason,
+          },
+        );
+      }
+      member.totpSecret = result.sealedSecret;
+      persistMember(member.id);
+      const { token } = markVerified(session, result.counter);
+      recordSignIn(member, ctx, 'password', 'success');
+      audit.append({
+        actor: member.id,
+        action: 'auth.totp_enrolled',
+        target: 'authenticator app (first factor, during sign-in)',
+        sensitive: true,
+        requestId: ctx.requestId,
+      });
+      return deliver(ctx, token, cookieAge, { ok: true, member: publicMember(member) });
     },
   );
 

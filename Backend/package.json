@@ -78,7 +78,8 @@
     "test": "npm run smoke",
     "test:smoke": "npm run smoke",
     "validate": "npm run typecheck && npm run lint",
-    "precommit": "npm run validate"
+    "precommit": "npm run validate",
+    "bootstrap-owner": "node --experimental-strip-types scripts/bootstrap-owner.ts"
   },
   "dependencies": {
     "pg": "8.23.1"

@@ -760,7 +760,13 @@ expect(
   );
 
   const pdf = Buffer.from('%PDF-1.7\n% smoke\n');
-  const pdfReq = await ask(dev, 'doc-attachment', 'application/pdf', pdf.length, 'doc-payments-spec');
+  const pdfReq = await ask(
+    dev,
+    'doc-attachment',
+    'application/pdf',
+    pdf.length,
+    'doc-payments-spec',
+  );
   await putTo(pdfReq.json as unknown as Upload, pdf);
   await call('POST', `/api/files/${pdfReq.json.fileId}/complete`, {}, dev);
   const pdfDl = await call('GET', `/api/files/${pdfReq.json.fileId}`, undefined, dev);
@@ -793,7 +799,11 @@ expect(
   const short = await ask(dev, 'doc-attachment', 'image/png', 100, 'doc-payments-spec');
   const shortPut = await putTo(short.json as unknown as Upload, png);
   await shortPut.arrayBuffer();
-  expect('storage: PUT of a size other than the signed one is refused', !shortPut.ok, shortPut.status);
+  expect(
+    'storage: PUT of a size other than the signed one is refused',
+    !shortPut.ok,
+    shortPut.status,
+  );
   const cancel = await call('DELETE', `/api/files/${short.json.fileId}`, undefined, dev);
   expect('storage: pending upload can be cancelled', cancel.status === 204, cancel.json);
 
@@ -835,7 +845,11 @@ expect(
     backup.json,
   );
   const devRestore = await call('POST', `/api/backups/${backupId}/restore`, {}, dev);
-  expect('storage: restore requires Administration:admin', devRestore.status === 403, devRestore.json);
+  expect(
+    'storage: restore requires Administration:admin',
+    devRestore.status === 403,
+    devRestore.json,
+  );
   const dry = await call('POST', `/api/backups/${backupId}/restore`, {}, admin);
   const plan = (dry.json.plan ?? []) as { name: string; inBackup: number; unchanged: number }[];
   const filesPlan = plan.find((p) => p.name === 'files');
@@ -850,8 +864,17 @@ expect(
     dry.json,
   );
   await call('DELETE', `/api/files/${pdfReq.json.fileId}`, undefined, dev);
-  const noConfirm = await call('POST', `/api/backups/${backupId}/restore`, { dryRun: false }, admin);
-  expect('storage: real restore needs explicit confirmation', noConfirm.status === 422, noConfirm.json);
+  const noConfirm = await call(
+    'POST',
+    `/api/backups/${backupId}/restore`,
+    { dryRun: false },
+    admin,
+  );
+  expect(
+    'storage: real restore needs explicit confirmation',
+    noConfirm.status === 422,
+    noConfirm.json,
+  );
   const real = await call(
     'POST',
     `/api/backups/${backupId}/restore`,
@@ -867,7 +890,11 @@ expect(
     real.json,
   );
   const drill = await call('POST', '/api/backups/drill', undefined, admin);
-  expect('storage: restore drill passes on the encrypted backup', drill.json.ok === true, drill.json);
+  expect(
+    'storage: restore drill passes on the encrypted backup',
+    drill.json.ok === true,
+    drill.json,
+  );
 
   const { flushAuditArchive, auditArchiveStatus } = await import('../storage/auditArchive.ts');
   await flushAuditArchive();
@@ -1180,12 +1207,26 @@ expect(
   const designerGrant = await call(
     'POST',
     '/api/access/grants',
-    { scope: 'production:renewberry', reason: 'smoke: offboarding event test', durationMinutes: 15 },
+    {
+      scope: 'production:renewberry',
+      reason: 'smoke: offboarding event test',
+      durationMinutes: 15,
+    },
     tester2,
   );
   publishEvent('member.deactivated', { memberId: 'm10', reason: 'smoke' });
-  const designerAfter = await call('GET', '/api/tasks', undefined, designerPat.json.token as string);
-  const eventAudit = await call('GET', '/api/audit?action=security.member_access_revoked', undefined, owner);
+  const designerAfter = await call(
+    'GET',
+    '/api/tasks',
+    undefined,
+    designerPat.json.token as string,
+  );
+  const eventAudit = await call(
+    'GET',
+    '/api/audit?action=security.member_access_revoked',
+    undefined,
+    owner,
+  );
   expect(
     'SEC: member.deactivated event revokes the member’s PATs and JIT grants, audited',
     designerPat.status === 201 &&
@@ -2332,6 +2373,113 @@ if (!process.env.DATABASE_URL) {
     sessionRows,
   );
   setDriver({ write() {}, remove() {}, load: async () => [] });
+}
+
+// ── Integration (coordinator): first-factor enrollment for invited members ──
+// A real member invited into a demo-enabled system cannot use the shared demo
+// code; they finish sign-in by enrolling an authenticator. A member who already
+// has a factor can never take that path.
+{
+  const { totpAt } = await import('../auth/totp.ts');
+  const { DEMO } = await import('../store/db.ts');
+  const totpNow = (secret: string) => totpAt(secret, Math.floor(Date.now() / 30_000));
+  // Own client IP (and so its own auth rate-limit bucket), like the B-COLLAB block.
+  const prevTrust = process.env.TRUST_PROXY;
+  process.env.TRUST_PROXY = '1';
+  const call = async (method: string, path: string, body?: unknown, token?: string) => {
+    const res = await fetch(base + path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-DevHQ-Client': 'cli',
+        'User-Agent': 'devhq-smoke',
+        'X-Forwarded-For': '198.51.100.77',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await res.text();
+    return { status: res.status, json: text ? (JSON.parse(text) as Record<string, unknown>) : {} };
+  };
+  const adminSignIn = await call('POST', '/api/auth/demo', { role: 'admin' });
+  const admin = String(adminSignIn.json.token);
+  const email = `enroll-${Date.now()}@techorg.io`;
+  const invite = await call(
+    'POST',
+    '/api/team/invites',
+    { email, name: 'Enroll Tester', role: 'Developer', products: ['renewberry'] },
+    admin,
+  );
+  const inviteToken = new URL(String(invite.json.inviteLink), 'http://x').searchParams.get('token');
+  const password = 'Correct-Horse-Battery-9';
+  const accepted = await call('POST', '/api/auth/accept-invite', { token: inviteToken, password });
+  expect(
+    'enroll: invited member activates through the single-use link',
+    invite.status === 201 || invite.status === 200 ? accepted.status === 200 : false,
+    { invite: invite.status, accepted: accepted.json },
+  );
+
+  const pw = await call('POST', '/api/auth/sign-in', { email, password });
+  const partial = String(pw.json.token);
+  expect(
+    'enroll: password step for a factor-less member asks for enrollment',
+    pw.status === 200 && pw.json.next === 'enroll' && pw.json.enrollRequired === true,
+    pw.json,
+  );
+  const demoTry = await call('POST', '/api/auth/mfa/totp', { code: DEMO.mfaCode }, partial);
+  expect(
+    'enroll: shared demo code is refused for a real invited member',
+    demoTry.status === 401,
+    demoTry.json,
+  );
+  const blocked = await call('GET', '/api/tasks', undefined, partial);
+  expect(
+    'enroll: partial session still cannot reach the app',
+    blocked.status === 401,
+    blocked.json,
+  );
+
+  const start = await call('POST', '/api/auth/mfa/enroll', {}, partial);
+  const secret = String(start.json.secret ?? '');
+  expect(
+    'enroll: enrollment returns the secret and otpauth URI once',
+    start.status === 201 &&
+      secret.length >= 16 &&
+      String(start.json.otpauthUri).startsWith('otpauth://'),
+    start.json,
+  );
+  const wrong = await call('POST', '/api/auth/mfa/enroll/confirm', { code: '000000' }, partial);
+  const done = await call(
+    'POST',
+    '/api/auth/mfa/enroll/confirm',
+    { code: totpNow(secret) },
+    partial,
+  );
+  const verified = String(done.json.token);
+  const session = await call('GET', '/api/auth/session', undefined, verified);
+  const tasks = await call('GET', '/api/tasks', undefined, verified);
+  expect(
+    'enroll: a valid code confirms the factor and yields a verified session',
+    wrong.status === 401 && done.status === 200 && session.status === 200 && tasks.status === 200,
+    { wrong: wrong.json, done: done.json, session: session.json },
+  );
+  const reused = await call('GET', '/api/auth/session', undefined, partial);
+  expect(
+    'enroll: the pre-enrollment partial token is dead after rotation',
+    reused.status === 401,
+    reused.json,
+  );
+
+  const again = await call('POST', '/api/auth/sign-in', { email, password });
+  const partial2 = String(again.json.token);
+  const reenroll = await call('POST', '/api/auth/mfa/enroll', {}, partial2);
+  expect(
+    'enroll: once a factor exists, sign-in asks for it and enrollment is refused (409)',
+    again.json.next === 'totp' && again.json.enrollRequired === false && reenroll.status === 409,
+    { again: again.json, reenroll: reenroll.json },
+  );
+  if (prevTrust === undefined) delete process.env.TRUST_PROXY;
+  else process.env.TRUST_PROXY = prevTrust;
 }
 
 console.log(`\n${passed} checks passed`);
