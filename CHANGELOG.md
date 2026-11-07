@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-07
+
+Major version: browser sessions are cookie-only, so clients that read the session
+token from the sign-in response must switch to the cookie or to a personal access token.
+
+### Release hardening (beta-verified 2026-11-07)
+
+#### Added
+
+- **One-time backup codes:** 10 random codes, stored only as SHA-256 hashes and shown
+  once at onboarding or from Security → Backup codes (step-up). They are accepted
+  once each as the second factor on the verify screen (`POST /api/auth/mfa/backup`).
+- **Access requests:** "Request access" on the no-access page calls
+  `POST /api/access/requests`, which is audited and notifies members with
+  Administration:manage.
+- 404 page inside the app shell; a deep link opened while signed out is replayed
+  after sign-in.
+- Page headings follow the selected language.
+- Playwright beta suite (`e2e/`), beta report and UAT checklist (`docs/qa/`).
+
+#### Fixed
+
+- Assistant panel sends the scope the API accepts (it was refused with 422).
+- Tester **Pass** moves the task to Done; queue actions announce only what the
+  server accepted.
+- Query `nin` on array fields; malformed URL escapes return 400 instead of 500;
+  NUL in object keys no longer poisons jsonb rows; the Messages filter is
+  accessible.
+- Frontend: deployment ages from relative labels, Python/PowerShell request
+  snippets, code input keeps digits in place, email addresses are not mentions.
+
+#### Security
+
+- Audit trail, logs, metrics, config, posture, rate limits and backup status
+  require Administration:view; the query runner's `audit` collection is empty
+  for everyone else.
+- An Owner's narrowly scoped token no longer sees every product or restricted docs.
+- The last active Owner cannot be deactivated, and nobody can change their own status.
+- Text uploads refuse every WHATWG HTML sniffing pattern; audit CSV export
+  neutralises spreadsheet formulas; the post-sign-in return path refuses
+  cross-origin and backslash forms.
+- Dependencies: Vite 8, Vitest 5, React Router 7; the production dependency
+  audit is clean.
+
 ### Wave 4 — finalise the platform (build lanes merged into `wave4/integration`)
 
 Owner decisions: PostgreSQL, S3-compatible object storage (MinIO locally), a
@@ -83,7 +127,7 @@ routes; the backend smoke suite from 32 to 157 checks.
 
 - One backend replica; synthetic ML models until real history passes the
   promotion gate; demo mode must be off on internet-facing staging; MinIO SSE
-  needs a KMS key in production; first-factor enrolment has no web UI yet; see
+  needs a KMS key in production; French and Spanish cover navigation and page headings only; see
   `docs/operations/known-limits.md`.
 
 ### Wave 2 — core domain over the API (accepted 2026-10-30)
@@ -191,5 +235,6 @@ routes; the backend smoke suite from 32 to 157 checks.
     detection, task prediction, and productivity insights.
 - MIT licence.
 
-[Unreleased]: https://github.com/devhq/devhq/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/devhq/devhq/releases/tag/v1.0.0
+[Unreleased]: https://github.com/kelvintawe13/DevHQ/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/kelvintawe13/DevHQ/releases/tag/v2.0.0
+[1.0.0]: https://github.com/kelvintawe13/DevHQ/tree/625b26e36432

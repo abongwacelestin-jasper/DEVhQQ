@@ -1,6 +1,6 @@
 {
   "name": "@devhq/backend",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "DevHQ Backend API - High-performance Node.js server with TypeScript, no build step required. Features authentication, rate limiting, security middleware, and comprehensive audit logging.",
   "author": {
     "name": "DevHQ Team",
