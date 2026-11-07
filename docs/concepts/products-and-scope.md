@@ -72,7 +72,8 @@ API returns.
 ## What scope does not cover today
 
 - The audit trail (`GET /api/audit`), logs and metrics are not
-  product-scoped (the event stream `/api/_events` is). See
+  product-scoped (the event stream `/api/_events` is). They are limited to
+  Administration ≥ `view` instead. See
   [Roles and permissions](roles-and-permissions.md#routes-open-to-every-signed-in-member).
 - Location data is scoped by person instead: members see their own sign-ins
   and sessions; Administration ≥ `view` sees everyone's.

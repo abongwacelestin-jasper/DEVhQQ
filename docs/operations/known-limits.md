@@ -53,10 +53,9 @@ See [infra/minio/README.md](../../infra/minio/README.md).
 
 ## Other limits
 
-- **Console and audit routes are open to every signed-in member.**
-  `GET /api/audit`, `/api/_logs`, `/api/_metrics`, `/api/_config`,
-  `/api/security/posture` and the query runner's `audit` collection have no
-  role guard. `/api/_events` is filtered per subscriber. See
+- **The audit trail, logs and metrics are not product-scoped.** They need
+  Administration ≥ `view` (Owner, Operations), and whoever has it sees every
+  product. See
   [Roles and permissions](../concepts/roles-and-permissions.md#routes-open-to-every-signed-in-member).
 - **Each boot starts a new audit chain** (`seq` 1). The chains are linked
   across restarts only by their archived copies, not cryptographically.

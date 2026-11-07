@@ -1722,8 +1722,11 @@ expect(
   delete process.env.ML_SERVICE_TOKEN;
 }
 
-const audit = await call('GET', '/api/audit/verify', undefined, dev);
+const auditAdmin = (await call('POST', '/api/auth/demo', { role: 'admin' })).json.token as string;
+const audit = await call('GET', '/api/audit/verify', undefined, auditAdmin);
 expect('audit chain intact', audit.json.ok === true, audit.json);
+const devAudit = await call('GET', '/api/audit?limit=1', undefined, dev);
+expect('audit trail needs Administration:view (developer refused)', devAudit.status === 403, devAudit.json);
 
 // ───────────────────────── B-COLLAB (wave 4) ─────────────────────────
 // Messaging + realtime isolation, mentions → notifications, onboarding stages,

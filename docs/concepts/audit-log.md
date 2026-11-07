@@ -85,5 +85,5 @@ detail page read this endpoint. Live entries also stream over
   Object Lock), with each batch linked to the previous one by hash. See
   [Audit verification](../operations/audit-verification.md).
 
-Access: today any signed-in member can read the whole trail through the API
-(see [Roles and permissions](roles-and-permissions.md#routes-open-to-every-signed-in-member)).
+Access: the API returns the trail only to Administration ≥ `view` (Owner,
+Operations); other roles get `403 forbidden` (see [Roles and permissions](roles-and-permissions.md#routes-open-to-every-signed-in-member)).

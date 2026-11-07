@@ -20,6 +20,7 @@ export function registerSecurityRoutes(r: Router) {
     '/api/audit',
     { summary: 'Audit trail, newest first (limit, sensitive=1, actor, action)', tag: 'security' },
     authenticate,
+    requireArea('Administration', 'view'),
     (ctx) => {
       const q = ctx.query;
       const actor = q.get('actor');
@@ -38,6 +39,7 @@ export function registerSecurityRoutes(r: Router) {
     '/api/audit/verify',
     { summary: 'Recompute and verify the audit hash chain', tag: 'security' },
     authenticate,
+    requireArea('Administration', 'view'),
     () => audit.verify(),
   );
 
@@ -46,6 +48,7 @@ export function registerSecurityRoutes(r: Router) {
     '/api/security/posture',
     { summary: 'Live security posture across the six pillars', tag: 'security' },
     authenticate,
+    requireArea('Administration', 'view'),
     async () => {
       const members = [...db.members.values()].filter((m) => m.status === 'active');
       const passkeys = members.filter((m) => m.passkeys.length > 0).length;
@@ -77,6 +80,7 @@ export function registerSecurityRoutes(r: Router) {
     '/api/security/rate-limits',
     { summary: 'Most-drained rate-limit buckets', tag: 'security' },
     authenticate,
+    requireArea('Administration', 'view'),
     () => limiterStats(),
   );
 
@@ -85,6 +89,7 @@ export function registerSecurityRoutes(r: Router) {
     '/api/backups',
     { summary: 'Backup status and latest checksum', tag: 'backups' },
     authenticate,
+    requireArea('Administration', 'view'),
     () => backupStatus(),
   );
 

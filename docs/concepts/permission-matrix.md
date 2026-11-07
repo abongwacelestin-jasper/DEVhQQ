@@ -61,11 +61,19 @@ scoped by product in its handler.
 | Administration | `manage` | `POST` | `/api/integrations/:id/webhooks/:webhookId/test` |  |
 | Administration | `manage` | `POST` | `/api/integrations/:id/webhooks` | yes |
 | Administration | `manage` | `POST` | `/api/integrations/:kind/connect` | yes |
+| Administration | `view` | `GET` | `/api/_config` |  |
+| Administration | `view` | `GET` | `/api/_logs` |  |
+| Administration | `view` | `GET` | `/api/_metrics` |  |
 | Administration | `view` | `GET` | `/api/access/grants` |  |
+| Administration | `view` | `GET` | `/api/audit/verify` |  |
+| Administration | `view` | `GET` | `/api/audit` |  |
+| Administration | `view` | `GET` | `/api/backups` |  |
 | Administration | `view` | `GET` | `/api/insights/status` |  |
 | Administration | `view` | `GET` | `/api/integrations/:id/webhooks` |  |
 | Administration | `view` | `GET` | `/api/integrations` |  |
 | Administration | `view` | `GET` | `/api/offboarding` |  |
+| Administration | `view` | `GET` | `/api/security/posture` |  |
+| Administration | `view` | `GET` | `/api/security/rate-limits` |  |
 | Deployment | `contribute` | `POST` | `/api/deployments` |  |
 | Deployment | `manage` | `POST` | `/api/access/grants/:grantId/revoke` | yes |
 | Deployment | `manage` | `POST` | `/api/deployments/:id/approve` | yes |
@@ -162,6 +170,7 @@ changes what is returned rather than refusing the request.
 | Organization | `admin` | [Backend/routes/messaging.routes.ts:453](../../Backend/routes/messaging.routes.ts#L453) |
 | Administration | `manage` | [Backend/routes/offboarding.routes.ts:56](../../Backend/routes/offboarding.routes.ts#L56) |
 | Administration | `view` | [Backend/routes/offboarding.routes.ts:155](../../Backend/routes/offboarding.routes.ts#L155) |
+| Administration | `view` | [Backend/routes/system.routes.ts:147](../../Backend/routes/system.routes.ts#L147) |
 | Project | `manage` | [Backend/routes/tasks.routes.ts:256](../../Backend/routes/tasks.routes.ts#L256) |
 | Administration | `admin` | [Backend/routes/tokens.routes.ts:110](../../Backend/routes/tokens.routes.ts#L110) |
 | Organization | `admin` | [Backend/routes/workspaces.routes.ts:66](../../Backend/routes/workspaces.routes.ts#L66) |
@@ -287,7 +296,7 @@ can call them. Most scope their rows by product in the handler; the ones that
 return organisation-wide data are noted in
 [Roles and permissions](roles-and-permissions.md#routes-open-to-every-signed-in-member).
 
-`POST /api/auth/step-up` · `POST /api/auth/totp/enroll` · `POST /api/auth/totp/confirm` · `GET /api/auth/passkeys` · `POST /api/auth/passkeys/options` · `POST /api/auth/passkeys` · `DELETE /api/auth/passkeys/:credentialId` · `GET /api/auth/session` · `DELETE /api/auth/sessions/:sessionPrefix` · `POST /api/auth/sign-out-everywhere` · `GET /api/codespaces/oauth/url` · `GET /api/codespaces` · `POST /api/codespaces` · `GET /api/codespaces/:name` · `POST /api/codespaces/:name/<action>` · `GET /api/docs/:docId` · `POST /api/files/uploads` · `POST /api/files/:fileId/complete` · `GET /api/files` · `GET /api/files/:fileId` · `DELETE /api/files/:fileId` · `GET /api/insights/signins/:id` · `GET /api/insights/_export` · `GET /api/locations/me` · `GET /api/locations/lookup` · `GET /api/locations/regions` · `GET /api/locations/sign-ins` · `GET /api/locations/summary` · `GET /api/locations/sessions` · `POST /api/locations/assess` · `GET /api/stream` · `GET /api/channels` · `GET /api/channels/:id` · `PATCH /api/channels/:id` · `POST /api/channels/:id/join` · `POST /api/channels/:id/leave` · `POST /api/channels/:id/read` · `GET /api/channels/:id/messages` · `GET /api/channels/:id/pins` · `POST /api/channels/:id/messages` · `PATCH /api/messages/:id` · `DELETE /api/messages/:id` · `POST /api/messages/:id/reactions` · `POST /api/messages/:id/pin` · `POST /api/messages/:id/vote` · `GET /api/notifications` · `POST /api/notifications/read` · `GET /api/offboarding/:memberId` · `POST /api/offboarding/:memberId` · `PATCH /api/offboarding/:memberId` · `GET /api/onboarding` · `GET /api/onboarding/nda` · `POST /api/onboarding/nda` · `POST /api/onboarding/profile` · `PATCH /api/onboarding/profile` · `GET /api/incidents` · `GET /api/incidents/_stats` · `GET /api/incidents/:id` · `POST /api/incidents` · `PATCH /api/incidents/:id` · `GET /api/products` · `GET /api/scope` · `GET /api/audit` · `GET /api/audit/verify` · `GET /api/security/posture` · `GET /api/security/rate-limits` · `GET /api/backups` · `GET /api/_inventory` · `GET /api/_config` · `GET /api/_metrics` · `GET /api/_logs` · `GET /api/_events` · `GET /api/_query/collections` · `POST /api/_query` · `GET /api/tasks/:key` · `GET /api/team/roles` · `GET /api/me/capabilities` · `POST /api/access/grants` · `POST /api/access/grants/:grantId/approve` · `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` · `GET /api/workspaces` · `GET /api/workspaces/:id` · `PATCH /api/workspaces/:id`
+`POST /api/auth/step-up` · `POST /api/auth/totp/enroll` · `POST /api/auth/totp/confirm` · `GET /api/auth/passkeys` · `POST /api/auth/passkeys/options` · `POST /api/auth/passkeys` · `DELETE /api/auth/passkeys/:credentialId` · `GET /api/auth/session` · `DELETE /api/auth/sessions/:sessionPrefix` · `POST /api/auth/sign-out-everywhere` · `GET /api/codespaces/oauth/url` · `GET /api/codespaces` · `POST /api/codespaces` · `GET /api/codespaces/:name` · `POST /api/codespaces/:name/<action>` · `GET /api/docs/:docId` · `POST /api/files/uploads` · `POST /api/files/:fileId/complete` · `GET /api/files` · `GET /api/files/:fileId` · `DELETE /api/files/:fileId` · `GET /api/insights/signins/:id` · `GET /api/insights/_export` · `GET /api/locations/me` · `GET /api/locations/lookup` · `GET /api/locations/regions` · `GET /api/locations/sign-ins` · `GET /api/locations/summary` · `GET /api/locations/sessions` · `POST /api/locations/assess` · `GET /api/stream` · `GET /api/channels` · `GET /api/channels/:id` · `PATCH /api/channels/:id` · `POST /api/channels/:id/join` · `POST /api/channels/:id/leave` · `POST /api/channels/:id/read` · `GET /api/channels/:id/messages` · `GET /api/channels/:id/pins` · `POST /api/channels/:id/messages` · `PATCH /api/messages/:id` · `DELETE /api/messages/:id` · `POST /api/messages/:id/reactions` · `POST /api/messages/:id/pin` · `POST /api/messages/:id/vote` · `GET /api/notifications` · `POST /api/notifications/read` · `GET /api/offboarding/:memberId` · `POST /api/offboarding/:memberId` · `PATCH /api/offboarding/:memberId` · `GET /api/onboarding` · `GET /api/onboarding/nda` · `POST /api/onboarding/nda` · `POST /api/onboarding/profile` · `PATCH /api/onboarding/profile` · `GET /api/incidents` · `GET /api/incidents/_stats` · `GET /api/incidents/:id` · `POST /api/incidents` · `PATCH /api/incidents/:id` · `GET /api/products` · `GET /api/scope` · `GET /api/_inventory` · `GET /api/_events` · `GET /api/_query/collections` · `POST /api/_query` · `GET /api/tasks/:key` · `GET /api/team/roles` · `GET /api/me/capabilities` · `POST /api/access/grants` · `POST /api/access/grants/:grantId/approve` · `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` · `GET /api/workspaces` · `GET /api/workspaces/:id` · `PATCH /api/workspaces/:id`
 
 Role copy in `Frontend/src/data/team.ts` (`roleDetails`) is prose and is not
 checked here. Per the Wave 4 owner decision, Developer keeps `Deployment:

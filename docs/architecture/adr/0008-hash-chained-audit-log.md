@@ -46,8 +46,8 @@ Every state change appends an entry to one audit log
 - Task comments, subtasks and time logs are recorded as task events
   (`db.taskEvents`) rather than audit entries; the task's own create, update
   and delete are audited.
-- `GET /api/audit` has no area guard today: any signed-in member can read the
-  whole trail, including entries for products outside their scope. The web app
+- `GET /api/audit` needs Administration ≥ `view` (Owner, Operations). Those
+  roles read the whole trail, including entries for every product. The web app
   only shows the Audit page to the Owner. See
   [Roles and permissions](../../concepts/roles-and-permissions.md#routes-open-to-every-signed-in-member).
 
