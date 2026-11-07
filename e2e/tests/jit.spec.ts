@@ -54,6 +54,8 @@ test.describe('JIT production access', () => {
   });
 
   test('request on the deployment, a second admin approves on Security, then approve with time left shown', async ({ page, baseURL, browser }) => {
+    // Two signed-in people and three re-verifications: give it the slow-test budget.
+    test.slow();
     const d = await requestProductionDeploy(baseURL!, 'admin', 'renewberry', uid('v'));
     await signInViaApi(page, 'operations', `/deployments/${d.id}`);
     const status = page.getByRole('region', { name: 'Production access' });
