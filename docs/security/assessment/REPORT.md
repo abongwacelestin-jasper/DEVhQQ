@@ -5,12 +5,98 @@ repository owner's own project, tested only against local processes started by
 the assessor on 127.0.0.1.
 **Branch under test:** `wave4/integration` merged to this worktree (contains
 `b56a27b wave4: assurance lanes addendum`).
-**Date:** 2026-11-07 · **Phase:** 1 (pre-merge build lanes; Docker/ML/MinIO
-deferred to phase 2).
+**Date:** 2026-11-07 · **Phases:** 1 (pre-merge) and 2 (merged branch
+`2d2e379` + live Compose stack). §0 is the current status; §1–§4 are the
+phase-1 record, kept as written.
 **Scope boundaries honoured:** no external hosts, no third-party services, no
 DoS against shared resources, no real credentials (demo accounts only). No
 control was weakened to make any exploit work. CYBER owns `security-tests/**`
 and `docs/security/assessment/**` only and never edits application code.
+
+---
+
+## 0. Phase 2 update (merged branch + live Docker stack)
+
+**Branch:** `wave4/integration` @ `2d2e379` (all 10 build lanes merged).
+**Targets:** in-process backends on 127.0.0.1 (fresh process per check) and
+the live Compose stack (`https://localhost:8443`), inspected read-only from the
+host. The real Owner on the stack (`owner@techorg.io`) was not touched; no
+destructive or DoS actions were run. Backup restore was exercised only as dry
+runs and refusals.
+
+**Result:** the suite has 28 checks and was run twice on fresh processes, with
+the same result both times: **27 PASS · 1 FAIL · 0 SKIP**. The one FAIL is the
+new **CYBER-008**. The Docker audit (`security-tests/docker/infra-audit.sh`):
+**all controls PASS**.
+
+### Status of phase-1 findings after the fixes landed
+
+| ID | Phase 1 | Phase 2 | Evidence |
+|---|---|---|---|
+| CYBER-001 SSE leaks audit/sign-ins to all | High · confirmed | **Fixed** | `sse-cross-product-leak.ts` PASS. `eventPolicy.ts` gates security topics to Administration:view and product events to `canSeeProduct` |
+| CYBER-002 shared demo MFA code | Medium · confirmed | **Fixed in scope; residual moved to CYBER-008** | `demo-mfa-stepup-bypass.ts` PASS. The code is refused once a real factor exists and for invited members, and demo is off under `NODE_ENV=production` |
+| CYBER-003 bearer token in body | Medium · confirmed | **Fixed** | `bearer-token-in-body.ts` PASS. A body token is issued only to `X-DevHQ-Client: cli` with no Origin and no `Sec-Fetch-Site` |
+| CYBER-004 prototype keys bypass unknown-field check | Low · confirmed | **Fixed** | own-property allow-list (C-22). The mass-assignment check no longer reports the note |
+| CYBER-005 same-origin code-runner worker | Medium · theoretical | **Open (not re-tested in a browser)** | no browser PoC this pass. F-SEC to confirm sandbox origin |
+| CYBER-006 vulnerable frontend deps | contextual | **Open: re-audit after dependency bumps** | not re-run this pass |
+| CYBER-007 `trivy-action@master` | Low | **Open** | INFRA |
+
+**Re-scoping CYBER-002, as the coordinator asked.** The shared demo code still
+working for a *factor-less seeded* account in exact `NODE_ENV=development` is
+intended, and I did not treat that alone as a finding. The check was tightened
+rather than loosened. It now fails if the code ever works for (a) a seeded
+account after it enrols a real factor, or (b) any invited, non-seeded member,
+or if (c) demo is on under `NODE_ENV=production`. The real staging risk is how
+"production" is detected, not the demo code itself. That is CYBER-008, which
+has its own failing check.
+
+### New phase-2 findings
+
+| ID | Title | CVSS v3.1 | CWE | Affected | PoC | Status | Owner |
+|---|---|---|---|---|---|---|---|
+| **CYBER-008** | **Fail-open environment detection.** Only the exact string `production` counts as production (`NODE_ENV` is type-cast, never validated). `Production`, `prod` or `staging` boot with dev fallbacks: demo enabled, the seeded **Owner** (`amara@techorg.io`) reachable with the published password and code, the hard-coded dev `SESSION_SECRET` used, the encryption key derived from it, and the production secret and `DEMO_*` guards skipped | **8.1 High** `AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H` (needs a misconfigured `NODE_ENV`) | CWE-636, CWE-1188, CWE-798 | `Backend/config/env.ts:188-189` (`env as NodeEnv`, `isProd = env === 'production'`); `Backend/store/db.ts:61` (`DEMO.enabled`) | `security-tests/checks/env-failopen.ts` | **Confirmed** | SEC (env.ts) / INFRA |
+| CYBER-009 | PAT scope doesn't limit Owner read visibility: `p.role === 'Owner'` checks in `/api/_query` collections (members, sign-ins, docs) and docs listing ignore PAT scope, so a narrowly scoped Owner PAT reads with full Owner visibility (reads only, never write authority) | 4.3 Medium `AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N` | CWE-863 | `Backend/routes/system.routes.ts:82,109,128`; `Backend/routes/docs.routes.ts:37` | confirmed by code; SEC lists it as a known gap | Confirmed (code) | SEC |
+| CYBER-010 | Deactivating a member with `PATCH /api/team/:id` doesn't publish `member.deactivated`, so their JIT grants stay active until expiry (PATs are cut on use and by the 30 s sweep; offboarding does publish the event) | 3.8 Low `AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:L/A:N` | CWE-613 | `Backend/routes/team.routes.ts` (PATCH handler) vs `routes/offboarding.routes.ts:119` | confirmed by code; SEC lists it as a known gap | Confirmed (code) | SEC |
+| CYBER-011 | Model artifacts are still loaded with joblib, which runs pickled code. This is strongly mitigated: the HMAC-signed promotion pointer and metadata, an exact sha256 match, and schema and sklearn-version checks all run before `joblib.load`, so write access to the bucket alone can't run code. Remaining risk: anyone holding `MODEL_SIGNING_KEY` (or `ML_SERVICE_TOKEN`, from which it can be derived) can run code in `models` | 3.1 Low (defence in depth) | CWE-502 | `Models/devhq_models/registry/registry.py:191` | code review | Theoretical | ML |
+
+**CYBER-008 fix:** check `NODE_ENV` against an allow-list
+(`development|test|production`) and refuse to boot on anything else. Turn demo
+on only with an explicit `DEMO_MODE=1`, and never when `PUBLIC_URL` is
+non-local. Treat "not development" as production for the secret checks.
+Staging deployments should run `NODE_ENV=production` with `DEMO_DISABLED=1`.
+The Compose stack already hard-codes `NODE_ENV: production` and
+`DEMO_DISABLED=1`, so it is **not** affected. The risk is any other deployment
+path.
+
+### Phase-2 attack surface tested and found secure
+
+| Area | Attacks | Result |
+|---|---|---|
+| First-factor enrollment (`/api/auth/mfa/enroll` + `/confirm`) | enrolling on an account that already has a factor; confirming another session's pending enrollment; replaying the confirming code | Secure. 409 `factor_exists`; confirm is bound to the session that started it; the per-member TOTP counter blocks replay; attempts capped at 5 (`mfa-enrollment.ts`) |
+| Personal access tokens | minting scope above role; expiry over 90 days; scope limiting authority (PM session 200 vs `product:view` PAT 403 on deployments); PAT step-up; PAT managing tokens | Secure. 422 / 422 / 403 / 403 / 403 (`pat-authority.ts`) |
+| `/api/stream` | private DM message delivered to a non-member | Secure. Withheld from the Tester and delivered to the participant; access re-checked on every event (`stream-cross-channel.ts`) |
+| File uploads | `text/html`, `image/svg+xml` and off-policy types; oversize; **HTML bytes declared as `image/png`**; `../../../../etc/passwd.png` as the name; download TTL and disposition | Secure. 415 / 413 / **422 `type_mismatch`, never ready** / name stripped to `passwd.png` / inline raster with ≤60 s presigned GET (`file-upload-policy.ts`) |
+| GitHub webhook | unsigned; wrong-secret signature; replayed delivery id; empty body; no secret configured | Secure. 401 / 401 / 409 / 400 / 503 fail-closed; valid signature 202 (`github-webhook.ts`) |
+| Monitors / outbound webhooks SSRF | metadata, loopback, RFC 1918, `[::ffff:169.254.169.254]`, decimal/hex IPs, `file:`/`gopher:`, credentials in the URL, `localhost`/`*.internal`; **DNS rebinding** (a public name that resolves to 169.254.169.254, and mixed public+private answers) | Secure. The route refuses every target (`ssrf-monitors-webhooks.ts`). The guard resolves DNS itself, fails closed if *any* answer is private, pins the vetted IP on the socket, and re-checks every redirect hop, max 3 (`ssrf-guard-unit.ts`) |
+| ML bridge HMAC | unsigned; tampered body; wrong key; timestamp beyond 300 s skew; replayed (timestamp, nonce) | Secure. All refused, valid accepted (`ml-hmac.ts`) |
+| Assistant prompt injection | `<system>`/`</instructions>` delimiters, code-fence breakout, NUL/bidi characters, oversize input; live request asking for other products' docs and TOTP secrets | Secure. `sanitizeForPrompt` strips or neutralises all of these and caps length. `/ask` stays controlled (503 when unconfigured) and cites no out-of-scope source (`assistant-prompt-injection.ts`). Full model-in-the-loop testing needs `ANTHROPIC_API_KEY` |
+| Backup restore | Operations (no Administration:admin); an admin-scoped PAT; a real restore without `confirm`; snapshot listing with a PAT lacking infra scope | Secure. 403 / 403 / 422 / 403 (`backup-restore-authz.ts`) |
+
+### Live Docker stack (`security-tests/docker/infra-audit.sh`, read-only)
+
+| Control | Result |
+|---|---|
+| Published ports | Only `edge` publishes (8088/8443). backend, frontend, postgres, minio and models publish no host port |
+| Container hardening | Every service runs with `ReadonlyRootfs=true`, a non-root UID (edge 10002, frontend 101, backend/models 10001, postgres 70, minio 65532), `CapDrop=[ALL]`, no `CapAdd`, `no-new-privileges:true`, not privileged |
+| Network segmentation | `postgres` and `minio` are only on `app_net`. `edge` (edge/public) and `frontend` (edge) share no network with postgres, minio or models, so **the edge can't reach Postgres**. `backend` bridges app/edge/egress as expected. Only backend and models are on egress, so the data tier has no internet path |
+| Secrets in images | `docker history --no-trunc` and image `Env` for backend and models contain no secret values |
+| MinIO anonymous access | Listing every bucket anonymously from inside `app_net` was denied (no 200) |
+| MinIO per-service policy (policy-as-code, `infra/minio/bootstrap.sh`) | `devhq-backend`: uploads read/write/delete; backups put/get/list with an **explicit Deny** on Delete, DeleteVersion, BypassGovernanceRetention, PutObjectRetention, lifecycle, bucket policy and DeleteBucket; **audit put-only** (no read). `devhq-models`: models bucket only. Backups and audit use object lock with COMPLIANCE-mode retention in prod. The bootstrap checks each policy attachment. *I checked the policy, not live enforcement with each service's keys, because I didn't use the service secrets.* |
+
+Not covered on the stack this pass: a browser-driven CYBER-005 PoC;
+container-escape probing beyond the capability and rootfs posture; a live
+check of presigned-URL scope and expiry against MinIO (covered in-process by
+the local driver).
 
 ---
 
@@ -197,21 +283,39 @@ slow-loris timeouts (`headersTimeout`/`requestTimeout`/`keepAliveTimeout`) and
 
 ## 5. Verification of the SEC lane's claimed controls (phase 2)
 
-To be completed when the SEC lane merges into `wave4/integration`. Planned
-checks against the SEC contract (WAVE4 §6):
+Each claim in `docs/security/CONTROLS.md` was checked independently, by an
+attack in this suite or by reading the cited code. **Verified** = a CYBER
+check attacks it and it held. **Code** = I read the cited lines and they do
+what is claimed, but I didn't attack it separately. **Partial** = holds with
+a caveat.
 
-- **Scoped personal access tokens** (`/api/tokens`): hashed at rest (DB never
-  stores a usable token), shown once, expiry required/enforced, scope honoured,
-  revoke (`DELETE /api/tokens/:id`) actually invalidates.
-- **Real WebAuthn** for sign-in / step-up / lock-screen unlock: challenge is
-  single-use and bound to origin + RP ID; assertion `signCount` monotonicity
-  enforced (clone detection); registration rejects weak algorithms.
-- **TOTP enroll/confirm**: secret encrypted at rest with `DATA_ENCRYPTION_KEY`
-  (AES-256-GCM); enrollment requires confirmation; replay guard preserved.
-- **`DATA_ENCRYPTION_KEY`** absence fails closed in production; present key is
-  never logged or returned by `/api/_config`.
-- Re-run of CYBER-001..007 against the merged branch to confirm fixes land and
-  the regression suite flips CYBER-001/002/003 to PASS.
+| Id | Claimed control | Verdict | How |
+|---|---|---|---|
+| C-01 | Cookie-only browser sessions; body token only for `cli` with no Origin and no Sec-Fetch-Site | **Verified** | `bearer-token-in-body.ts`, `csrf-origin-guard.ts` (cookie flags) |
+| C-02 | HMAC-signed token, rotated on privilege change | **Verified** | `session-rotation-reuse.ts`: the old token is dead after step-up |
+| C-03 | Sessions bound to context (UA change revokes) | **Verified** | `session-rotation-reuse.ts`: cross-UA → 401 |
+| C-04 | AES-256-GCM at rest; prod fails closed without `DATA_ENCRYPTION_KEY` | **Partial** | `seal`/`open` read and used for TOTP. The fail-closed check runs **only when `NODE_ENV === 'production'` exactly**. Any other value falls back to a key derived from the source-code dev secret (CYBER-008) |
+| C-05 | TOTP enroll → confirm → sealed; per-member replay protection | **Verified** | `mfa-enrollment.ts` (session binding, replay), `demo-mfa-stepup-bypass.ts` (real enrolment) |
+| C-06 | Demo code only for factor-less seeded members; prod refuses `DEMO_*` | **Verified in scope; Partial overall** | `demo-mfa-stepup-bypass.ts` PASS. "Prod" means the exact string `production`. Staging and miscased values re-enable demo (CYBER-008) |
+| C-07 / C-08 | WebAuthn registration and assertion (challenge binding, origin, rpIdHash, UV, signature before counter, clone suspension) | **Code** | Reviewed the cited `auth/webauthn.ts` checks and the existing smoke coverage (smoke:719, :766, :779). No independent CYBER PoC this pass; a browser/virtual-authenticator test is recommended |
+| C-09 | PAT format, SHA-256 at rest, shown once, expiry ≤ 90 days, ≤ 20 active | **Verified** (expiry), **Code** (hashing, cap) | `pat-authority.ts` (3650 days → 422); `issueToken`/`verifyPat` store a hash only |
+| C-10 | PAT authority = min(role, scope); scope above role refused; token management session-only; revoked on deactivation | **Partial** | `pat-authority.ts` PASS for scope intersection, scope above role, and token management. **Gaps:** Owner read visibility ignores scope (CYBER-009); `PATCH /api/team/:id` deactivation leaves JIT grants active (CYBER-010) |
+| C-11 | PATs can never step up | **Verified** | `pat-authority.ts`, `backup-restore-authz.ts` (admin-scoped PAT refused) |
+| C-12 | API `default-src 'none'`, XFO DENY, nonce console CSP | **Verified** | `csp-and-clickjacking.ts` |
+| C-13 | Origin guard incl. `null` and Sec-Fetch-Site | **Verified** | `csrf-origin-guard.ts` |
+| C-14 | Equal timing, lock after 5, risk gate | **Verified** | `auth-user-enumeration.ts` (median ratio ≈ 1.0–1.1), `auth-lockout-email-variants.ts` |
+| C-15 / C-16 | Per-IP + per-account + per-member limits; pluggable store | **Verified** (per IP) | `auth-xff-ratelimit-spoof.ts`. A shared store is still needed to scale out (CONTROLS.md says so) |
+| C-17 | XFF trusted only behind a proxy | **Verified** | `auth-xff-ratelimit-spoof.ts` |
+| C-18 | Every state change audited, hash chain | **Code** | the existing smoke check for an intact chain; audit entries seen in the SSE PoC carried `prevHash`/`hash` |
+| C-19 | Body cap, timeouts | **Verified** (body) | `dos-body-size.ts` |
+| C-20 | Single password policy | **Code** | accept-invite enforced the policy during `inviteMember` setup |
+| C-21 | Per-subscriber event filtering (fix for CYBER-001) | **Verified** | `sse-cross-product-leak.ts` PASS |
+| C-22 | Validator own-property allow-list (fix for CYBER-004) | **Verified** | `authz-mass-assignment-bfla.ts` no longer reports prototype keys |
+
+**Summary:** 22 claims. 15 Verified, 4 Code, 3 Partial (C-04, C-06, C-10).
+None was false as described. The three Partials come down to two root causes:
+the exact-string production check (CYBER-008) and the two gaps SEC had already
+listed (CYBER-009/010).
 
 ---
 

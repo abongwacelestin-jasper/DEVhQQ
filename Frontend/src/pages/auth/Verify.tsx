@@ -1,4 +1,4 @@
-import React, { useId, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowRightIcon, FingerprintIcon, LoaderCircleIcon, ShieldCheckIcon } from 'lucide-react';
@@ -7,10 +7,58 @@ import { CodeInput } from '../../components/auth/CodeInput';
 import { SecurityIllustration } from '../../components/illustrations/SecurityIllustration';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDemoConfig } from '../../api/auth/useDemoConfig';
+import { beginSignInEnrollment } from '../../api/auth/endpoints';
+import { TotpEnrollment, type EnrollmentEndpoints } from '../../components/security/TotpEnrollment';
 import { passkeySupported } from '../../utils/webauthn';
 
+/**
+ * The member's password was accepted but they have no second factor yet (every
+ * newly invited account). Enrolling an authenticator *is* the second step: the
+ * server verifies the first code and upgrades this session like a normal MFA.
+ */
+function EnrollFirstFactor({ onLeave }: { onLeave: () => void }) {
+  const { role, member, confirmEnrollment } = useAuth();
+  const endpoints = useMemo<EnrollmentEndpoints>(
+    () => ({ start: beginSignInEnrollment, confirm: confirmEnrollment }),
+    [confirmEnrollment],
+  );
+  if (!role) return null;
+  return (
+    <AuthLayout
+      step={{ index: 1, total: role.needsOnboarding ? 3 : 1, label: 'Set up your authenticator' }}
+      illustration={<SecurityIllustration className="h-auto w-full max-w-[280px]" />}
+      aside={{
+        title: 'Two keys, one door.',
+        body: 'Every DevHQ account needs a second factor. Add an authenticator app now; you’ll use it each time you sign in and for sensitive actions.',
+      }}
+    >
+      <h1 className="text-[20px] font-semibold tracking-tight text-ink">
+        Set up your authenticator to finish signing in
+      </h1>
+      <p className="mt-1 mb-4 text-[12.5px] text-muted">
+        Signing in as <b className="font-semibold text-ink">{member?.name ?? 'your account'}</b> ·{' '}
+        {role.label}. Scan the code with an authenticator app, then enter the 6-digit code it shows.
+      </p>
+      <TotpEnrollment
+        variant="sign-in"
+        endpoints={endpoints}
+        onEnrolled={() => toast.success('Authenticator set up — you’re signed in')}
+      />
+      <div className="mt-5 flex items-center justify-between border-t border-line pt-3 text-[12px]">
+        <span className="flex items-center gap-1 text-muted">
+          <ShieldCheckIcon className="h-3.5 w-3.5 text-ok" /> Enrollment recorded in the audit log
+        </span>
+        <button onClick={onLeave} className="font-medium text-ink hover:underline">
+          Use another account
+        </button>
+      </div>
+    </AuthLayout>
+  );
+}
+
 export function Verify() {
-  const { session, role, member, mfaMethods, verifyMfa, signInPasskey, signOut } = useAuth();
+  const { session, role, member, mfaMethods, enrollRequired, verifyMfa, signInPasskey, signOut } =
+    useAuth();
   const demo = useDemoConfig();
   const navigate = useNavigate();
   const statusId = useId();
@@ -38,6 +86,13 @@ export function Verify() {
     }
     toast.success('Verified');
   };
+
+  const leave = () => {
+    void signOut();
+    navigate('/sign-in', { replace: true });
+  };
+
+  if (enrollRequired) return <EnrollFirstFactor onLeave={leave} />;
 
   const passkey = async () => {
     if (busy) return;

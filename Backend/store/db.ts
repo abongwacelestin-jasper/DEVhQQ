@@ -11,6 +11,7 @@
  * NODE_ENV !== 'production' and the database is empty (see db/boot.ts).
  */
 
+import { config } from '../config/env.ts';
 import { hashPassword } from '../security/crypto.ts';
 import { lookupIp } from '../lib/geo.ts';
 import { createCollection } from './collection.ts';
@@ -58,7 +59,8 @@ export const db = {
 export const DEMO = {
   password: process.env.DEMO_PASSWORD ?? 'devhq-demo',
   mfaCode: process.env.DEMO_MFA_CODE ?? '246810',
-  enabled: process.env.NODE_ENV !== 'production' && process.env.DEMO_DISABLED !== '1',
+  // config.env is validated (CYBER-008): only an exact development/test environment enables demo.
+  enabled: config.env !== 'production' && process.env.DEMO_DISABLED !== '1',
 };
 
 /** Demo role keys used by the sign-in screen and the console's quick-login buttons. */

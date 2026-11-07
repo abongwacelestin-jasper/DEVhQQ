@@ -41,6 +41,8 @@ export interface Identity {
   verified: boolean;
   method: Session['method'];
   mfaMethods: string[];
+  /** Password-only session for a member with no second factor: enrollment finishes sign-in. */
+  enrollRequired: boolean;
   serverSessionId: string;
   signedInAt: string;
   trustedDevice: boolean;

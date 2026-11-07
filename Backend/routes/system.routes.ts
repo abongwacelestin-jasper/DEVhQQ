@@ -16,7 +16,7 @@ import type { Ctx, Router } from '../lib/http.ts';
 import { STREAM } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
-import { canSeeProduct } from '../auth/rbac.ts';
+import { canSeeProduct, hasOwnerPowers } from '../auth/rbac.ts';
 import { logger } from '../lib/logger.ts';
 import { metrics } from '../lib/metrics.ts';
 import { subscribe } from '../lib/events.ts';
@@ -79,7 +79,7 @@ export const collections: Record<string, Collection> = {
       scoped(
         [...db.docs.values()].filter(
           (d) =>
-            d.visibility !== 'restricted' || d.editors.includes(p.memberId) || p.role === 'Owner',
+            d.visibility !== 'restricted' || d.editors.includes(p.memberId) || hasOwnerPowers(p),
         ),
         p,
       ),
@@ -106,7 +106,7 @@ export const collections: Record<string, Collection> = {
     fields: ['id', 'name', 'email', 'role', 'products', 'status', 'mfa', 'passkeys'],
     rows: (p) =>
       [...db.members.values()]
-        .filter((m) => p.role === 'Owner' || m.products.some((x) => p.products.includes(x)))
+        .filter((m) => hasOwnerPowers(p) || m.products.some((x) => p.products.includes(x)))
         .map(publicMember) as unknown as Row[],
   },
   signIns: {
@@ -125,7 +125,7 @@ export const collections: Record<string, Collection> = {
     ],
     rows: (p) =>
       db.signIns
-        .filter((s) => p.role === 'Owner' || s.memberId === p.memberId)
+        .filter((s) => hasOwnerPowers(p) || s.memberId === p.memberId)
         .map((s) => ({
           id: s.id,
           memberId: s.memberId,

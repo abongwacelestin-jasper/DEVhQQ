@@ -9,7 +9,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError } from '../client';
 import type { RoleKey } from '../../data/roles';
-import { passkeyCeremony, signInDemoRole, signInWithPassword, verifyTotp } from './endpoints';
+import {
+  confirmSignInEnrollment,
+  passkeyCeremony,
+  signInDemoRole,
+  signInWithPassword,
+  verifyTotp,
+} from './endpoints';
 import type { SessionState } from './useSessionState';
 import { describeWebAuthnError } from '../../utils/webauthn';
 
@@ -115,5 +121,27 @@ export function useSignIn(
     }
   }, [hydrate, log]);
 
-  return { failedAttempts, lockedUntil, signInDemo, signInPassword, verifyMfa, signInPasskey };
+  /**
+   * Confirms the first authenticator during sign-in. Throws the server's error
+   * (wrong code, expired enrollment) so the enrollment form can show it; on
+   * success it continues exactly like a normal MFA success.
+   */
+  const confirmEnrollment = useCallback(
+    async (code: string): Promise<void> => {
+      await confirmSignInEnrollment(code);
+      await hydrate({ method: identityRef.current?.method });
+      log('Enrolled authenticator', 'First factor during sign-in', true);
+    },
+    [hydrate, identityRef, log],
+  );
+
+  return {
+    failedAttempts,
+    lockedUntil,
+    signInDemo,
+    signInPassword,
+    verifyMfa,
+    signInPasskey,
+    confirmEnrollment,
+  };
 }
