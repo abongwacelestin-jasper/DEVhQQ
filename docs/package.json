@@ -1,0 +1,19 @@
+{
+  "name": "@devhq/docs",
+  "version": "1.0.0",
+  "description": "DevHQ documentation: Markdown sources plus generators and a link checker. No runtime or install-time dependencies.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "gen": "npm run gen:api && npm run gen:permissions && npm run gen:errors && npm run gen:config",
+    "gen:api": "node --experimental-strip-types scripts/gen-api.ts",
+    "gen:permissions": "node --experimental-strip-types scripts/gen-permissions.ts",
+    "gen:errors": "node --experimental-strip-types scripts/gen-errors.ts",
+    "gen:config": "node --experimental-strip-types scripts/gen-config.ts",
+    "links": "node --experimental-strip-types scripts/check-links.ts",
+    "check": "node --experimental-strip-types scripts/gen-api.ts --check && node --experimental-strip-types scripts/gen-permissions.ts --check && node --experimental-strip-types scripts/gen-errors.ts --check && node --experimental-strip-types scripts/gen-config.ts --check && npm run links"
+  }
+}
