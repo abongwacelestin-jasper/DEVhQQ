@@ -12,7 +12,7 @@ same route table produces `GET /api/openapi.json` (OpenAPI 3.1) and
 `GET /api/_inventory`, so this page, the OpenAPI document and the backend
 console cannot disagree about which endpoints exist.
 
-**185 routes** — 19 public, 160 session,
+**189 routes** — 19 public, 164 session,
 6 partial-session.
 
 How to read the columns:
@@ -159,20 +159,24 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/deployments` | Deployments (filter: product, env, status) | session | Deployment ≥ view | 401 403 429 | [operations.routes.ts:45](../../Backend/routes/operations.routes.ts#L45) |
-| `POST` | `/api/deployments` | Request a deployment (production waits for approval) | session | Deployment ≥ contribute | 401 403 422 | [operations.routes.ts:65](../../Backend/routes/operations.routes.ts#L65) |
-| `POST` | `/api/deployments/:id/approve` | Approve a production deployment (two-person rule, step-up) | session | Deployment ≥ manage · step-up | 401 403 404 409 | [operations.routes.ts:100](../../Backend/routes/operations.routes.ts#L100) |
-| `POST` | `/api/deployments/:id/rollback` | Roll back a deployment | session | Deployment ≥ manage | 401 403 404 409 | [operations.routes.ts:142](../../Backend/routes/operations.routes.ts#L142) |
+| `GET` | `/api/deployments` | Deployments (filter: product, env, status) | session | Deployment ≥ view | 401 403 429 | [operations.routes.ts:46](../../Backend/routes/operations.routes.ts#L46) |
+| `POST` | `/api/deployments` | Request a deployment (production waits for approval) | session | Deployment ≥ contribute | 401 403 422 | [operations.routes.ts:66](../../Backend/routes/operations.routes.ts#L66) |
+| `POST` | `/api/deployments/:id/approve` | Approve a production deployment (two-person rule, step-up) | session | Deployment ≥ manage · step-up | 401 403 404 409 | [operations.routes.ts:101](../../Backend/routes/operations.routes.ts#L101) |
+| `POST` | `/api/deployments/:id/rollback` | Roll back a deployment | session | Deployment ≥ manage | 401 403 404 409 | [operations.routes.ts:143](../../Backend/routes/operations.routes.ts#L143) |
 
 ## incidents
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/incidents` | Incidents (filter: product, status, severity) | session | — | 401 403 429 | [operations.routes.ts:169](../../Backend/routes/operations.routes.ts#L169) |
-| `GET` | `/api/incidents/_stats` | Mean time to recover and open-incident counts | session | — | 401 403 429 | [operations.routes.ts:189](../../Backend/routes/operations.routes.ts#L189) |
-| `GET` | `/api/incidents/:id` | One incident with timeline | session | — | 401 404 | [operations.routes.ts:223](../../Backend/routes/operations.routes.ts#L223) |
-| `POST` | `/api/incidents` | Declare an incident | session | — | 401 403 422 | [operations.routes.ts:236](../../Backend/routes/operations.routes.ts#L236) |
-| `PATCH` | `/api/incidents/:id` | Update status/severity or add a timeline note | session | — | 401 404 422 | [operations.routes.ts:275](../../Backend/routes/operations.routes.ts#L275) |
+| `GET` | `/api/incidents` | Incidents (filter: product, status, severity) | session | — | 401 403 429 | [operations.routes.ts:170](../../Backend/routes/operations.routes.ts#L170) |
+| `GET` | `/api/incidents/_stats` | Mean time to recover and open-incident counts | session | — | 401 403 429 | [operations.routes.ts:192](../../Backend/routes/operations.routes.ts#L192) |
+| `GET` | `/api/incidents/:id` | One incident with timeline | session | — | 401 404 | [operations.routes.ts:226](../../Backend/routes/operations.routes.ts#L226) |
+| `POST` | `/api/incidents` | Declare an incident | session | — | 401 403 422 | [operations.routes.ts:239](../../Backend/routes/operations.routes.ts#L239) |
+| `PATCH` | `/api/incidents/:id` | Update status/severity or add a timeline note | session | — | 401 404 422 | [operations.routes.ts:278](../../Backend/routes/operations.routes.ts#L278) |
+| `GET` | `/api/incidents/:id/actions` | Recovery steps and follow-ups of an incident, oldest first | session | — | 401 404 | [incident-actions.routes.ts:148](../../Backend/routes/incident-actions.routes.ts#L148) |
+| `POST` | `/api/incidents/:id/actions` | Add a recovery step or follow-up (Infrastructure ≥ contribute) | session | — | 401 403 404 409 422 | [incident-actions.routes.ts:160](../../Backend/routes/incident-actions.routes.ts#L160) |
+| `PATCH` | `/api/incidents/:id/actions/:actionId` | Update, complete, reopen or reassign an action (Infrastructure ≥ contribute) | session | — | 401 403 404 422 | [incident-actions.routes.ts:213](../../Backend/routes/incident-actions.routes.ts#L213) |
+| `DELETE` | `/api/incidents/:id/actions/:actionId` | Remove an action (Infrastructure ≥ manage) | session | — | 401 403 404 | [incident-actions.routes.ts:281](../../Backend/routes/incident-actions.routes.ts#L281) |
 
 ## locations
 

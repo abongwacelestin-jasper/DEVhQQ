@@ -36,7 +36,7 @@ From `audit.append` calls in the backend (the prefix names the module):
 | `security.` | `member_access_revoked`, `totp_secrets_sealed` |
 | `jit.` | `requested`, `approved`, `denied`, `revoked`, `expired` |
 | `task.`, `doc.` | `created`, `updated`, `deleted`, `linked`; `doc.version_snapshot` |
-| `deploy.`, `incident.` | `requested`, `approved`, `rolled_back`; `declared`, `updated`, `auto_opened` |
+| `deploy.`, `incident.` | `requested`, `approved`, `rolled_back`; `declared`, `updated`, `auto_opened`, `action_added`, `action_updated`, `action_completed`, `action_reopened`, `action_removed` |
 | `onboarding.`, `offboarding.` | `nda_signed`, `profile_completed`; offboarding steps and completion |
 | `channel.`, `message.`, `workspace.`, `notification.` | collaboration changes (never message bodies) |
 | `repo.`, `pr.`, `github.`, `code_findings.` | linking repositories, review decisions, applied webhook deliveries |

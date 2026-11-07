@@ -66,6 +66,11 @@ See [infra/minio/README.md](../../infra/minio/README.md).
   unused).
 - **Deployments are recorded and approved, not executed.** Rollout status is
   simulated.
+- **Incident action items have no reminders.** An overdue step is only
+  highlighted on the incident page; nothing is sent when a due date passes.
+  Due dates are calendar days compared with the viewer's local date. A deleted
+  step is gone from the list; its timeline and audit entries remain. An
+  incident holds at most 100 steps.
 - **`DATA_ENCRYPTION_KEY` rotation** needs app-side re-encryption; do not
   replace the key file on its own.
 - Open items from the security lane are listed in
