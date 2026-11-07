@@ -39,6 +39,13 @@ import { registerOperationsRoutes } from './routes/operations.routes.ts';
 import { registerLocationRoutes } from './routes/locations.routes.ts';
 import { registerSecurityRoutes } from './routes/security.routes.ts';
 import { registerCodespaceRoutes } from './routes/codespaces.routes.ts';
+import { registerMessagingRoutes } from './routes/messaging.routes.ts';
+import { registerWorkspaceRoutes } from './routes/workspaces.routes.ts';
+import { registerNotificationRoutes } from './routes/notifications.routes.ts';
+import { registerOnboardingRoutes } from './routes/onboarding.routes.ts';
+import { registerRecoveryRoutes } from './routes/recovery.routes.ts';
+import { registerOffboardingRoutes } from './routes/offboarding.routes.ts';
+import { registerDocCollabRoutes } from './routes/doc-collab.routes.ts';
 
 export async function buildApp() {
   await seed();
@@ -57,6 +64,13 @@ export async function buildApp() {
   registerLocationRoutes(router);
   registerSecurityRoutes(router);
   registerCodespaceRoutes(router);
+  registerMessagingRoutes(router);
+  registerWorkspaceRoutes(router);
+  registerNotificationRoutes(router);
+  registerOnboardingRoutes(router);
+  registerRecoveryRoutes(router);
+  registerOffboardingRoutes(router);
+  registerDocCollabRoutes(router);
   return router;
 }
 
