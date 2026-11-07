@@ -8,6 +8,8 @@
  * signed off. Data returned here is still product-scoped per caller.
  */
 
+import { persistenceStatus } from '../store/collection.ts';
+import { pingDatabase } from '../db/boot.ts';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import type { Ctx, Router } from '../lib/http.ts';
@@ -256,16 +258,31 @@ export function registerSystemRoutes(r: Router) {
     'GET',
     '/api/ready',
     {
-      summary: 'Readiness probe — data store seeded and audit chain intact',
+      summary: 'Readiness probe — database reachable, write queue healthy, audit chain intact',
       tag: 'system',
       auth: 'public',
       responses: [503],
     },
-    (ctx) => {
+    async (ctx) => {
       const chain = audit.verify();
-      const ready = db.members.size > 0 && chain.ok;
+      const persistence = persistenceStatus();
+      const dbOk = await pingDatabase();
+      // An empty production database is still "ready" (the deploy gate must pass before the
+      // first Owner exists); `bootstrapRequired` tells operators no one can sign in yet.
+      const ready = dbOk && chain.ok && !persistence.saturated;
       if (!ready) ctx.status = 503;
-      return { ready, members: db.members.size, auditChain: chain.ok ? 'intact' : 'broken' };
+      return {
+        ready,
+        database: dbOk ? 'up' : 'down',
+        persistence: {
+          mode: persistence.mode,
+          pending: persistence.pending,
+          saturated: persistence.saturated,
+        },
+        members: db.members.size,
+        bootstrapRequired: db.members.size === 0,
+        auditChain: chain.ok ? 'intact' : 'broken',
+      };
     },
   );
 
