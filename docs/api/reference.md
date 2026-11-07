@@ -315,12 +315,12 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/monitors` | Uptime monitors in my products (?product=) | session | Infrastructure ≥ view | 401 403 429 | [monitors.routes.ts:89](../../Backend/routes/monitors.routes.ts#L89) |
-| `POST` | `/api/monitors` | Create an HTTP monitor (SSRF-vetted target) | session | Infrastructure ≥ manage | 401 403 404 422 | [monitors.routes.ts:112](../../Backend/routes/monitors.routes.ts#L112) |
-| `PATCH` | `/api/monitors/:id` | Update or pause a monitor | session | Infrastructure ≥ manage | 401 403 404 409 422 | [monitors.routes.ts:164](../../Backend/routes/monitors.routes.ts#L164) |
-| `DELETE` | `/api/monitors/:id` | Delete a monitor and its history | session | Infrastructure ≥ manage | 401 403 404 409 | [monitors.routes.ts:211](../../Backend/routes/monitors.routes.ts#L211) |
-| `GET` | `/api/monitors/:id/checks` | Check history for a monitor (newest first, ?limit=) | session | Infrastructure ≥ view | 401 403 404 | [monitors.routes.ts:237](../../Backend/routes/monitors.routes.ts#L237) |
-| `POST` | `/api/monitors/:id/check` | Run a check now | session | Infrastructure ≥ manage | 401 403 404 409 | [monitors.routes.ts:261](../../Backend/routes/monitors.routes.ts#L261) |
+| `GET` | `/api/monitors` | Uptime monitors in my products (?product=) | session | Infrastructure ≥ view | 401 403 429 | [monitors.routes.ts:90](../../Backend/routes/monitors.routes.ts#L90) |
+| `POST` | `/api/monitors` | Create an HTTP monitor (SSRF-vetted target) | session | Infrastructure ≥ manage | 401 403 404 422 | [monitors.routes.ts:113](../../Backend/routes/monitors.routes.ts#L113) |
+| `PATCH` | `/api/monitors/:id` | Update or pause a monitor | session | Infrastructure ≥ manage | 401 403 404 409 422 | [monitors.routes.ts:165](../../Backend/routes/monitors.routes.ts#L165) |
+| `DELETE` | `/api/monitors/:id` | Delete a monitor and its history | session | Infrastructure ≥ manage | 401 403 404 409 | [monitors.routes.ts:212](../../Backend/routes/monitors.routes.ts#L212) |
+| `GET` | `/api/monitors/:id/checks` | Check history for a monitor (newest first, ?limit=) | session | Infrastructure ≥ view | 401 403 404 | [monitors.routes.ts:238](../../Backend/routes/monitors.routes.ts#L238) |
+| `POST` | `/api/monitors/:id/check` | Run a check now | session | Infrastructure ≥ manage | 401 403 404 409 | [monitors.routes.ts:262](../../Backend/routes/monitors.routes.ts#L262) |
 
 ## integrations
 

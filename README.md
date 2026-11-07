@@ -65,13 +65,14 @@ with cosign and carry SBOM + SLSA provenance attestations.
 | Path | What |
 |---|---|
 | `Backend/` | API server, `Dockerfile` |
-| `Frontend/` | SPA, `Dockerfile` (nginx runtime) |
+| `Frontend/` | SPA, `Dockerfile` (Caddy runtime) |
 | `Models/` | ML service |
 | `infra/edge/` | Caddy edge image + `Caddyfile` |
-| `infra/nginx/` | SPA server config + security headers |
+| `infra/frontend/` | SPA server config (Caddy), security headers, pre-compression |
+| `infra/railway/` | Railway config as code, setup scripts, Postgres roles |
 | `infra/scripts/` | secrets, backup/restore, smoke, deploy |
 | `docker-compose.yml`, `docker-compose.dev.yml` | stack definitions |
-| `docs/deploy/` | [RUNBOOK](docs/deploy/RUNBOOK.md), [ARCHITECTURE](docs/deploy/ARCHITECTURE.md) |
+| `docs/deploy/` | [RUNBOOK](docs/deploy/RUNBOOK.md), [ARCHITECTURE](docs/deploy/ARCHITECTURE.md), [RAILWAY](docs/deploy/RAILWAY.md) |
 
 Security policy: [SECURITY.md](SECURITY.md). Contributing:
 [CONTRIBUTING.md](CONTRIBUTING.md).

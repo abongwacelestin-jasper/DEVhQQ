@@ -19,7 +19,7 @@ The repository has three packages and a Compose stack:
 | `Backend/` | The API: Node 22, TypeScript run with Node's type stripping (no build step), one runtime dependency (`pg`), a custom router whose route table is also the OpenAPI document. Also serves the backend console at `/console`. | [Backend/README.md](../Backend/README.md) |
 | `Frontend/` | The web app: a Vite + React single-page app that talks to the API through one cookie-only client. | [Frontend/README.md](../Frontend/README.md) |
 | `Models/` | The ML service: Python, FastAPI, scikit-learn; predictions and the assistant, reachable only from the backend. | [Models/README.md](../Models/README.md) |
-| `infra/`, `docker-compose.yml` | Caddy edge, nginx, PostgreSQL, MinIO, secrets, backup and deploy scripts. | [docs/deploy/RUNBOOK.md](deploy/RUNBOOK.md) |
+| `infra/`, `docker-compose.yml` | Caddy edge and frontend server, PostgreSQL, MinIO, secrets, backup and deploy scripts, Railway config. | [docs/deploy/RUNBOOK.md](deploy/RUNBOOK.md), [docs/deploy/RAILWAY.md](deploy/RAILWAY.md) |
 
 ## What is in place
 
@@ -50,7 +50,7 @@ anything internet-facing, and a KMS key for MinIO encryption.
 | [User guide](user-guide/index.md) | learn the day-to-day flows for your role, and the [admin tasks](user-guide/admin-tasks.md). |
 | [Operations](operations/deployment.md) | deploy and do the [first-run setup](operations/deployment.md#first-run-production-setup), [configure](operations/configuration.md), use [storage](operations/storage.md), [back up and restore](operations/backups.md), [monitor](operations/monitoring.md), [verify the audit log](operations/audit-verification.md), and know the [limits](operations/known-limits.md). |
 | [Security](security/CONTROLS.md) | the security lane's controls map, [threat model](security/THREAT_MODEL.md), [WebAuthn client contract](security/webauthn-client.md) and the independent [assessment](security/assessment/REPORT.md). |
-| [Deploy](deploy/RUNBOOK.md) | the infrastructure lane's [runbook](deploy/RUNBOOK.md) and [deployment architecture](deploy/ARCHITECTURE.md). |
+| [Deploy](deploy/RUNBOOK.md) | the infrastructure lane's [runbook](deploy/RUNBOOK.md), [deployment architecture](deploy/ARCHITECTURE.md), and [Railway + Cloudflare R2](deploy/RAILWAY.md). |
 | [ML](ml/index.md) | understand the insights and the assistant, and where the model cards are. |
 | [Glossary](glossary.md) | look up a term. These docs use the glossary's wording throughout. |
 

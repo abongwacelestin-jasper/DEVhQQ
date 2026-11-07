@@ -35,9 +35,10 @@ of at least 32 characters.
 | Sessions | `SESSION_SECRET`, `SESSION_SECRET_PREVIOUS`, `SESSION_IDLE_MS` (15 min), `SESSION_ABSOLUTE_MS` (12 h) | Rotation without sign-out: [rotate-session-secret.md](../../infra/scripts/rotate-session-secret.md). |
 | WebAuthn | `WEBAUTHN_RP_ID`, `WEBAUTHN_RP_NAME`, `WEBAUTHN_ALGORITHMS` | RP ID is the registrable domain (no IP addresses). Supported algorithms: ES256, EdDSA, RS256. |
 | Encryption | `DATA_ENCRYPTION_KEY`, `DATA_ENCRYPTION_KEYS_PREVIOUS` | 32-byte hex AES-256-GCM key for TOTP secrets, integration credentials and backups. Outside production a key is derived from the session secret. |
-| Database | `DATABASE_URL`, `DATABASE_MIGRATION_URL`, `DATABASE_SSL`, `DATABASE_SSL_CA`, `DATABASE_POOL_MAX`, `DATABASE_CONNECT_TIMEOUT_MS`, `DATABASE_STATEMENT_TIMEOUT_MS` | Without `DATABASE_URL` everything is in memory. See [Storage](storage.md). |
-| Object storage | `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`, `S3_ALLOW_HTTP`, `S3_BUCKET_UPLOADS`, `S3_BUCKET_BACKUPS`, `S3_BUCKET_AUDIT`, `S3_BUCKET_MODELS`, `STORAGE_LOCAL_DIR`, `STORAGE_LOCAL_PORT` | Without `S3_ENDPOINT` a local driver is used. |
+| Database | `DATABASE_URL`, `DATABASE_MIGRATION_URL`, `DATABASE_SSL`, `DATABASE_SSL_CA`, `DATABASE_POOL_MAX`, `DATABASE_CONNECT_TIMEOUT_MS`, `DATABASE_STATEMENT_TIMEOUT_MS` | Without `DATABASE_URL` everything is in memory. See [Storage](storage.md). In the container image, `DATABASE_MIGRATION_URL` is passed only to the migration command (`node --run migrate`); the entrypoint unsets it for everything else, so the API never holds the DDL credential. |
+| Object storage | `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`, `S3_ALLOW_HTTP`, `S3_BUCKET_UPLOADS`, `S3_BUCKET_BACKUPS`, `S3_BUCKET_AUDIT`, `S3_BUCKET_MODELS`, `STORAGE_LOCK_MODE`, `STORAGE_LOCAL_DIR`, `STORAGE_LOCAL_PORT` | Without `S3_ENDPOINT` a local driver is used. `STORAGE_LOCK_MODE` is the WORM mechanism the status endpoints report: `GOVERNANCE` / `COMPLIANCE` (S3 Object Lock; default `COMPLIANCE` in production) or `R2_BUCKET_LOCK` (Cloudflare R2 bucket locks, see [WORM on R2](../deploy/RAILWAY.md#worm-on-r2)). The same variable also sets the MinIO bootstrap's retention mode. |
 | Backups and audit | `BACKUP_DIR`, `BACKUP_RETENTION_DAYS` (35), `AUDIT_LOG_FILE` | [Backups](backups.md), [Audit verification](audit-verification.md). |
+| Periodic jobs | `JOBS_IN_PROCESS` (all), `WORKER_JOBS` (all), `WORKER_LOOP_ENABLED` | Which process runs the daily backup, the monitor checks and the digest, so each runs exactly once. `JOBS_IN_PROCESS` on the API: `1`/unset = all, `0` = none, or a list of `backup`, `monitors`, `digest`; an unknown name refuses to boot. `Backend/worker.ts` runs `--once backup,drill` (one-shot, e.g. a cron service) or, long-running, the jobs in `WORKER_JOBS`; in production the long-running mode needs `WORKER_LOOP_ENABLED=1` and is not safe until the data layer has cross-instance invalidation ([Railway: Jobs](../deploy/RAILWAY.md#10-jobs-where-each-periodic-job-runs)). |
 | Limits | `MAX_BODY_BYTES` (256 KB) | Rate-limit numbers are constants; see [Rate limits](../api/rate-limits.md). |
 | ML bridge | `ML_SERVICE_URL`, `ML_SERVICE_TOKEN` | Without the URL every insight is `source: "heuristic"` and the assistant answers `503 integration_unconfigured`. |
 | Mail | `MAIL_TRANSPORT` (`smtp` \| `console`), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_REQUIRE_TLS`, `MAIL_DIGEST_MINUTES` | `console` logs mail instead of sending it. |
@@ -67,3 +68,12 @@ connection variables and `S3_BUCKET_MODELS`. Meanings and defaults:
 `DEVHQ_SECRETS_GID`, `EDGE_*` and similar are read by Compose and the edge, not
 by the application. They are listed at the end of [env-vars.md](env-vars.md) and
 explained in the [runbook](../deploy/RUNBOOK.md).
+
+## Frontend server (Caddy)
+
+Read by `infra/frontend/Caddyfile`, not by the SPA: `PORT` (8081),
+`API_MODE` (`none`: API paths answer `404`, the Compose edge routes them;
+`proxy`: same-origin reverse proxy to `API_UPSTREAM`, used on Railway),
+`API_UPSTREAM` (`backend.railway.internal:8080`), `S3_PUBLIC_ORIGIN` (added to
+the CSP `connect-src` and `img-src` for presigned uploads), `HSTS_VALUE` and
+`MAX_BODY_SIZE` (2MB). Railway values: [RAILWAY.md §7](../deploy/RAILWAY.md#7-variables-per-service).

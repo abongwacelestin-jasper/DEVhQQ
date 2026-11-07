@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Railway deployment with Cloudflare R2** (`docs/deploy/RAILWAY.md`,
+  `infra/railway/`): config as code for frontend, backend, worker, cron and
+  models; `setup.sh` (Railway CLI + API, idempotent, `--dry-run`) and
+  `r2-setup.sh` (buckets, CORS, lifecycle, bucket locks); least-privilege
+  Postgres roles (`postgres-roles.sql`: migrator, app, read-only jobs role);
+  a Railway topology diagram in `docs/deploy/ARCHITECTURE.md`.
+- **`Backend/worker.ts`**: runs periodic jobs outside the API. `--once
+  backup,drill` (the Railway cron service) hydrates, backs up, verifies the
+  backup, flushes and exits; the long-running mode is fenced in production
+  (`WORKER_LOOP_ENABLED`) until the data layer supports a second writer.
+- **`JOBS_IN_PROCESS`** (`Backend/lib/jobs.ts`): which of `backup`,
+  `monitors`, `digest` the API runs (default: all); unknown names refuse to boot.
+- **`STORAGE_LOCK_MODE=R2_BUCKET_LOCK`**: the status endpoints report R2
+  bucket locks as what they are instead of `COMPLIANCE`.
+
+### Changed
+
+- **Frontend image runs Caddy instead of nginx** (`infra/frontend/`): Brotli
+  and gzip pre-compressed assets, `PORT`, optional same-origin `/api` proxy
+  (`API_MODE=proxy`) with a client-IP computation that ignores spoofed
+  `X-Forwarded-For`, CSP gains `S3_PUBLIC_ORIGIN`. Compose behaviour is
+  unchanged (API paths still answer `404` behind the edge). The nginx config directory is
+  removed.
+- **Container entrypoint**: unsets `DATABASE_MIGRATION_URL` for everything but
+  the migration command, and when started as root (Railway volumes) fixes the
+  state directory's ownership and drops to uid 10001 with `su-exec`.
+- **Models image**: no `VOLUME` instruction (Railway rejects it); Compose
+  mounts a named volume at `MODEL_DIR`.
+
 ## [2.0.0] - 2026-11-07
 
 Major version: browser sessions are cookie-only, so clients that read the session

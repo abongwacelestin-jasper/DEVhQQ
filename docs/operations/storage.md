@@ -50,6 +50,12 @@ Backups and audit buckets use Object Lock: `GOVERNANCE` in development,
 credential nor an attacker holding it can delete or shorten retention. The
 backend's MinIO user can only `PutObject` into the audit bucket.
 
+Cloudflare R2 has no Object Lock API. It uses bucket lock rules, which refuse
+delete and overwrite for every token but can be removed by an account admin;
+set `STORAGE_LOCK_MODE=R2_BUCKET_LOCK` so the status endpoints report that
+instead of `COMPLIANCE`. Guarantees and compensating controls:
+[WORM on R2](../deploy/RAILWAY.md#worm-on-r2).
+
 Without `S3_ENDPOINT` the backend uses a local driver under
 `STORAGE_LOCAL_DIR` (default `<BACKUP_DIR>/object-store`), which is what a
 plain `npm run dev` uses; `GET /api/storage/status` shows the driver in use:

@@ -192,9 +192,11 @@ Uploads bucket CORS:
   Read & Write for the uploads token, Object Read & Write for backups/audit.
   R2 tokens can't express "put but never delete", so rely on the lock rules
   below for WORM.
-- **WORM:** R2 *Bucket Locks* (`wrangler r2 bucket lock add <bucket> --prefix ""
-  --retention-days 35`) block deletion and overwrite for the retention period.
-  This works like COMPLIANCE mode: it applies to all tokens.
+- **WORM:** R2 *Bucket Locks* block deletion and overwrite for the retention
+  period, for every API token. Unlike S3 COMPLIANCE, an account member with R2
+  admin rights can remove the rule, so set `STORAGE_LOCK_MODE=R2_BUCKET_LOCK`
+  (reported as such by the API). `infra/railway/r2-setup.sh` applies the rules;
+  guarantees and controls: [WORM on R2](../../docs/deploy/RAILWAY.md#worm-on-r2).
 - **Encryption:** R2 encrypts every object at rest with AES-256. There are no
   customer-managed keys, which is why the app encrypts backups with
   `DATA_ENCRYPTION_KEY` before uploading.

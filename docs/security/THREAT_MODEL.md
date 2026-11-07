@@ -7,7 +7,7 @@ mitigates it, and the residual risk. Control ids (`C-xx`) refer to
 ## System and trust boundaries
 
 ```
- Browser (SPA, console) ──TLS 1.3──▶ edge (Caddy) ──▶ frontend (nginx, static)
+ Browser (SPA, console) ──TLS 1.3──▶ edge (Caddy) ──▶ frontend (Caddy, static)
                                         │
                                         └─/api──▶ backend (Node 22) ──▶ postgres (internal)
                                                       │  ├────────────▶ minio (internal, presigned URLs to browser)
