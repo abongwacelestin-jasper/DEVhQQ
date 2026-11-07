@@ -12,11 +12,12 @@
  *    step-up, passkey, enrollment), keyed by member id across all sessions
  *    and IPs. This is what bounds TOTP guessing.
  *
- * Storage: the default `MemoryRateLimitStore` is per process. Behind a load
- * balancer with more than one backend replica, install a shared store at boot
- * with `setRateLimitStore()` — anything implementing `RateLimitStore` (Redis
- * `EVAL` of the same token-bucket math, a Postgres row with `FOR UPDATE`, …).
- * See docs/security/CONTROLS.md → "Rate limiting".
+ * Storage: the default `MemoryRateLimitStore` is per process. With REDIS_URL
+ * set, lib/redisBoot.ts installs `RedisRateLimitStore` (security/rateLimitRedis.ts,
+ * the same math as one atomic Lua script) at boot with `setRateLimitStore()`,
+ * so every replica draws from one bucket per key. A store may refuse a take
+ * with `503 rate_limit_unavailable` (fail closed); the middleware then adds
+ * `Retry-After`. See docs/security/CONTROLS.md → "Rate limiting".
  */
 
 import { createHash } from 'node:crypto';
@@ -155,10 +156,21 @@ const ipAndSession: KeyFn = (ctx) => [
   ...(ctx.principal ? [`sess:${ctx.principal.sessionId}`] : []),
 ];
 
+/** Adds `Retry-After` when the store refuses because its backend is down (fail closed). */
+async function takeOrRefuse(ctx: Ctx, key: string, opts: LimitOptions): Promise<TakeResult> {
+  try {
+    return await store.take(key, opts);
+  } catch (e) {
+    if (e instanceof HttpError && e.code === 'rate_limit_unavailable')
+      ctx.res.setHeader('Retry-After', '5');
+    throw e;
+  }
+}
+
 export function rateLimit(opts: LimitOptions, keysOf: KeyFn = ipAndSession): Middleware {
   return async (ctx, next) => {
     for (const key of keysOf(ctx)) {
-      const r = await store.take(`${opts.name}:${key}`, opts);
+      const r = await takeOrRefuse(ctx, `${opts.name}:${key}`, opts);
       ctx.res.setHeader('RateLimit-Remaining', String(r.remaining));
       if (!r.ok) {
         ctx.res.setHeader('Retry-After', String(r.retryAfter));
