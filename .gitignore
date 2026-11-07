@@ -9,6 +9,7 @@ build/
 # Runtime artifacts (audit trail, snapshots, logs)
 .audit/
 .backups/
+.mail-preview/
 *.log
 npm-debug.log*
 yarn-error.log*

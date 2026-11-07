@@ -21,7 +21,10 @@ With `NODE_ENV=production` the backend refuses to start when:
 - `APP_ORIGIN`, `WEBAUTHN_RP_ID` or `DATA_ENCRYPTION_KEY` is missing,
 - any `DEMO_*` variable other than `DEMO_DISABLED` is set,
 - `S3_ENDPOINT` is set without both S3 keys, or is not `https://` (unless
-  `S3_ALLOW_HTTP=1`).
+  `S3_ALLOW_HTTP=1`),
+- `MAIL_TRANSPORT=resend` without `RESEND_API_KEY` (or `RESEND_API_KEY_FILE`)
+  or without `MAIL_FROM`, an unknown `MAIL_TRANSPORT`, or a non-`https://`
+  `APP_URL` / `BRAND_LOGO_URL` / `BRAND_WEBSITE_URL` (see [Email](email.md)).
 
 The models service refuses authenticated routes without an `ML_SERVICE_TOKEN`
 of at least 32 characters.
@@ -40,7 +43,8 @@ of at least 32 characters.
 | Backups and audit | `BACKUP_DIR`, `BACKUP_RETENTION_DAYS` (35), `AUDIT_LOG_FILE` | [Backups](backups.md), [Audit verification](audit-verification.md). |
 | Limits | `MAX_BODY_BYTES` (256 KB) | Rate-limit numbers are constants; see [Rate limits](../api/rate-limits.md). |
 | ML bridge | `ML_SERVICE_URL`, `ML_SERVICE_TOKEN` | Without the URL every insight is `source: "heuristic"` and the assistant answers `503 integration_unconfigured`. |
-| Mail | `MAIL_TRANSPORT` (`smtp` \| `console`), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_REQUIRE_TLS`, `MAIL_DIGEST_MINUTES` | `console` logs mail instead of sending it. |
+| Mail | `MAIL_TRANSPORT` (`resend` \| `smtp` \| `console`), `MAIL_FROM`, `MAIL_REPLY_TO`, `RESEND_API_KEY`, `RESEND_TIMEOUT_MS`, `RESEND_BASE_URL`, `APP_URL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_REQUIRE_TLS`, `MAIL_DIGEST_MINUTES` | `console` logs mail instead of sending it; production uses `resend`. Setup, DNS records and the email catalogue: [Email](email.md). |
+| Brand | `BRAND_NAME`, `BRAND_LEGAL_NAME`, `BRAND_LOGO_URL`, `BRAND_LOGO_WIDTH`, `BRAND_PRIMARY_COLOR`, `BRAND_ACCENT_COLOR`, `BRAND_SUPPORT_EMAIL`, `BRAND_POSTAL_ADDRESS`, `BRAND_WEBSITE_URL` | Branding of every email. Colours are `#rrggbb`; URLs must be `https://` in production. See [Email](email.md#brand-variables). |
 | GitHub | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_SLUG`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_TOKEN` | App credentials → live data; webhook secret only → webhook-only; nothing set → demo data outside production, `503 integration_unconfigured` in production. |
 | Realtime | `STREAM_HEARTBEAT_MS` | Heartbeat of `GET /api/stream`. |
 | Demo (non-production only) | `DEMO_DISABLED`, `DEMO_PASSWORD` (`devhq-demo`), `DEMO_MFA_CODE` (`246810`), `DEMO_TOTP_SECRET` | See [Known limits](known-limits.md#disable-demo-mode-on-anything-internet-facing). |

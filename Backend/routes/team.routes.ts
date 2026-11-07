@@ -18,6 +18,7 @@ import { revokeStandingAccess } from '../security/pats.ts';
 import { audit } from '../audit/auditLog.ts';
 import { hashToken, randomToken } from '../security/crypto.ts';
 import { db, findMemberByEmail, publicMember } from '../store/db.ts';
+import { sendInvite } from '../mail/events.ts';
 import {
   HttpError,
   type Member,
@@ -206,6 +207,7 @@ export function registerTeamRoutes(r: Router) {
         sensitive: true,
         requestId: ctx.requestId,
       });
+      void sendInvite(member, principal.memberId, inviteToken);
       return {
         ...publicMember(member),
         // Shown to the inviter once, so the link can be passed on by hand.

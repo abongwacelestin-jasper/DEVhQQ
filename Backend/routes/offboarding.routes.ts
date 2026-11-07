@@ -22,6 +22,7 @@ import { db } from '../store/db.ts';
 import { HttpError, type Member, type Principal } from '../types.ts';
 import { sendMail } from '../mail/index.ts';
 import { offboardingCompletedEmail } from '../mail/templates.ts';
+import { sendOffboardingStarted } from '../mail/events.ts';
 import { resignations, saveMember, sortableId } from '../domain/collab/store.ts';
 import { notify } from '../domain/collab/notify.ts';
 import type { Resignation } from '../domain/collab/types.ts';
@@ -209,6 +210,7 @@ export function registerOffboardingRoutes(r: Router) {
         'offboarding.started',
         `${target.name} (${target.id}) · last day ${res.lastDay} · handover ${heir.id}`,
       );
+      void sendOffboardingStarted(target, res);
       notify({
         memberId: heir.id,
         kind: 'offboarding',

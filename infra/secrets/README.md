@@ -16,6 +16,7 @@ committed. Directory mode 0700, files 0640 (see the script header for why).
 | `backup_encryption_key` | `infra/scripts/backup-db.sh` / `restore-db.sh` (host only) | generated — **store a copy off-host** |
 | `anthropic_api_key` | models | paste in |
 | `smtp_password` | backend | paste in |
+| `resend_api_key` | backend (`MAIL_TRANSPORT=resend`) | paste in |
 | `github_app_private_key`, `github_webhook_secret`, `github_client_secret`, `github_token` | backend | paste in |
 
 Empty file = integration not configured (the feature returns

@@ -16,6 +16,8 @@ import { db } from '../../store/db.ts';
 import type { Member, Principal } from '../../types.ts';
 import { sendMail } from '../../mail/index.ts';
 import { digestEmail } from '../../mail/templates.ts';
+import { appLink } from '../../mail/layout.ts';
+import { emailForNotification, observeMailEvents } from '../../mail/events.ts';
 import { seesProduct } from './access.ts';
 import { emit } from './realtime.ts';
 import { notifications, sortableId } from './store.ts';
@@ -70,6 +72,7 @@ export function notify(input: {
   };
   notifications.set(n.id, n);
   emit('notification.created', { memberId: n.memberId }, publicNotification(n));
+  void emailForNotification(n);
   return n;
 }
 
@@ -173,6 +176,7 @@ export function observeDomainEvents() {
       logger.error('notification observer failed', { type: e.type, err: String(err) });
     }
   });
+  observeMailEvents();
   startDigest();
 }
 
@@ -185,8 +189,11 @@ const notifyPref: Record<NotificationKind, string> = {
   security: 'assigned',
 };
 
+const DAY_MS = 24 * 60 * 60_000;
+
 /**
- * Optional email digest (MAIL_DIGEST_MINUTES, unset = off): unread
+ * Optional email digest (MAIL_DIGEST_MINUTES, unset = off; 1440 = daily
+ * summary, 10080 = weekly): unread
  * notifications older than one interval, filtered by the member's profile
  * alert choices, batched into one email per member.
  */
@@ -205,9 +212,16 @@ export async function runDigest(minAgeMs: number): Promise<number> {
     const m = db.members.get(memberId)!;
     const mail = digestEmail(
       m.profile?.displayName ?? m.name,
-      list
-        .slice(0, 20)
-        .map((n) => ({ title: n.title, body: n.body, link: `${config.appOrigin}${n.link}` })),
+      list.slice(0, 20).map((n) => ({
+        title: n.title,
+        body: n.body,
+        link: appLink(config.mail.brand, n.link),
+        at: n.at,
+      })),
+      {
+        period: minAgeMs >= 7 * DAY_MS ? 'weekly' : minAgeMs >= DAY_MS ? 'daily' : undefined,
+        timeZone: m.profile?.timezone,
+      },
     );
     if (await sendMail({ to: m.email, ...mail })) {
       const at = new Date().toISOString();

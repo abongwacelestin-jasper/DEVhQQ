@@ -92,6 +92,14 @@ import {
   generateBackupCodes,
   remainingBackupCodes,
 } from '../security/backupCodes.ts';
+import {
+  describeDevice,
+  sendAccountLocked,
+  sendBackupCodeUsed,
+  sendBackupCodesGenerated,
+  sendFactorChanged,
+  sendSignInAlert,
+} from '../mail/events.ts';
 
 const MAX_FAILURES = 5;
 const LOCK_MS = 15 * 60_000;
@@ -264,8 +272,10 @@ function recordSignIn(
     result,
     location,
     risk,
+    device: describeDevice(ctx.req.headers['user-agent']),
   };
   db.signIns.unshift(rec);
+  if (member && result === 'success') void sendSignInAlert(member, rec, history);
   if (db.signIns.length > 2000) db.signIns.length = 2000;
   publish('signin', {
     memberId: rec.memberId,
@@ -485,6 +495,7 @@ export function registerAuthRoutes(r: Router) {
             sensitive: true,
             requestId: ctx.requestId,
           });
+          void sendAccountLocked(member, ctx, MAX_FAILURES, member.lockedUntil);
         }
         persistMember(member.id);
         throw generic;
@@ -628,6 +639,7 @@ export function registerAuthRoutes(r: Router) {
         sensitive: true,
         requestId: ctx.requestId,
       });
+      void sendFactorChanged(member, ctx, { factor: 'authenticator app', replaced: false });
       return deliver(ctx, token, cookieAge, { ok: true, member: publicMember(member) });
     },
   );
@@ -708,6 +720,12 @@ export function registerAuthRoutes(r: Router) {
         sensitive: true,
         requestId: ctx.requestId,
       });
+      void sendBackupCodeUsed(
+        member,
+        ctx,
+        remaining,
+        member.backupCodes?.length ?? BACKUP_CODE_COUNT,
+      );
       return deliver(ctx, token, cookieAge, {
         ok: true,
         member: publicMember(member),
@@ -749,6 +767,7 @@ export function registerAuthRoutes(r: Router) {
         sensitive: true,
         requestId: ctx.requestId,
       });
+      void sendBackupCodesGenerated(member, ctx, codes.length, replaced);
       ctx.status = 201;
       return { codes, count: codes.length };
     },
@@ -873,6 +892,7 @@ export function registerAuthRoutes(r: Router) {
         sensitive: true,
         requestId: ctx.requestId,
       });
+      void sendFactorChanged(member, ctx, { factor: 'authenticator app', replaced });
       return { ok: true, member: publicMember(member) };
     },
   );
@@ -1068,6 +1088,7 @@ export function registerAuthRoutes(r: Router) {
         sensitive: true,
         requestId: ctx.requestId,
       });
+      void sendFactorChanged(m, ctx, { factor: 'passkey', replaced: false, label: cred.label });
       ctx.status = 201;
       return { id: cred.id, label: cred.label, createdAt: cred.createdAt };
     },
