@@ -11,7 +11,7 @@ Every error the API raises has a stable machine-readable `code`. Branch on
 `code`, never on `message` (messages are for people and may change). The
 envelope and client guidance are in [Errors](errors.md).
 
-**133 codes** from **355 call sites**. The status column lists every
+**134 codes** from **356 call sites**. The status column lists every
 status a code is raised with; most codes have exactly one.
 
 | Code | Status | Example message | Raised in |
@@ -145,6 +145,7 @@ status a code is raised with; most codes have exactly one.
 | `assistant_unavailable` | 503 | The assistant is unavailable right now — try again later | `routes/assistant.routes.ts` |
 | `integration_unconfigured` | 503 | ML service is not configured _(+10 more)_ | `domain/engineering/secrets.ts`, `integrations/github/client.ts`, `integrations/github/config.ts`, `integrations/github/webhook.ts`, `routes/assistant.routes.ts`, `routes/files.routes.ts`, `routes/github.routes.ts`, `routes/insights.routes.ts` |
 | `ml_unavailable` | 503 | The ML service could not complete training | `routes/insights.routes.ts` |
+| `rate_limit_unavailable` | 503 | Sign-in checks are temporarily unavailable — retry shortly | `security/rateLimitRedis.ts` |
 | `scan_unavailable` | 503 | Malware scanning is unavailable; try again shortly | `routes/files.routes.ts` |
 | `storage_unavailable` | 503 | Object storage request failed | `routes/files.routes.ts` |
 | `stream_capacity` | 503 | Realtime is at capacity — retry shortly | `domain/collab/realtime.ts` |

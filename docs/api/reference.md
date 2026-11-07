@@ -29,27 +29,27 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/health` | Liveness probe | public | — | 429 | [system.routes.ts:254](../../Backend/routes/system.routes.ts#L254) |
-| `GET` | `/api/ready` | Readiness probe — database reachable, write queue healthy, audit chain intact | public | — | 503 | [system.routes.ts:259](../../Backend/routes/system.routes.ts#L259) |
-| `GET` | `/api/version` | Build and runtime version | public | — | 429 | [system.routes.ts:291](../../Backend/routes/system.routes.ts#L291) |
-| `GET` | `/api/openapi.json` | OpenAPI 3.1 document generated from the route table | public | — | 429 | [system.routes.ts:303](../../Backend/routes/system.routes.ts#L303) |
-| `GET` | `/api/_inventory` | Every registered route — API discovery | session | — | 401 403 429 | [system.routes.ts:314](../../Backend/routes/system.routes.ts#L314) |
-| `GET` | `/api/_status-codes` | Status codes this API can return | public | — | 429 | [system.routes.ts:322](../../Backend/routes/system.routes.ts#L322) |
-| `GET` | `/api/_config` | Effective configuration, secrets redacted | session | Administration ≥ view | 401 403 429 | [system.routes.ts:329](../../Backend/routes/system.routes.ts#L329) |
-| `GET` | `/api/_metrics` | Request metrics (format=prometheus for text exposition) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:338](../../Backend/routes/system.routes.ts#L338) |
-| `GET` | `/api/_logs` | Recent structured logs (level, q, limit) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:355](../../Backend/routes/system.routes.ts#L355) |
-| `GET` | `/api/_events` | Live event stream (Server-Sent Events) | session | — | 401 403 429 | [system.routes.ts:373](../../Backend/routes/system.routes.ts#L373) |
-| `GET` | `/console` | Backend console (HTML) | public | — | 429 | [system.routes.ts:464](../../Backend/routes/system.routes.ts#L464) |
-| `GET` | `/backend.html` | Backend console (HTML, alias) | public | — | 429 | [system.routes.ts:470](../../Backend/routes/system.routes.ts#L470) |
-| `GET` | `/fonts/:file` | Console webfonts (self-hosted) | public | — | 429 | [system.routes.ts:498](../../Backend/routes/system.routes.ts#L498) |
-| `GET` | `/` | Redirect to the console | public | — | 429 | [system.routes.ts:504](../../Backend/routes/system.routes.ts#L504) |
+| `GET` | `/api/health` | Liveness probe | public | — | 429 | [system.routes.ts:255](../../Backend/routes/system.routes.ts#L255) |
+| `GET` | `/api/ready` | Readiness probe — database reachable, write queue healthy, audit chain intact, Redis up when required | public | — | 503 | [system.routes.ts:260](../../Backend/routes/system.routes.ts#L260) |
+| `GET` | `/api/version` | Build and runtime version | public | — | 429 | [system.routes.ts:297](../../Backend/routes/system.routes.ts#L297) |
+| `GET` | `/api/openapi.json` | OpenAPI 3.1 document generated from the route table | public | — | 429 | [system.routes.ts:309](../../Backend/routes/system.routes.ts#L309) |
+| `GET` | `/api/_inventory` | Every registered route — API discovery | session | — | 401 403 429 | [system.routes.ts:320](../../Backend/routes/system.routes.ts#L320) |
+| `GET` | `/api/_status-codes` | Status codes this API can return | public | — | 429 | [system.routes.ts:328](../../Backend/routes/system.routes.ts#L328) |
+| `GET` | `/api/_config` | Effective configuration, secrets redacted | session | Administration ≥ view | 401 403 429 | [system.routes.ts:335](../../Backend/routes/system.routes.ts#L335) |
+| `GET` | `/api/_metrics` | Request metrics (format=prometheus for text exposition) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:344](../../Backend/routes/system.routes.ts#L344) |
+| `GET` | `/api/_logs` | Recent structured logs (level, q, limit) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:361](../../Backend/routes/system.routes.ts#L361) |
+| `GET` | `/api/_events` | Live event stream (Server-Sent Events) | session | — | 401 403 429 | [system.routes.ts:379](../../Backend/routes/system.routes.ts#L379) |
+| `GET` | `/console` | Backend console (HTML) | public | — | 429 | [system.routes.ts:471](../../Backend/routes/system.routes.ts#L471) |
+| `GET` | `/backend.html` | Backend console (HTML, alias) | public | — | 429 | [system.routes.ts:477](../../Backend/routes/system.routes.ts#L477) |
+| `GET` | `/fonts/:file` | Console webfonts (self-hosted) | public | — | 429 | [system.routes.ts:505](../../Backend/routes/system.routes.ts#L505) |
+| `GET` | `/` | Redirect to the console | public | — | 429 | [system.routes.ts:511](../../Backend/routes/system.routes.ts#L511) |
 
 ## query
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/_query/collections` | Queryable collections and their fields | session | — | 401 403 429 | [system.routes.ts:411](../../Backend/routes/system.routes.ts#L411) |
-| `POST` | `/api/_query` | Run a safe JSON query against an allow-listed collection | session | — | 401 422 | [system.routes.ts:425](../../Backend/routes/system.routes.ts#L425) |
+| `GET` | `/api/_query/collections` | Queryable collections and their fields | session | — | 401 403 429 | [system.routes.ts:418](../../Backend/routes/system.routes.ts#L418) |
+| `POST` | `/api/_query` | Run a safe JSON query against an allow-listed collection | session | — | 401 422 | [system.routes.ts:432](../../Backend/routes/system.routes.ts#L432) |
 
 ## auth
 

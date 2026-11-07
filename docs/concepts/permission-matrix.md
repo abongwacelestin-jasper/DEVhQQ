@@ -172,7 +172,7 @@ changes what is returned rather than refusing the request.
 | Administration | `manage` | [Backend/routes/offboarding.routes.ts:57](../../Backend/routes/offboarding.routes.ts#L57) |
 | Administration | `view` | [Backend/routes/offboarding.routes.ts:141](../../Backend/routes/offboarding.routes.ts#L141) |
 | Administration | `view` | [Backend/routes/offboarding.routes.ts:161](../../Backend/routes/offboarding.routes.ts#L161) |
-| Administration | `view` | [Backend/routes/system.routes.ts:147](../../Backend/routes/system.routes.ts#L147) |
+| Administration | `view` | [Backend/routes/system.routes.ts:148](../../Backend/routes/system.routes.ts#L148) |
 | Project | `manage` | [Backend/routes/tasks.routes.ts:257](../../Backend/routes/tasks.routes.ts#L257) |
 | Administration | `admin` | [Backend/routes/tokens.routes.ts:110](../../Backend/routes/tokens.routes.ts#L110) |
 | Organization | `admin` | [Backend/routes/workspaces.routes.ts:66](../../Backend/routes/workspaces.routes.ts#L66) |

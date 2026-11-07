@@ -22,7 +22,7 @@ commit. "smoke:N" means the check whose `expect(...)` call is on line N of
 | C-13 | **Origin guard.** Every non-GET/HEAD/OPTIONS from a non-allow-listed Origin (including `null`) is blocked; `Sec-Fetch-Site: cross-site/same-site` blocked even without Origin; cross-site no-cors loads of the API blocked; preflight from unknown origins refused | `security/headers.ts:159`, `:185`, `:190`, `:194`; JSON-only bodies `lib/http.ts:230` | smoke:364, smoke:376 |
 | C-14 | Credential-stuffing resistance: equal timing for unknown users, lock after 5 failures, risk gate | `routes/auth.routes.ts:431`, `:445`, `:248` | existing smoke "same error for wrong password and unknown user" |
 | C-15 | **Rate limiting.** Per IP (`apiLimiter`); auth routes per IP **and** per account email (`authLimiter`); per member on second-factor checks (`accountLimiter`, `chargeAccount` for passkeys) | `security/rateLimit.ts:173`, `:179`, `:189`, `:194`; limits `config/env.ts:192` | Exercised on every smoke auth call; values shown at `GET /api/security/posture` |
-| C-16 | Pluggable rate-limit store (memory now; shared store later) | `security/rateLimit.ts:53` (`RateLimitStore`), `:87` (`MemoryRateLimitStore`), `:128` (`setRateLimitStore`) | n/a (interface); see "Rate limiting" below |
+| C-16 | **Shared rate-limit store across replicas.** Memory store without `REDIS_URL`; with it, `RedisRateLimitStore` runs the same token-bucket math as one atomic Lua script (Redis `TIME`, per-key expiry). Redis down: `api` fails open to a local bucket, `auth`/`acct` fail closed (`503 rate_limit_unavailable`, `Retry-After`) | `security/rateLimit.ts` (`RateLimitStore`, `MemoryRateLimitStore`, `setRateLimitStore`), `security/rateLimitRedis.ts` (`TOKEN_BUCKET_LUA`, `RedisRateLimitStore`), installed by `lib/redisBoot.ts` | `test/redis/rate-limit.test.ts`, `test/redis/two-instances.test.ts`, `test/unit/redis.test.ts`; `security-tests/checks/ratelimit-two-instances.ts` |
 | C-17 | Client IP from XFF only behind a trusted proxy | `lib/http.ts` (`clientIp`) | S1 gate runs with `TRUST_PROXY=1` |
 | C-18 | Every state change audited; hash-chained, verifiable | `audit/auditLog.ts:204` (`append`), `audit/chain.ts:61` (`digest`); SEC audit actions: `auth.totp_enroll_started/enrolled/replaced/enroll_failed`, `auth.step_up(_failed)`, `auth.passkey_ok/failed/registered/removed/suspended`, `token.created/revoked`, `security.totp_secrets_sealed` | the existing "audit chain intact" check, which runs after the SEC block (smoke:1727) |
 | C-19 | Resource exhaustion limits: body cap, header and request timeouts, capped WebAuthn challenge map | `lib/http.ts:224`, `server.ts:84`, `auth/webauthn.ts:67` | — |
@@ -41,12 +41,19 @@ export interface RateLimitStore {
   take(key: string, opts: LimitOptions): TakeResult | Promise<TakeResult>; // must be atomic per key
   snapshot(limit: number): BucketView[];
 }
-setRateLimitStore(new RedisRateLimitStore(...)); // at boot, before listen
+setRateLimitStore(new RedisRateLimitStore(...)); // lib/redisBoot.ts, at boot, before listen
 ```
 
-- Use `refillAndTake()` (exported) so a remote store computes buckets the
-  same way as the memory store. For Redis, run it as a Lua `EVAL` on a hash.
-  For Postgres, use `SELECT … FOR UPDATE` on a `(key)` row.
+- Without `REDIS_URL` the store is `MemoryRateLimitStore` (per process). With
+  it, `lib/redisBoot.ts` installs `RedisRateLimitStore`
+  (`security/rateLimitRedis.ts`): `refillAndTake()` ported to one Lua script
+  run with `EVALSHA` (falls back to `EVAL` after a script flush) on a hash
+  `<prefix>rl:<key>`. Read, refill, decrement and write happen in one atomic
+  step, so concurrent requests on different replicas never read the same
+  bucket state. Time comes from Redis `TIME`, so clock skew between replicas
+  cannot mint tokens. Each key expires once it would have refilled completely,
+  plus 60 s; at that point it equals a new bucket, so expiry never changes a
+  decision.
 - Bucket keys look like `auth:ip:<ip>`, `auth:acct:<sha256(email)[0..16]>`,
   `acct:member:<id>` and `api:sess:<session|pat:id>`. Emails are never stored
   in plain text.
@@ -58,8 +65,24 @@ setRateLimitStore(new RedisRateLimitStore(...)); // at boot, before listen
 | `acct` (per member, second factor) | 30 burst, 1/s | 5 burst, 1 per 30 s |
 
 With more than one backend replica, per-process memory buckets multiply the
-effective limit by the number of replicas. Install a shared store before you
-scale out.
+effective limit by the number of replicas. That is why production with
+`EXPECT_REPLICAS` above 1 refuses to boot without `REDIS_URL`.
+
+### When Redis is down
+
+A take counts as failed when the connection is down (the offline queue is
+off, so this is immediate) or Redis is slower than `REDIS_COMMAND_TIMEOUT_MS`
+(500 ms).
+
+| Limiter | Behaviour | Why |
+|---|---|---|
+| `api` | **Fails open to a local bucket** with the same numbers, per replica | It damps abuse and scraping; it is not an authentication control. Failing closed would make Redis a single point of failure for the whole API. The local bucket still limits each client, at worst N× the budget across N replicas, for the length of the outage. That is the pre-Redis behaviour. |
+| `auth`, `acct` | **Fails closed**: `503 rate_limit_unavailable`, `Retry-After: 5` | These budgets bound password spraying and 6-digit TOTP guessing. An outage must not multiply them by the replica count, and an attacker who can slow Redis down must not gain extra guesses. Only sign-in, recovery and second-factor routes are refused; signed-in sessions keep working. |
+
+The first failure logs `ratelimit.redis_unavailable` (error) and recovery logs
+`ratelimit.redis_recovered`. The client reconnects on its own with capped,
+jittered backoff (50 ms up to 5 s). `GET /api/ready` reports `redis`; with
+`EXPECT_REPLICAS` above 1, a Redis outage also makes readiness fail.
 
 ## Key management
 

@@ -15,6 +15,7 @@ record that supersedes the old one.
 | [0006](0006-cookie-only-browser-sessions.md) | Browser sessions travel only in a `__Host-` cookie | Accepted, implemented |
 | [0007](0007-two-person-deploy-rule.md) | Two-person rule for production deploys and JIT access | Accepted, implemented |
 | [0008](0008-hash-chained-audit-log.md) | Hash-chained, append-only audit log | Accepted, implemented |
+| [0009](0009-redis-for-shared-runtime-state.md) | Redis for shared runtime state (rate limits, events, job leases) | Accepted, implemented |
 
 Template for a new record:
 

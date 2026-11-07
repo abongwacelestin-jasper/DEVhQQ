@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Redis for shared runtime state** ([ADR 0009](docs/architecture/adr/0009-redis-for-shared-runtime-state.md)).
+  With `REDIS_URL` set, every replica draws from the same rate-limit buckets
+  (an atomic Lua token bucket), `/api/_events` and `/api/stream` deliver
+  events published on any replica with the per-subscriber filtering
+  unchanged and no double delivery, and periodic jobs (backup, digest, each
+  monitor check) take a `SET NX PX` lease, so each runs once across
+  processes. When Redis is down, the API limiter falls back to a local
+  bucket and the auth and second-factor limiters answer
+  `503 rate_limit_unavailable`. `GET /api/ready` reports `redis`.
+  `EXPECT_REPLICAS` above 1 makes Redis mandatory. Without `REDIS_URL`,
+  behaviour is unchanged. New `auth/sessionStore.ts` interface with memory
+  and Redis implementations, for the data layer to adopt. New dependency:
+  `@redis/client` 5.12.1. Tests: `npm run test:redis` (real Redis in Docker,
+  two API processes) and the security check "Rate limits shared across two
+  replicas". The API's daily backup now runs once per UTC day instead of 24 h
+  after each boot.
+
 - **Incident recovery steps:** the incident page's Recovery panel lists
   mitigation steps and follow-ups recorded by the API
   (`GET|POST /api/incidents/:id/actions`,
