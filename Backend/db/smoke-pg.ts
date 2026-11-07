@@ -83,7 +83,7 @@ async function call(method: string, path: string, body?: unknown, token?: string
     method,
     headers: {
       'Content-Type': 'application/json',
-      'X-DevHQ-Client': 'console',
+      'X-DevHQ-Client': 'cli', // the only client that gets a body token
       'User-Agent': 'devhq-smoke-pg',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -256,6 +256,23 @@ if (phase === 'verify') {
       () => 'rejected',
     );
   await expect('audit_entries rejects UPDATE (append-only)', tamper === 'rejected');
+
+  // This boot continued the previous boot's audit chain (ADR 0008 addendum).
+  const { audit } = await import('../audit/auditLog.ts');
+  const { verifySource } = await import('../audit/chain.ts');
+  const { pgAuditSource } = await import('./auditSink.ts');
+  const chain = audit.status();
+  await expect(
+    'audit chain resumed from audit_entries after the restart',
+    chain.source === 'postgres' && chain.status === 'resumed' && (chain.storedEntries ?? 0) > 0,
+    chain,
+  );
+  const stored = await verifySource(pgAuditSource(raw));
+  await expect(
+    'audit_entries verifies end to end across both boots',
+    stored.ok && stored.resumedBoots >= 1,
+    stored,
+  );
 
   await raw.end();
   await finish(0);

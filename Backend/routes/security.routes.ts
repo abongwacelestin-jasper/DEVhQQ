@@ -37,10 +37,10 @@ export function registerSecurityRoutes(r: Router) {
   r.add(
     'GET',
     '/api/audit/verify',
-    { summary: 'Recompute and verify the audit hash chain', tag: 'security' },
+    { summary: 'Recompute and verify the audit hash chain across boots', tag: 'security' },
     authenticate,
     requireArea('Administration', 'view'),
-    () => audit.verify(),
+    () => audit.verifyAll(),
   );
 
   r.add(

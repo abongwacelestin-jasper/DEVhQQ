@@ -60,8 +60,12 @@ See [infra/minio/README.md](../../infra/minio/README.md).
   Administration ≥ `view` (Owner, Operations), and whoever has it sees every
   product. See
   [Roles and permissions](../concepts/roles-and-permissions.md#routes-open-to-every-signed-in-member).
-- **Each boot starts a new audit chain** (`seq` 1). The chains are linked
-  across restarts only by their archived copies, not cryptographically.
+- **The audit chain proves integrity, not the newest tail.** Each boot
+  continues the stored chain, so restarts are covered by the hashes. Entries
+  removed from the very end while no process is running are not detectable
+  from that store alone. Check against the archive's latest `headHash`
+  (`verify-audit.ts --head`), as described in
+  [Audit verification](audit-verification.md#what-the-hashes-cannot-prove).
 - **JIT elevation does not unlock any route yet** (`requireElevation` is
   unused).
 - **Deployments are recorded and approved, not executed.** Rollout status is

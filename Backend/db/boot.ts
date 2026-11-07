@@ -11,13 +11,17 @@
  *      the seed is flushed before the lock is released, so two replicas booting
  *      against an empty database cannot both seed.
  * The audit chain is mirrored into the append-only `audit_entries` table
- * (db/auditSink.ts).
+ * (db/auditSink.ts). Before anything else is audited, the boot resumes the
+ * stored chain (ADR 0008 addendum): from `audit_entries` with DATABASE_URL,
+ * else from the JSONL file (AUDIT_LOG_FILE).
  */
 
 import type { Pool } from 'pg';
+import { audit, type Continuity } from '../audit/auditLog.ts';
+import { fileSource } from '../audit/fileSource.ts';
 import { logger } from '../lib/logger.ts';
 import { flushPending, hydrateAll, setDriver } from '../store/collection.ts';
-import { startAuditSink } from './auditSink.ts';
+import { pgAuditSource, startAuditSink } from './auditSink.ts';
 import { PgCollectionDriver } from './driver.ts';
 import { migrate } from './migrate.ts';
 import { createPool, redactUrl } from './pool.ts';
@@ -29,6 +33,13 @@ export interface PersistenceReport {
   migrationsApplied?: string[];
   hydrated?: Record<string, number>;
   seeded: boolean;
+  audit: Continuity;
+}
+
+function logContinuity(c: Continuity) {
+  if (c.status === 'discontinuity') logger.error('audit.chain_discontinuity', { ...c });
+  else
+    logger.info('audit.chain', { source: c.source, status: c.status, resumedFrom: c.resumedFrom });
 }
 
 let pool: Pool | null = null;
@@ -38,8 +49,10 @@ let auditSink: ReturnType<typeof startAuditSink> | null = null;
 export async function initPersistence(seed: () => Promise<void>): Promise<PersistenceReport> {
   const url = process.env.DATABASE_URL;
   if (!url) {
+    const chain = await audit.resume(fileSource(audit.file, () => audit.fileWrittenHead()));
+    logContinuity(chain);
     await seed();
-    return { mode: 'memory', seeded: true };
+    return { mode: 'memory', seeded: true, audit: chain };
   }
   if (pool) throw new Error('Persistence already initialised');
 
@@ -56,6 +69,8 @@ export async function initPersistence(seed: () => Promise<void>): Promise<Persis
   driver = new PgCollectionDriver(pool);
   setDriver(driver);
   auditSink = startAuditSink(pool);
+  const chain = await audit.resume(pgAuditSource(pool, auditSink));
+  logContinuity(chain);
 
   const allowSeed = process.env.NODE_ENV !== 'production';
   let seeded = false;
@@ -91,7 +106,7 @@ export async function initPersistence(seed: () => Promise<void>): Promise<Persis
     rows: Object.values(hydrated).reduce((a, b) => a + b, 0),
     seeded,
   });
-  return { mode: 'postgres', migrationsApplied, hydrated, seeded };
+  return { mode: 'postgres', migrationsApplied, hydrated, seeded, audit: chain };
 }
 
 /** Lightweight connectivity probe for readiness checks. */
