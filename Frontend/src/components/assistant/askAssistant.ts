@@ -1,4 +1,4 @@
-import { api, TOKEN_CLIENT_HEADER } from '../../api/client';
+import { api } from '../../api/client';
 import type { AssistantAnswer } from '../../data/assistant';
 
 /**
@@ -68,11 +68,11 @@ async function tryStream(
   try {
     res = await fetch(`${base}/api/assistant/ask/stream`, {
       method: 'POST',
-      credentials: 'include',
+      // Cookie-only session (F-SEC): same-origin credentials, no client/token headers.
+      credentials: 'same-origin',
       headers: {
         accept: 'text/event-stream',
         'content-type': 'application/json',
-        [TOKEN_CLIENT_HEADER]: 'console',
       },
       body: JSON.stringify({ question, scope }),
       signal,
