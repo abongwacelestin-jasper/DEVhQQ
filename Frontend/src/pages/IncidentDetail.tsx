@@ -1,16 +1,14 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowUpCircleIcon,
   BellRingIcon,
   CircleCheckIcon,
   EyeIcon,
   Link2Icon,
-  MegaphoneIcon,
   MessageSquareIcon,
+  RotateCcwIcon,
   SendIcon,
-  ShieldCheckIcon,
   SirenIcon,
   TriangleAlertIcon,
   UndoIcon,
@@ -22,17 +20,33 @@ import { ProductMark } from '../components/ui/ProductMark';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
 import { NotFound } from '../components/ui/NotFound';
-import { RelationshipGraph } from '../components/operations/RelationshipGraph';
 import { capitalize, incidentStatusTone, severityTone } from '../components/operations/IncidentRow';
 import { FirefighterIllustration } from '../components/illustrations/FirefighterIllustration';
 import { useIncidents } from '../contexts/IncidentContext';
 import { useReauth } from '../contexts/ReauthContext';
 import { useAuth } from '../contexts/AuthContext';
-import { deployments, incidentRelations, monitors } from '../data/operations';
-import { onCall } from '../data/incidentHistory';
+import { GuardedButton, InlineError, LoadingRows } from '../components/engineering/states';
+import { useMonitors, useServerLevel } from '../components/engineering/data/hooks';
+import { useDeployments, type DeploymentRow } from '../hooks/useDeployments';
 import { currentUserId } from '../data/team';
 import { firstName, memberById, productById } from '../utils/status';
 import type { IncidentEvent } from '../types/operations';
+
+const RelationshipGraph = lazy(() => import('../components/operations/RelationshipGraph'));
+
+/** Deployments of the same product in the 24h before the incident started: correlation, not cause. */
+const WINDOW_MS = 24 * 3_600_000;
+function correlatedDeploys(rows: DeploymentRow[], product: string, startedAt?: string) {
+  if (!startedAt) return [];
+  const start = new Date(startedAt).getTime();
+  return rows
+    .filter((d) => {
+      const t = new Date(d.createdAt).getTime();
+      return d.product === product && t <= start && start - t <= WINDOW_MS;
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 3);
+}
 
 const eventIcon: Record<IncidentEvent['kind'], React.ComponentType<{ className?: string }>> = {
   alert: BellRingIcon,
@@ -44,22 +58,38 @@ const eventIcon: Record<IncidentEvent['kind'], React.ComponentType<{ className?:
 
 export function IncidentDetail() {
   const { incidentId } = useParams();
-  const { incidents, setStatus, addEvent } = useIncidents();
+  const { incidents, setStatus, addEvent, loading, writeError, times } = useIncidents();
   const { requestReauth } = useReauth();
   const { canDo, canSeeProduct } = useAuth();
+  const { atLeast } = useServerLevel();
+  const { deployments, rollback, actionError } = useDeployments();
+  const monitors = useMonitors();
   const [note, setNote] = useState('');
   const incident = incidents.find((i) => i.id === incidentId);
+  const related = useMemo(
+    () =>
+      incident
+        ? correlatedDeploys(deployments, incident.product, times[incident.id]?.startedAt)
+        : [],
+    [incident, deployments, times],
+  );
+  if (!incident && loading) return <LoadingRows rows={5} label="Loading incident" />;
   if (!incident || !canSeeProduct(incident.product))
     return <NotFound what="Incident" backTo="/incidents" backLabel="Back to incidents" />;
 
   const resolved = incident.status === 'resolved';
-  const deploy = deployments.find((d) => d.sha === incident.correlatedDeploy);
-  const monitor = monitors.find(
-    (m) =>
-      m.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === incident.service ||
-      m.product === incident.product,
-  );
+  const deploy = related.find((d) => d.env === 'production') ?? related[0];
+  // A monitor watching this service: same product, service name in its name or URL.
+  const monitor =
+    monitors.status === 'ready'
+      ? monitors.items.find(
+          (m) =>
+            m.product === incident.product &&
+            `${m.name} ${m.url}`.toLowerCase().includes(incident.service.toLowerCase()),
+        )
+      : undefined;
   const isOps = canDo('incident:declare');
+  const mayRollback = atLeast('Deployment', 'manage');
 
   const postNote = (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,20 +137,6 @@ export function IncidentDetail() {
         actions={
           isOps && !resolved ? (
             <>
-              <Button
-                size="sm"
-                icon={<MegaphoneIcon className="h-3.5 w-3.5" />}
-                onClick={() => {
-                  addEvent(incident.id, {
-                    title: 'Status update posted',
-                    detail: 'Shared to #incidents and the status page',
-                    kind: 'action',
-                  });
-                  toast.success('Status update posted');
-                }}
-              >
-                Post update
-              </Button>
               {incident.status === 'investigating' && (
                 <Button
                   size="sm"
@@ -134,24 +150,10 @@ export function IncidentDetail() {
               )}
               <Button
                 size="sm"
-                icon={<ArrowUpCircleIcon className="h-3.5 w-3.5" />}
-                onClick={() => {
-                  addEvent(incident.id, {
-                    title: 'Escalated',
-                    detail: `Paged ${memberById(onCall[1].member).name} (secondary)`,
-                    kind: 'action',
-                  });
-                  toast('Secondary on-call paged');
-                }}
-              >
-                Escalate
-              </Button>
-              <Button
-                size="sm"
                 variant="primary"
                 icon={<CircleCheckIcon className="h-3.5 w-3.5" />}
                 onClick={() => {
-                  setStatus(incident.id, 'resolved', 'Resolved · postmortem doc created');
+                  setStatus(incident.id, 'resolved', `Resolved by ${firstName(currentUserId)}`);
                   toast.success(`${incident.id} resolved`);
                 }}
               >
@@ -164,10 +166,15 @@ export function IncidentDetail() {
           { label: 'Owner', value: firstName(incident.owner), to: `/team/${incident.owner}` },
           { label: 'Started', value: incident.started },
           { label: 'Duration', value: incident.duration, tone: resolved ? undefined : 'bad' },
-          { label: 'Uptime 30d', value: monitor ? `${monitor.uptime}%` : '—' },
+          {
+            label: 'Monitor uptime',
+            value: monitor?.uptimePct !== undefined ? `${monitor.uptimePct.toFixed(2)}%` : '—',
+          },
           { label: 'Events', value: incident.events.length },
         ]}
       />
+
+      {!!writeError && <InlineError error={writeError} />}
 
       <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Panel
@@ -175,21 +182,29 @@ export function IncidentDetail() {
           meta={<span className="hidden sm:inline">Product · service · deploy · code · owner</span>}
         >
           <div className="p-2.5">
-            <RelationshipGraph incident={incident} related={incidentRelations[incident.id] ?? []} />
+            <Suspense fallback={<LoadingRows rows={3} label="Loading graph" />}>
+              <RelationshipGraph
+                incident={incident}
+                related={related.map((d) => ({
+                  kind: 'Deployment',
+                  label: `${d.sha} · ${d.env}`,
+                }))}
+              />
+            </Suspense>
           </div>
-          {incident.correlatedDeploy && (
+          {deploy && (
             <div className="mx-3 mb-3 flex items-start gap-2 rounded-md bg-warn-soft px-3 py-2 text-[12px] text-warn">
               <TriangleAlertIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
                 Deploy{' '}
                 <Link
-                  to={deploy ? `/deployments/${deploy.id}` : '/deployments'}
+                  to={`/deployments/${deploy.id}`}
                   className="font-mono font-semibold underline"
                 >
-                  {incident.correlatedDeploy}
+                  {deploy.sha}
                 </Link>{' '}
-                reached production before the alert. Correlation only — no evidence yet that it
-                caused this.
+                reached {deploy.env} within 24h before this incident started. Correlation only, no
+                evidence yet that it caused this.
               </span>
             </div>
           )}
@@ -233,22 +248,25 @@ export function IncidentDetail() {
                     {deploy.sha} · {deploy.env}
                   </Link>
                 ) : (
-                  <span className="text-muted">None linked</span>
+                  <span className="text-muted">None in the 24h before</span>
                 ),
               },
               {
                 k: 'Monitor',
                 v: monitor ? (
-                  <span className="text-ink">
-                    {monitor.name} · {monitor.responseMs}ms
-                  </span>
+                  <Link to="/monitors" className="text-ink hover:underline">
+                    {monitor.name}
+                    {monitor.lastLatencyMs !== undefined ? ` · ${monitor.lastLatencyMs}ms` : ''}
+                  </Link>
                 ) : (
-                  <span className="text-muted">—</span>
+                  <span className="text-muted">
+                    {monitors.status === 'ready' ? 'None for this service' : 'Unavailable'}
+                  </span>
                 ),
               },
               {
                 k: 'On call',
-                v: <span className="text-ink">{memberById(onCall[0].member).name}</span>,
+                v: <span className="text-muted">Schedule not connected</span>,
               },
             ].map((r) => (
               <div
@@ -318,49 +336,38 @@ export function IncidentDetail() {
           )}
         </Panel>
 
-        <Panel title="Next steps">
-          {incident.nextSteps.length === 0 || resolved ? (
-            <p className="px-3.5 py-3 text-[12.5px] text-muted">
-              Resolved. Postmortem linked in project documents.
-            </p>
-          ) : (
-            <ol className="divide-y divide-line">
-              {incident.nextSteps.map((s, i) => (
-                <li key={s} className="flex items-start gap-2 px-3.5 py-2 text-[12.5px] text-ink">
-                  <span className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sunken font-mono text-[10px] text-ink">
-                    {i + 1}
-                  </span>
-                  {s}
-                </li>
-              ))}
-            </ol>
-          )}
-          {incident.correlatedDeploy && !resolved && canDo('deploy:approve') && (
+        <Panel title="Recovery">
+          <p className="px-3.5 py-2.5 text-[12px] text-muted">
+            Next steps aren’t recorded by the API yet. Use timeline notes to track actions.
+          </p>
+          {deploy && !resolved && deploy.status !== 'rolled-back' && (
             <div className="border-t border-line px-3.5 py-2.5">
-              <Button
+              <GuardedButton
                 variant="danger"
                 className="w-full"
-                icon={<ShieldCheckIcon className="h-3.5 w-3.5" />}
+                allowed={mayRollback}
+                reason="Needs Deployment: manage"
+                icon={<RotateCcwIcon className="h-3.5 w-3.5" />}
                 onClick={() =>
                   requestReauth({
-                    title: 'Approve production rollback',
-                    description: `Redeploys the previous release of ${productById(incident.product).name} to production.`,
-                    actionLabel: 'Verify & approve',
-                    successMessage: 'Rollback approved',
+                    title: `Roll back ${deploy.sha}`,
+                    description: `Marks ${deploy.version} on ${productById(incident.product).name} ${deploy.env} as rolled back.`,
+                    actionLabel: 'Verify & roll back',
                     onConfirm: () =>
-                      setStatus(
-                        incident.id,
-                        'monitoring',
-                        'Rollback approved with MFA — watching metrics',
-                      ),
+                      void rollback(deploy.id).then((ok) => {
+                        if (ok)
+                          addEvent(incident.id, {
+                            title: 'Rollback',
+                            detail: `${deploy.sha} (${deploy.env}) rolled back`,
+                            kind: 'action',
+                          });
+                      }),
                   })
                 }
               >
-                Approve rollback
-              </Button>
-              <p className="mt-1 text-center text-[11px] text-muted">
-                Requires deploy approval rights + MFA
-              </p>
+                Roll back {deploy.sha}
+              </GuardedButton>
+              {actionError?.id === deploy.id && <InlineError error={actionError.error} />}
             </div>
           )}
         </Panel>

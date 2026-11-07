@@ -22,8 +22,18 @@ const dot: Record<Tone, string> = {
 };
 
 export function EnvironmentPipeline({ lanes }: { lanes: EnvironmentLane[] }) {
+  if (lanes.length === 0) {
+    return (
+      <p className="rounded-lg border border-dashed border-line px-3 py-3 text-[12px] text-muted">
+        No deployments recorded for this product yet.
+      </p>
+    );
+  }
   return (
-    <ol className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-0">
+    <ol
+      aria-label="Environments"
+      className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-0"
+    >
       {lanes.map((l, i) => {
         const meta = laneMeta[l.status];
         return (
@@ -33,7 +43,11 @@ export function EnvironmentPipeline({ lanes }: { lanes: EnvironmentLane[] }) {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold capitalize text-ink">{l.env}</span>
-                <span className={`h-2 w-2 rounded-full ${dot[meta.tone]}`} title={meta.label} />
+                <span
+                  className={`h-2 w-2 rounded-full ${dot[meta.tone]}`}
+                  title={meta.label}
+                  aria-hidden
+                />
               </div>
               <p className="mt-1.5 truncate font-mono text-xs text-ink">
                 {l.sha} <span className="text-subtle">· {l.version}</span>
@@ -41,7 +55,7 @@ export function EnvironmentPipeline({ lanes }: { lanes: EnvironmentLane[] }) {
               <p
                 className={`mt-0.5 truncate text-[11px] ${meta.tone === 'ok' ? 'text-muted' : meta.tone === 'bad' ? 'text-bad' : 'text-warn'}`}
               >
-                {meta.label} · {l.ago}
+                {meta.label} · {l.ago === 'now' ? 'just now' : `${l.ago} ago`}
               </p>
               <p className="mt-1.5 flex items-center gap-1 truncate text-[11px] text-subtle">
                 <GlobeIcon className="h-3 w-3 shrink-0" />

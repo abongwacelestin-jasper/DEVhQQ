@@ -1,169 +1,291 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { CircleCheckIcon, KeyRoundIcon, PlugIcon, RotateCwIcon, UnplugIcon } from 'lucide-react';
+import { CircleCheckIcon, PlugIcon, UnplugIcon } from 'lucide-react';
 import { DetailHeader } from '../components/ui/DetailHeader';
 import { Panel } from '../components/ui/Panel';
 import { MetaList } from '../components/ui/MetaList';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { Segmented } from '../components/ui/Segmented';
-import { ProductMark } from '../components/ui/ProductMark';
-import { Button } from '../components/ui/Button';
 import { NotFound } from '../components/ui/NotFound';
+import { Button } from '../components/ui/Button';
 import { IntegrationsIllustration } from '../components/illustrations/IntegrationsIllustration';
 import { IntegrationPermissions } from '../components/integrations/IntegrationPermissions';
 import { IntegrationWebhooks } from '../components/integrations/IntegrationWebhooks';
-import { useReauth } from '../contexts/ReauthContext';
-import { integrations } from '../data/team';
-import { integrationConfigs } from '../data/security';
-import { products } from '../data/portfolio';
+import {
+  BUILT_IN_KINDS,
+  integrationKinds,
+  kindMeta,
+  statusMeta,
+  validateHttpsUrl,
+} from '../components/integrations/catalogue';
+import { Field, inputClass } from '../components/ui/Modal';
+import {
+  DataState,
+  GuardedButton,
+  InlineError,
+  SampleDataBadge,
+} from '../components/engineering/states';
+import {
+  useIntegrations,
+  useServerLevel,
+  type ConnectInput,
+} from '../components/engineering/data/hooks';
+import type { ApiConnectResponse, ApiIntegration } from '../components/engineering/data/types';
 import { memberById } from '../utils/status';
-import type { ProductId, Tone } from '../types/portfolio';
-import type { IntegrationConfig } from '../types/security';
+import { formatDateTime } from '../utils/date';
 
-type Tab = 'config' | 'permissions' | 'webhooks' | 'danger';
+type Tab = 'overview' | 'permissions' | 'webhooks' | 'danger';
 
-const statusMeta: Record<string, { label: string; tone: Tone }> = {
-  connected: { label: 'Connected', tone: 'ok' },
-  degraded: { label: 'Degraded', tone: 'warn' },
-  'not-connected': { label: 'Not connected', tone: 'neutral' },
-  planned: { label: 'Planned', tone: 'info' },
-};
-
-function fallbackConfig(id: string, name: string): IntegrationConfig {
-  return {
-    id,
-    account: `${name.toLowerCase().replace(/\s/g, '-')}.techorg`,
-    installedBy: 'm1',
-    installed: 'May 2',
-    scopes: [
-      {
-        key: 'read',
-        label: 'Read events',
-        description: 'Receive status events from the provider',
-        granted: true,
-        required: true,
-      },
-    ],
-    settings: [
-      {
-        key: 'notify',
-        label: 'Notify owners on failures',
-        description: 'Alerts go to Owners and Operations',
-        enabled: true,
-      },
-    ],
-    mappings: [],
-    deliveries: [],
-  };
-}
+const MANAGE_REASON = 'Needs Administration: manage — ask an Owner';
 
 export function IntegrationDetail() {
-  const { integrationId } = useParams();
-  const navigate = useNavigate();
-  const { requestReauth } = useReauth();
-  const integration = integrations.find((i) => i.id === integrationId);
-  const [tab, setTab] = useState<Tab>('config');
-  const config = integration
-    ? (integrationConfigs.find((c) => c.id === integration.id) ??
-      fallbackConfig(integration.id, integration.name))
-    : undefined;
-  const [settings, setSettings] = useState(config?.settings ?? []);
-  const [mappings, setMappings] = useState(config?.mappings ?? []);
-  const [confirmName, setConfirmName] = useState('');
-  const [connecting, setConnecting] = useState(false);
+  const { integrationId = '' } = useParams();
+  const list = useIntegrations();
+  const { atLeast } = useServerLevel();
+  const canManage = atLeast('Administration', 'manage');
 
-  if (!integration || !config)
-    return <NotFound what="Integration" backTo="/integrations" backLabel="Back to integrations" />;
-  const meta = statusMeta[integration.status];
-
-  if (integration.status === 'not-connected' || integration.status === 'planned') {
+  if (list.status !== 'ready')
     return (
       <div className="space-y-4">
         <DetailHeader
-          crumbs={[{ label: 'Integrations', to: '/integrations' }, { label: integration.name }]}
-          title={integration.name}
-          eyebrow={integration.category}
-          badges={<StatusBadge {...meta} dot />}
+          crumbs={[{ label: 'Integrations', to: '/integrations' }, { label: integrationId }]}
+          title={kindMeta(integrationId).name}
         />
-        <div className="grid gap-4 rounded-lg border border-line p-4 md:grid-cols-[1fr_260px] md:items-center">
-          <div>
-            <h2 className="text-[14px] font-semibold text-ink">
-              {integration.status === 'planned'
-                ? 'Coming in a later phase'
-                : `Connect ${integration.name}`}
-            </h2>
-            <p className="mt-1 text-[12.5px] text-muted">{integration.authority}</p>
-            {integration.status === 'not-connected' && (
-              <>
-                <ol className="mt-3 space-y-1.5 text-[12.5px] text-ink">
-                  {[
-                    'Authorize DevHQ on the provider (read-only by default)',
-                    'Choose which projects to map to DevHQ products',
-                    'Verify the signed webhook with a test event',
-                  ].map((s, i) => (
-                    <li key={s} className="flex gap-2">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sunken font-mono text-[10.5px] text-muted">
-                        {i + 1}
-                      </span>
-                      {s}
-                    </li>
-                  ))}
-                </ol>
-                <Button
-                  variant="primary"
-                  className="mt-4"
-                  disabled={connecting}
-                  icon={<PlugIcon className="h-3.5 w-3.5" />}
-                  onClick={() =>
-                    requestReauth({
-                      title: `Connect ${integration.name}`,
-                      description: 'Adding an integration is an administrative action.',
-                      actionLabel: 'Verify & continue',
-                      onConfirm: () => {
-                        setConnecting(true);
-                        toast('Redirecting to provider…', {
-                          description: 'You’ll come back here after authorizing.',
-                        });
-                      },
-                    })
-                  }
-                >
-                  {connecting ? 'Waiting for provider…' : `Connect ${integration.name}`}
-                </Button>
-              </>
-            )}
-          </div>
-          <IntegrationsIllustration className="mx-auto h-28 w-auto" />
-        </div>
+        <DataState
+          status={list.status}
+          error={list.error}
+          what="Integrations"
+          onRetry={() => void list.reload()}
+        />
       </div>
     );
-  }
+
+  const row =
+    list.items.find((i) => i.id === integrationId) ??
+    list.items.find((i) => i.kind === integrationId && (i.builtIn || i.status === 'available'));
+  const builtIn = !!row?.builtIn || BUILT_IN_KINDS.has(row?.kind ?? integrationId);
+  if (row && (builtIn || (row.status !== 'available' && row.status !== 'disconnected')))
+    return (
+      <Connected
+        integration={row}
+        canManage={canManage}
+        builtIn={builtIn}
+        onDisconnect={() => list.disconnect(row.id)}
+      />
+    );
+
+  // No live connection: offer to connect a known kind (or one the API lists as available).
+  const kind = row?.kind ?? integrationKinds.find((k) => k.kind === integrationId)?.kind;
+  if (!kind)
+    return <NotFound what="Integration" backTo="/integrations" backLabel="Back to integrations" />;
+  return (
+    <ConnectScreen
+      kind={kind}
+      name={row?.name}
+      canManage={canManage}
+      onConnect={(k, input) => list.connect(k, input)}
+    />
+  );
+}
+
+function ConnectScreen({
+  kind,
+  name,
+  canManage,
+  onConnect,
+}: {
+  kind: string;
+  name?: string;
+  canManage: boolean;
+  onConnect: (kind: string, input: ConnectInput) => Promise<ApiConnectResponse | undefined>;
+}) {
+  const meta = kindMeta(kind, name);
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [label, setLabel] = useState('');
+  const [target, setTarget] = useState('');
+  const [secret, setSecret] = useState<{ value: string; id?: string } | null>(null);
+  const needsKey = kind === 'pagerduty';
+  const targetError = needsKey
+    ? /^[A-Za-z0-9]{32}$/.test(target)
+      ? null
+      : 'A PagerDuty routing key is 32 letters and digits.'
+    : validateHttpsUrl(target);
+
+  const connect = async () => {
+    if (targetError) {
+      setError(new Error(targetError));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const input: ConnectInput = needsKey ? { routingKey: target } : { url: target };
+      if (label.trim()) input.name = label.trim();
+      const res = await onConnect(kind, input);
+      if (res?.signingSecret) {
+        // Shown once: the server never returns it again.
+        setSecret({ value: res.signingSecret, id: res.id });
+        toast.success(`${meta.name} connected`);
+        return;
+      }
+      if (res?.redirectUrl) {
+        if (/^https:\/\//.test(res.redirectUrl)) {
+          window.location.assign(res.redirectUrl);
+          return;
+        }
+        throw new Error('The server returned an unsafe redirect URL; refusing to follow it.');
+      }
+      toast.success(`${meta.name} connected`);
+      if (res?.id && res.id !== kind) navigate(`/integrations/${encodeURIComponent(res.id)}`);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
       <DetailHeader
-        crumbs={[{ label: 'Integrations', to: '/integrations' }, { label: integration.name }]}
-        eyebrow={integration.category}
-        title={integration.name}
+        crumbs={[{ label: 'Integrations', to: '/integrations' }, { label: meta.name }]}
+        title={meta.name}
+        eyebrow={meta.category}
+        badges={<StatusBadge {...statusMeta['not-connected']} dot />}
+      />
+      <div className="grid gap-4 rounded-lg border border-line p-4 md:grid-cols-[1fr_260px] md:items-center">
+        <div>
+          <h2 className="text-[14px] font-semibold text-ink">Connect {meta.name}</h2>
+          {meta.description && <p className="mt-1 text-[12.5px] text-muted">{meta.description}</p>}
+          {meta.authority && <p className="mt-1 text-[12.5px] text-muted">{meta.authority}</p>}
+          {secret ? (
+            <div className="mt-4 space-y-2 rounded-md border border-warn/40 bg-warn-soft/50 p-3">
+              <p className="text-[12.5px] font-semibold text-ink">
+                Signing secret — copy it now, it won’t be shown again
+              </p>
+              <code className="block break-all rounded bg-white px-2 py-1 font-mono text-[12px]">
+                {secret.value}
+              </code>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => void navigator.clipboard?.writeText(secret.value)}>
+                  Copy
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() =>
+                    navigate(
+                      secret.id
+                        ? `/integrations/${encodeURIComponent(secret.id)}`
+                        : '/integrations',
+                    )
+                  }
+                >
+                  Done
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <form
+              className="mt-4 grid max-w-md gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void connect();
+              }}
+            >
+              <Field label="Name (optional)">
+                <input
+                  className={inputClass}
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder={meta.name}
+                  disabled={!canManage}
+                />
+              </Field>
+              <Field
+                label={
+                  needsKey ? 'Routing key' : kind === 'slack' ? 'Slack webhook URL' : 'Endpoint URL'
+                }
+                hint={needsKey ? 'From the PagerDuty Events API v2 integration' : 'https only'}
+              >
+                <input
+                  className={`${inputClass} font-mono`}
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value.trim())}
+                  required
+                  disabled={!canManage}
+                  aria-invalid={!!target && !!targetError}
+                  autoComplete="off"
+                />
+              </Field>
+              <div>
+                <GuardedButton
+                  type="submit"
+                  allowed={canManage}
+                  reason={MANAGE_REASON}
+                  variant="primary"
+                  disabled={busy || !target}
+                  icon={<PlugIcon className="h-3.5 w-3.5" />}
+                >
+                  {busy ? 'Connecting…' : `Connect ${meta.name}`}
+                </GuardedButton>
+              </div>
+            </form>
+          )}
+          <InlineError error={error} />
+        </div>
+        <IntegrationsIllustration className="mx-auto h-28 w-auto" />
+      </div>
+    </div>
+  );
+}
+
+function Connected({
+  integration: i,
+  canManage,
+  builtIn,
+  onDisconnect,
+}: {
+  integration: ApiIntegration;
+  canManage: boolean;
+  builtIn: boolean;
+  onDisconnect: () => Promise<void>;
+}) {
+  const navigate = useNavigate();
+  const meta = kindMeta(i.kind, i.name);
+  const [tab, setTab] = useState<Tab>('overview');
+  const [confirmName, setConfirmName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const name = i.name || meta.name;
+
+  const disconnect = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onDisconnect();
+      toast.success(`${name} disconnected`);
+      navigate('/integrations');
+    } catch (e) {
+      setError(e);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <DetailHeader
+        crumbs={[{ label: 'Integrations', to: '/integrations' }, { label: name }]}
+        eyebrow={meta.category}
+        title={name}
         badges={
           <>
-            <StatusBadge {...meta} dot />
-            <span className="font-mono text-[12px] text-muted">{config.account}</span>
-            <span className="text-[12px] text-subtle">· synced {integration.lastSync}</span>
+            <StatusBadge {...statusMeta[i.status]} dot />
+            <SampleDataBadge source={i.source} />
+            {i.account && <span className="font-mono text-[12px] text-muted">{i.account}</span>}
           </>
-        }
-        actions={
-          <Button
-            icon={<RotateCwIcon className="h-3.5 w-3.5" />}
-            onClick={() =>
-              toast.success('Sync started', {
-                description: 'Idempotent — re-running never duplicates records.',
-              })
-            }
-          >
-            Sync now
-          </Button>
         }
       />
 
@@ -171,121 +293,43 @@ export function IntegrationDetail() {
         label="Integration sections"
         value={tab}
         onChange={setTab}
-        options={[
-          { value: 'config', label: 'Configuration' },
-          {
-            value: 'permissions',
-            label: 'Permissions',
-            count: config.scopes.filter((s) => s.granted).length,
-          },
-          { value: 'webhooks', label: 'Webhooks' },
-          { value: 'danger', label: 'Danger zone' },
-        ]}
+        options={
+          builtIn
+            ? [{ value: 'overview', label: 'Overview' }]
+            : [
+                { value: 'overview', label: 'Overview' },
+                { value: 'permissions', label: 'Events', count: i.scopes?.length ?? 0 },
+                { value: 'webhooks', label: 'Webhooks' },
+                { value: 'danger', label: 'Danger zone' },
+              ]
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_272px]">
         <div className="min-w-0">
-          {tab === 'config' && (
-            <div className="space-y-4">
-              <Panel title="Behaviour">
-                <ul className="divide-y divide-line">
-                  {settings.map((s) => (
-                    <li key={s.key} className="flex items-center gap-3 px-3.5 py-2.5">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[12.5px] font-medium text-ink">{s.label}</p>
-                        <p className="text-[11.5px] text-muted">{s.description}</p>
-                      </div>
-                      <button
-                        role="switch"
-                        aria-checked={s.enabled}
-                        aria-label={s.label}
-                        onClick={() => {
-                          setSettings((l) =>
-                            l.map((x) => (x.key === s.key ? { ...x, enabled: !x.enabled } : x)),
-                          );
-                          toast.success('Setting saved');
-                        }}
-                        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-150 ${s.enabled ? 'bg-accent' : 'bg-line-strong'}`}
-                      >
-                        <span
-                          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150 ${s.enabled ? 'translate-x-[18px]' : 'translate-x-0.5'}`}
-                        />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </Panel>
-              {mappings.length > 0 && (
-                <Panel title="Product mapping" meta={<span>{mappings.length} linked</span>}>
-                  <ul className="divide-y divide-line">
-                    {mappings.map((m, i) => (
-                      <li key={m.external} className="flex items-center gap-2.5 px-3.5 py-2">
-                        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">
-                          {m.external}
-                        </span>
-                        <span className="text-[11px] text-subtle">→</span>
-                        <ProductMark product={m.product} size="sm" />
-                        <select
-                          aria-label={`Product for ${m.external}`}
-                          value={m.product}
-                          onChange={(e) =>
-                            setMappings((l) =>
-                              l.map((x, j) =>
-                                j === i ? { ...x, product: e.target.value as ProductId } : x,
-                              ),
-                            )
-                          }
-                          className="h-7 rounded-md border border-line bg-white px-1.5 text-[12px]"
-                        >
-                          {products.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </li>
-                    ))}
-                  </ul>
-                </Panel>
+          {tab === 'overview' && (
+            <Panel title="What it syncs">
+              <ul className="space-y-1.5 px-3.5 py-2.5">
+                <li className="flex items-center gap-2 text-[12.5px] text-ink">
+                  <CircleCheckIcon className="h-3.5 w-3.5 text-ok" aria-hidden />
+                  {i.description || meta.description || 'Events from the provider.'}
+                </li>
+              </ul>
+              {meta.authority && (
+                <p className="border-t border-line px-3.5 py-2.5 text-[11.5px] text-muted">
+                  {meta.authority}
+                </p>
               )}
-              {config.credential && (
-                <Panel title="Credential" meta={<span>Encrypted at rest · Owners only</span>}>
-                  <div className="flex flex-wrap items-center gap-2 px-3.5 py-2.5">
-                    <KeyRoundIcon className="h-4 w-4 text-muted" />
-                    <span className="text-[12.5px] text-ink">{config.credential.label}</span>
-                    <code className="rounded bg-sunken px-1.5 py-0.5 font-mono text-[12px] text-muted">
-                      {config.credential.hint}
-                    </code>
-                    <span className="text-[11.5px] text-subtle">
-                      rotated {config.credential.rotated}
-                    </span>
-                    <Button
-                      size="sm"
-                      className="ml-auto"
-                      onClick={() =>
-                        requestReauth({
-                          title: 'Replace credential',
-                          description:
-                            'Paste the new token on the next step. The old one is deleted immediately.',
-                          actionLabel: 'Verify & continue',
-                          successMessage: 'Credential replaced',
-                          onConfirm: () => undefined,
-                        })
-                      }
-                    >
-                      Replace
-                    </Button>
-                  </div>
-                </Panel>
-              )}
-            </div>
+            </Panel>
           )}
-
-          {tab === 'permissions' && (
-            <IntegrationPermissions scopes={config.scopes} name={integration.name} />
+          {tab === 'permissions' && <IntegrationPermissions scopes={i.scopes ?? []} name={name} />}
+          {tab === 'webhooks' && (
+            <IntegrationWebhooks
+              integrationId={i.id}
+              canManage={canManage}
+              urlRequired={i.kind === 'webhook'}
+            />
           )}
-          {tab === 'webhooks' && <IntegrationWebhooks config={config} />}
-
           {tab === 'danger' && (
             <Panel title="Disconnect integration">
               <div className="space-y-3 px-3.5 py-3">
@@ -295,30 +339,26 @@ export function IntegrationDetail() {
                 </p>
                 <label className="block">
                   <span className="text-[12px] text-ink">
-                    Type <b className="font-mono">{integration.name}</b> to confirm
+                    Type <b className="font-mono">{name}</b> to confirm
                   </span>
                   <input
                     value={confirmName}
                     onChange={(e) => setConfirmName(e.target.value)}
-                    className="mt-1 h-8 w-full max-w-xs rounded-md border border-line px-2.5 text-[12.5px] outline-none focus:border-bad"
+                    disabled={!canManage}
+                    className="mt-1 h-8 w-full max-w-xs rounded-md border border-line px-2.5 text-[12.5px] outline-none focus:border-bad disabled:bg-sunken"
                   />
                 </label>
-                <Button
+                <GuardedButton
+                  allowed={canManage}
+                  reason={MANAGE_REASON}
                   variant="danger"
-                  disabled={confirmName !== integration.name}
+                  disabled={confirmName !== name || busy}
                   icon={<UnplugIcon className="h-3.5 w-3.5" />}
-                  onClick={() =>
-                    requestReauth({
-                      title: `Disconnect ${integration.name}`,
-                      description: 'This cannot be undone without reconnecting.',
-                      actionLabel: 'Verify & disconnect',
-                      successMessage: `${integration.name} disconnected`,
-                      onConfirm: () => navigate('/integrations'),
-                    })
-                  }
+                  onClick={() => void disconnect()}
                 >
-                  Disconnect
-                </Button>
+                  {busy ? 'Disconnecting…' : 'Disconnect'}
+                </GuardedButton>
+                <InlineError error={error} />
               </div>
             </Panel>
           )}
@@ -330,26 +370,24 @@ export function IntegrationDetail() {
               items={[
                 {
                   label: 'Account',
-                  value: <span className="truncate font-mono text-[11.5px]">{config.account}</span>,
+                  value: (
+                    <span className="truncate font-mono text-[11.5px]">{i.account ?? '—'}</span>
+                  ),
                 },
-                { label: 'Installed by', value: memberById(config.installedBy).name },
-                { label: 'Installed', value: config.installed },
-                { label: 'Last sync', value: integration.lastSync },
+                {
+                  label: 'Connected by',
+                  value: i.connectedBy ? (memberById(i.connectedBy)?.name ?? i.connectedBy) : '—',
+                },
+                {
+                  label: 'Connected',
+                  value: i.connectedAt ? formatDateTime(new Date(i.connectedAt)) : '—',
+                },
+                {
+                  label: 'Last event',
+                  value: i.lastEventAt ? formatDateTime(new Date(i.lastEventAt)) : '—',
+                },
               ]}
             />
-          </Panel>
-          <Panel title="What it syncs">
-            <ul className="space-y-1.5 px-3.5 py-2.5">
-              {integration.syncs.map((s) => (
-                <li key={s} className="flex items-center gap-2 text-[12.5px] text-ink">
-                  <CircleCheckIcon className="h-3.5 w-3.5 text-ok" />
-                  {s}
-                </li>
-              ))}
-            </ul>
-            <p className="border-t border-line px-3.5 py-2.5 text-[11.5px] text-muted">
-              {integration.authority}
-            </p>
           </Panel>
         </div>
       </div>

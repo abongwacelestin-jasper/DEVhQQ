@@ -48,6 +48,12 @@ function Node({ x, y, kind, label, w = 150, tone = 'default' }: NodeSpec) {
   );
 }
 
+/**
+ * The incident and the records it connects to, drawn only from real data:
+ * product, service and owner from the incident, the first timeline entry,
+ * and `related` (deployments the caller correlated by product and time).
+ * The first related deployment is drawn as "correlated · unproven".
+ */
 export function RelationshipGraph({
   incident,
   related,
@@ -55,18 +61,19 @@ export function RelationshipGraph({
   incident: Incident;
   related: { kind: string; label: string }[];
 }) {
+  const env = related.find((r) => r.kind === 'Deployment')?.label.split(' · ')[1];
   const center = { x: 320, y: 150 };
   const left: NodeSpec[] = [
     { x: 92, y: 70, kind: 'Product', label: productById(incident.product).name },
     { x: 92, y: 150, kind: 'Service', label: incident.service },
-    { x: 92, y: 230, kind: 'Environment', label: 'production' },
+    { x: 92, y: 230, kind: 'Environment', label: env ?? 'not linked' },
   ];
 
   const top: NodeSpec = {
     x: 320,
     y: 36,
-    kind: 'Monitor alert',
-    label: incident.events[0]?.title ?? 'Alert',
+    kind: 'First timeline entry',
+    label: incident.events[0]?.title ?? 'Declared',
   };
   const bottom: NodeSpec = {
     x: 320,
@@ -149,7 +156,7 @@ export function RelationshipGraph({
             )}
             {right.slice(1).map((n, i) => (
               <path
-                key={n.kind}
+                key={`${n.kind}-${n.label}-${i}`}
                 d={`M${n.x} ${right[i].y + 22} V ${n.y - 22}`}
                 stroke="#B9B9B2"
                 strokeWidth="1.4"
@@ -163,8 +170,8 @@ export function RelationshipGraph({
         ))}
         <Node {...top} tone="bad" />
         <Node {...bottom} />
-        {right.map((n) => (
-          <Node key={n.kind + n.label} {...n} />
+        {right.map((n, i) => (
+          <Node key={`${n.kind}-${n.label}-${i}`} {...n} />
         ))}
         <Node
           x={center.x}
@@ -178,3 +185,5 @@ export function RelationshipGraph({
     </div>
   );
 }
+
+export default RelationshipGraph;

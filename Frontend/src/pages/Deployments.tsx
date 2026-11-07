@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import { toast } from 'sonner';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { CircleCheckIcon, PlusIcon, ShieldCheckIcon } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Panel } from '../components/ui/Panel';
@@ -10,32 +9,37 @@ import { SearchInput } from '../components/ui/SearchInput';
 import { StatCard, StatStrip } from '../components/ui/StatCard';
 import { EnvironmentPipeline } from '../components/delivery/EnvironmentPipeline';
 import { DeploymentsTable } from '../components/delivery/DeploymentsTable';
-import { DeployFrequencyChart } from '../components/delivery/DeployFrequencyChart';
+import { RecordDeploymentModal } from '../components/delivery/RecordDeploymentModal';
+import { lanesFromDeployments } from '../components/delivery/environments';
+import {
+  DataState,
+  GuardedButton,
+  InlineError,
+  LoadingRows,
+} from '../components/engineering/states';
+import { useServerLevel } from '../components/engineering/data/hooks';
+import { useAuth } from '../contexts/AuthContext';
 import { useProductFilter } from '../contexts/ProductFilterContext';
 import { useReauth } from '../contexts/ReauthContext';
-import { useDeployments } from '../hooks/useDeployments';
+import { useDeployments, type DeploymentRow } from '../hooks/useDeployments';
 import { useProductCatalogue } from '../hooks/useProductCatalogue';
 import { memberById, productById } from '../utils/status';
-import { daysAgo } from '../utils/metrics';
-import type { DeployStatus, Deployment, EnvironmentLane, LaneStatus } from '../types/operations';
+import type { DeployStatus } from '../types/operations';
 import type { ProductId } from '../types/portfolio';
+
+// The chart is below the fold; keep it out of the page's first chunk.
+const DeployFrequencyChart = lazy(() => import('../components/delivery/DeployFrequencyChart'));
 
 type Filter = 'all' | DeployStatus;
 
 const policy = [
-  'CI checks passing on the release commit',
-  'Staging deploy succeeded for the same commit',
-  'Approval from Owner or Operations',
-  'MFA re-confirmation at approval time',
+  'Production requests wait for approval',
+  'Approver needs Deployment: manage and is never the requester',
+  'Fresh step-up verification at approval time',
+  'Every transition is written to the audit log',
 ];
 
-/** How a provider's deploy status maps onto a pipeline lane. */
-const laneOf = (status: DeployStatus): LaneStatus =>
-  status === 'succeeded'
-    ? 'healthy'
-    : status === 'failed' || status === 'rolled-back'
-      ? 'failed'
-      : 'pending';
+const WEEK_MS = 7 * 86_400_000;
 
 const hit = (haystack: (string | number | undefined | null)[], term: string) =>
   !term || haystack.join(' ').toLowerCase().includes(term.trim().toLowerCase());
@@ -43,7 +47,21 @@ const hit = (haystack: (string | number | undefined | null)[], term: string) =>
 export function Deployments() {
   const { matches } = useProductFilter();
   const { requestReauth } = useReauth();
-  const { deployments: rows, approve, rollback } = useDeployments();
+  const { session, canDo } = useAuth();
+  const { atLeast } = useServerLevel();
+  const {
+    deployments: rows,
+    approve,
+    rollback,
+    loading,
+    error,
+    reload,
+    actionError,
+  } = useDeployments();
+  const [recordOpen, setRecordOpen] = useState(false);
+  const mayApprove = canDo('deploy:approve');
+  const mayManage = atLeast('Deployment', 'manage');
+  const mayRecord = atLeast('Deployment', 'contribute');
   const catalogue = useProductCatalogue();
   const [status, setStatus] = useState<Filter>('all');
   const [q, setQ] = useState({ history: '', approvals: '', environments: '' });
@@ -54,16 +72,18 @@ export function Deployments() {
 
   const scoped = rows.filter((d) => matches(d.product));
   const awaiting = scoped.filter((d) => d.status === 'awaiting-approval');
-  const week = scoped.filter((d) => daysAgo(d.ago) < 7);
+  const week = scoped.filter((d) => Date.now() - new Date(d.createdAt).getTime() < WEEK_MS);
   const failedWeek = week.filter((d) => d.status === 'failed' || d.status === 'rolled-back');
   const succeededWeek = week.filter((d) => d.status === 'succeeded');
   const successRate = week.length
     ? Math.round(((week.length - failedWeek.length) / week.length) * 100)
-    : 0;
+    : null;
 
   const visible = scoped
     .filter((d) => status === 'all' || d.status === status)
-    .filter((d) => hit([d.product, nameOf(d.product), d.env, d.sha, d.message, d.status], q.history));
+    .filter((d) =>
+      hit([d.product, nameOf(d.product), d.env, d.sha, d.message, d.status], q.history),
+    );
   const approvalHits = awaiting.filter((d) =>
     hit([d.product, nameOf(d.product), d.env, d.sha, d.message, d.author], q.approvals),
   );
@@ -73,22 +93,7 @@ export function Deployments() {
     const productsInScope = Array.from(new Set(scoped.map((d) => d.product)));
     return productsInScope.map((productId) => ({
       productId,
-      lanes: (['staging', 'production'] as const)
-        .map((env): EnvironmentLane | null => {
-          const d = scoped.find((x) => x.product === productId && x.env === env);
-          if (!d) return null;
-          return {
-            product: productId,
-            env,
-            sha: d.sha,
-            version: d.message,
-            status: laneOf(d.status),
-            ago: d.ago === 'now' ? 'just now' : `${d.ago} ago`,
-            url: '',
-            provider: d.provider,
-          };
-        })
-        .filter((l): l is EnvironmentLane => l !== null),
+      lanes: lanesFromDeployments(scoped, productId),
     }));
   }, [scoped]);
 
@@ -103,7 +108,7 @@ export function Deployments() {
     ),
   );
 
-  const decide = (d: Deployment, ok: boolean) => {
+  const decide = (d: DeploymentRow, ok: boolean) => {
     if (ok) void approve(d.id);
     else void rollback(d.id);
   };
@@ -114,18 +119,23 @@ export function Deployments() {
         title="Deployments"
         description="Every deployment attempt across providers in one history. Execution stays with GitHub Actions and Coolify — DevHQ records, approves and correlates."
         actions={
-          <button
-            onClick={() =>
-              toast('Record a deployment', {
-                description: 'Manual records are marked as source: DevHQ.',
-              })
-            }
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] font-medium text-ink hover:border-line-strong"
+          <GuardedButton
+            id="record-deploy-trigger"
+            allowed={mayRecord}
+            reason="Needs Deployment: contribute"
+            icon={<PlusIcon className="h-3.5 w-3.5" />}
+            onClick={() => setRecordOpen(true)}
           >
-            <PlusIcon className="h-3.5 w-3.5" /> Record deployment
-          </button>
+            Record deployment
+          </GuardedButton>
         }
       />
+
+      {actionError && <InlineError error={actionError.error} />}
+      {loading && rows.length === 0 && <LoadingRows rows={3} label="Loading deployments" />}
+      {!loading && error && rows.length === 0 && (
+        <DataState status="error" error={error} what="Deployments" onRetry={() => void reload()} />
+      )}
 
       <StatStrip>
         <StatCard label="Deployments" value={scoped.length} note="In your scope" />
@@ -144,9 +154,17 @@ export function Deployments() {
         <StatCard label="Succeeded · 7d" value={succeededWeek.length} note="Last seven days" />
         <StatCard
           label="Success rate"
-          value={`${successRate}%`}
+          value={successRate === null ? '—' : `${successRate}%`}
           note={`${week.length} in 7 days`}
-          tone={successRate >= 90 ? 'ok' : successRate >= 75 ? 'warn' : 'bad'}
+          tone={
+            successRate === null
+              ? 'neutral'
+              : successRate >= 90
+                ? 'ok'
+                : successRate >= 75
+                  ? 'warn'
+                  : 'bad'
+          }
         />
         <StatCard
           label="Production"
@@ -195,36 +213,56 @@ export function Deployments() {
                       <span className="flex items-center gap-1">
                         <Avatar id={d.author} size="xs" /> {memberById(d.author).name}
                       </span>
-                      <span className="flex items-center gap-1 text-ok">
-                        <CircleCheckIcon className="h-3 w-3" /> CI passing
-                      </span>
                       <span>
                         {d.provider} · requested {d.ago === 'now' ? 'just now' : `${d.ago} ago`}
                       </span>
                     </p>
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-1.5">
-                  <button
-                    onClick={() => decide(d, false)}
-                    className="h-7 rounded-md border border-line bg-surface px-2.5 text-[12px] font-medium text-ink hover:bg-sunken"
-                  >
-                    Reject
-                  </button>
-                  <button
-                    onClick={() =>
-                      requestReauth({
-                        title: `Approve ${d.env} deploy`,
-                        description: `${d.sha} will be handed to ${d.provider}.`,
-                        actionLabel: 'Verify & approve',
-                        onConfirm: () => decide(d, true),
-                      })
-                    }
-                    className="inline-flex h-7 items-center gap-1.5 rounded-md bg-ink px-2.5 text-[12px] font-medium text-white hover:bg-ink/90"
-                  >
-                    <ShieldCheckIcon className="h-3.5 w-3.5" /> Approve
-                  </button>
-                </div>
+                {mayApprove || mayManage ? (
+                  <div className="flex shrink-0 gap-1.5">
+                    {mayManage && (
+                      <GuardedButton
+                        size="sm"
+                        allowed={mayManage}
+                        reason="Needs Deployment: manage"
+                        onClick={() =>
+                          requestReauth({
+                            title: `Reject ${d.env} deploy`,
+                            description: `${d.sha} will be marked rolled back and not executed.`,
+                            actionLabel: 'Verify & reject',
+                            onConfirm: () => decide(d, false),
+                          })
+                        }
+                      >
+                        Reject
+                      </GuardedButton>
+                    )}
+                    {mayApprove && (
+                      <GuardedButton
+                        size="sm"
+                        variant="primary"
+                        allowed={d.requestedBy !== session?.memberId}
+                        reason="Two-person rule: you requested this deployment"
+                        icon={<ShieldCheckIcon className="h-3.5 w-3.5" />}
+                        onClick={() =>
+                          requestReauth({
+                            title: `Approve ${d.env} deploy`,
+                            description: `${d.sha} will be handed to ${d.provider}.`,
+                            actionLabel: 'Verify & approve',
+                            onConfirm: () => decide(d, true),
+                          })
+                        }
+                      >
+                        Approve
+                      </GuardedButton>
+                    )}
+                  </div>
+                ) : (
+                  <span className="shrink-0 text-[11px] text-muted">
+                    Approval needs Deployment: manage
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -277,7 +315,11 @@ export function Deployments() {
           title="History"
           className="xl:col-span-2"
           bodyClassName="flex flex-col"
-          meta={<span>{visible.length} of {scoped.length}</span>}
+          meta={
+            <span>
+              {visible.length} of {scoped.length}
+            </span>
+          }
           filter={
             <div className="flex flex-wrap items-center gap-2">
               <Segmented<Filter>
@@ -309,8 +351,10 @@ export function Deployments() {
           <DeploymentsTable rows={visible} showProvider />
         </Panel>
         <div className="grid content-start gap-3 md:grid-cols-2 xl:grid-cols-1">
-          <Panel title="Frequency" meta={<span>7 days · live</span>}>
-            <DeployFrequencyChart rows={scoped} height={90} />
+          <Panel title="Frequency" meta={<span>7 days · from deployment records</span>}>
+            <Suspense fallback={<LoadingRows rows={2} label="Loading chart" />}>
+              <DeployFrequencyChart rows={scoped} days={7} height={90} />
+            </Suspense>
           </Panel>
           <Panel title="Production release policy">
             <ul className="space-y-1.5 px-3.5 py-2.5">
@@ -327,6 +371,13 @@ export function Deployments() {
           </Panel>
         </div>
       </div>
+      <RecordDeploymentModal
+        open={recordOpen}
+        onClose={() => {
+          setRecordOpen(false);
+          document.getElementById('record-deploy-trigger')?.focus();
+        }}
+      />
     </div>
   );
 }

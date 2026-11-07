@@ -1,3 +1,9 @@
+/**
+ * Legacy fixture. No F-ENG page reads it (incident history comes from
+ * /api/incidents and /api/incidents/_stats). It remains only for
+ * DeliveryReliabilityCards (`pastIncidents`) and utils/metrics (`PastIncident`
+ * type), owned by other lanes.
+ */
 import type { ProductId } from '../types/portfolio';
 
 export interface PastIncident {
@@ -123,20 +129,5 @@ export const pastIncidents: PastIncident[] = [
     started: 'Aug 11, 16:20',
     minutes: 135,
     owner: 'm6',
-  },
-];
-
-export const onCall = [
-  {
-    member: 'm11',
-    role: 'Primary',
-    until: 'Mon 09:00',
-    products: ['renewberry', 'blog', 'mirror'] as ProductId[],
-  },
-  {
-    member: 'm5',
-    role: 'Secondary',
-    until: 'Mon 09:00',
-    products: ['renewberry', 'mirror'] as ProductId[],
   },
 ];
