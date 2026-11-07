@@ -13,6 +13,7 @@ import { authenticate } from '../middleware/authenticate.ts';
 import { canSeeProduct, permissionMatrix, requireArea, requireStepUp } from '../auth/rbac.ts';
 import { approveGrant, listGrants, requestGrant, revokeGrant } from '../auth/jit.ts';
 import { revokeAllFor } from '../auth/sessions.ts';
+import { revokeStandingAccess } from '../security/pats.ts';
 import { audit } from '../audit/auditLog.ts';
 import { hashToken, randomToken } from '../security/crypto.ts';
 import { db, findMemberByEmail, publicMember } from '../store/db.ts';
@@ -235,6 +236,9 @@ export function registerTeamRoutes(r: Router) {
       if (patch.status) target.status = patch.status;
       db.members.save(target.id);
       const revoked = revokeAllFor(target.id);
+      // CYBER-010: deactivation also cuts PATs and JIT grants immediately, not only on next use.
+      if (patch.status === 'deactivated' && before.status !== 'deactivated')
+        revokeStandingAccess(target.id, ctx.principal!.memberId, 'member_inactive', ctx.requestId);
       audit.append({
         actor: ctx.principal!.memberId,
         action: 'team.updated',

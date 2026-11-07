@@ -184,8 +184,24 @@ function int(name: string, def: number): number {
   return n;
 }
 
+const NODE_ENVS: readonly NodeEnv[] = ['development', 'test', 'production'];
+
+/**
+ * NODE_ENV is validated, never cast (CYBER-008): a typo such as `prod`,
+ * `Production` or `staging` must not silently select development behaviour
+ * (demo accounts, the dev session secret, skipped production guards). Unset
+ * means development, the Node convention; any other value refuses to boot.
+ */
+export function parseNodeEnv(raw = process.env.NODE_ENV): NodeEnv {
+  if (raw === undefined || raw === '') return 'development';
+  if ((NODE_ENVS as readonly string[]).includes(raw)) return raw as NodeEnv;
+  throw new Error(
+    `NODE_ENV must be exactly one of ${NODE_ENVS.join(' | ')} (got "${raw}") — refusing to boot`,
+  );
+}
+
 export function loadConfig(): AppConfig {
-  const env = (process.env.NODE_ENV as NodeEnv) ?? 'development';
+  const env = parseNodeEnv();
   const isProd = env === 'production';
   assertNoDemoInProduction(isProd);
   const sessionSecret = required(

@@ -65,7 +65,7 @@
   },
   "scripts": {
     "dev": "node --experimental-strip-types server.ts",
-    "start": "node --experimental-strip-types server.ts",
+    "start": "NODE_ENV=production node --experimental-strip-types server.ts",
     "start:prod": "NODE_ENV=production node --experimental-strip-types server.ts",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
