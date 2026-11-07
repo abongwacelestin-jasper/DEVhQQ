@@ -10,7 +10,7 @@ import { signInViaApi } from '../support/auth';
 test.describe('Resilience', () => {
   for (const mode of ['connection refused', 'HTTP 502'] as const) {
     test(`backend gone mid-session (${mode}) gives an error state, not a white screen`, async ({ page }) => {
-      test.fail(true, 'QA-027: a full reload while the API is unreachable renders an empty body (white screen), no error state');
+      // QA-027 is fixed: an unreachable API on reload shows an error state.
       await signInViaApi(page, 'admin', '/my-work');
       await expect(page.getByRole('heading', { level: 1, name: 'My work' })).toBeVisible();
       await page.route('**/api/**', (route) =>

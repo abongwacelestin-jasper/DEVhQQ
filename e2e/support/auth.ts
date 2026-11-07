@@ -97,9 +97,15 @@ export async function enterCode(page: Page, code: string, scope = page.locator('
   } else {
     await boxes.first().fill(code);
   }
-  // Wave 4 lock screen no longer auto-submits on the 6th digit: it has an explicit Unlock button.
-  const unlock = scope.getByRole('button', { name: 'Unlock', exact: true });
-  if (await unlock.isVisible().catch(() => false)) await unlock.click();
+  // Wave 4 code screens no longer auto-submit on the 6th digit: the lock screen has an
+  // explicit Unlock button and /verify an explicit Verify button.
+  for (const name of ['Unlock', 'Verify']) {
+    const submit = scope.getByRole('button', { name, exact: true });
+    if (await submit.isVisible().catch(() => false)) {
+      await submit.click();
+      break;
+    }
+  }
 }
 
 export async function expectSignedIn(page: Page, role: RoleKey) {

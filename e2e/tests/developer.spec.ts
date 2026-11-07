@@ -42,7 +42,7 @@ test.describe('Developer journey', () => {
   });
 
   test('My work does not announce a status change the server refused', async ({ page }) => {
-    test.fail(true, 'QA-029: the "KEY → Done" success toast fires before the API answers, so a refused self-close is announced');
+    // QA-029 is fixed: the toast waits for the API.
     await signInViaApi(page, 'developer');
     const created = await page.request.post('/api/tasks', {
       data: { title: `Self close ${uid()}`, projectId: await firstProject(page), assignee: 'm4', status: 'review', priority: 'low', type: 'task', estimate: 1, due: '2026-12-31' },
@@ -64,7 +64,7 @@ test.describe('Developer journey', () => {
   }
 
   test('the audit trail API is closed to a Developer', async ({ page }) => {
-    test.fail(true, 'QA-028 (S1): GET /api/audit has no requireArea guard; any member reads the whole sensitive trail, all products');
+    // QA-028 (S1) is fixed: audit and console reads need Administration:view.
     await signInViaApi(page, 'developer');
     expect((await page.request.get('/api/audit?sensitive=1&limit=5')).status()).toBe(403);
   });

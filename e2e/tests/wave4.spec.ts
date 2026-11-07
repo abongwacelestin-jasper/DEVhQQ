@@ -78,7 +78,7 @@ test.describe('@wave4 F-SEC identity in the browser', () => {
   });
 
   test('a new member: invite → accept → sign in → enrol a factor on the verify screen', async ({ page, baseURL, browser }) => {
-    test.fail(true, 'QA-020 (S1): /verify ignores next:"enroll"/enrollRequired and nothing calls /api/auth/mfa/enroll; also blocked by QA-002');
+    // QA-020 (S1) is fixed: /verify enrols a first factor when the API says next:"enroll".
     const email = `${uid('new').toLowerCase()}@techorg.io`;
     await signInViaApi(page, 'admin');
     const inv = await page.request.post('/api/team/invites', { data: { email, role: 'Developer', products: ['renewberry'] } });
@@ -135,9 +135,10 @@ test.describe('@wave4 collaboration', () => {
     const box = page.getByRole('textbox', { name: 'Message', exact: true }).last();
     await box.fill(text);
     await box.press('Enter');
-    await expect(page.getByText(text)).toBeVisible();
+    const log = page.getByRole('log', { name: /^Messages in / });
+    await expect(log.getByText(text)).toBeVisible();
     await page.reload();
-    await expect(page.getByText(text)).toBeVisible();
+    await expect(log.getByText(text)).toBeVisible();
     const msgs = (await (await page.request.get(`/api/channels/${ch.id}/messages`)).json()).items as { body?: string; text?: string }[];
     expect(msgs.some((m) => (m.body ?? m.text ?? '').includes(text))).toBeTruthy();
   });
@@ -155,6 +156,8 @@ test.describe('@wave4 collaboration', () => {
     await input.press('Enter');
     await expect(page.getByText(note)).toBeVisible();
     await page.reload();
+    // The doc reopens on its default tab; the comment must still be there on Comments.
+    await page.getByRole('tab', { name: /^Comments/ }).click();
     await expect(page.getByText(note)).toBeVisible();
     const comments = await (await page.request.get(`/api/docs/${doc.id}/comments`)).json();
     expect(JSON.stringify(comments)).toContain(note);
@@ -247,10 +250,13 @@ test.describe('@wave4 engineering and ML (unconfigured integrations)', () => {
     expect(ob.stage, JSON.stringify(ob)).toBeTruthy();
     // Without the sessionStorage shim: what does a fresh tab see?
     await p.goto('/my-work');
-    const firstUrl = p.url();
-    test.info().annotations.push({ type: 'observation', description: `designer fresh tab → ${firstUrl}; server stage ${ob.stage}` });
-    if (ob.stage === 'ready') expect(firstUrl).toMatch(/\/my-work$/);
-    else expect(firstUrl).toMatch(/onboarding/);
+    // The SPA decides after it has asked the server, so wait for the URL to settle.
+    // Other journeys share the Designer persona and may finish its onboarding in parallel,
+    // so judge the tab against the stage the server reports now.
+    await p.getByRole('heading', { level: 1 }).first().waitFor();
+    const after = (await (await p.request.get('/api/onboarding')).json()).stage as string;
+    test.info().annotations.push({ type: 'observation', description: `designer fresh tab → ${p.url()}; server stage ${ob.stage} → ${after}` });
+    await expect(p).toHaveURL(after === 'ready' ? /\/my-work$/ : /onboarding/);
     await ctx.close();
   });
 });

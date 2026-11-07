@@ -11,7 +11,7 @@ import { DEMO_PASSWORD } from '../support/personas';
 
 test.describe('Owner journey', () => {
   test('signs in with password + MFA, sees the overview, signs out @smoke', async ({ page }) => {
-    test.fail(true, 'QA-002: data providers call the API with the password-only session; 401 mfa_required signs the user out before the code can be entered');
+    // QA-002 (password + MFA sign-in impossible) is fixed in wave 4 (F-SEC keeps partial sessions alive).
     await signInWithPassword(page, 'admin');
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole('heading', { level: 1, name: /Good (morning|afternoon|evening), Amara/ })).toBeVisible();
@@ -40,7 +40,6 @@ test.describe('Owner journey', () => {
   });
 
   test('a wrong one-time code is refused and the user can retry', async ({ page }) => {
-    test.fail(true, 'QA-002: the /verify screen is never usable (signed out by 401 mfa_required)');
     await page.goto('/sign-in');
     await page.getByRole('textbox', { name: 'Work email' }).fill('amara@techorg.io');
     await page.locator('input[autocomplete="current-password"]').fill('not-the-password');
@@ -63,8 +62,13 @@ test.describe('Owner journey', () => {
 
     const dialog = page.getByRole('dialog', { name: 'Invite member' });
     await dialog.getByRole('textbox', { name: 'Work email' }).fill(email);
-    await dialog.getByRole('radio', { name: 'Designer' }).check({ force: true });
-    await dialog.getByRole('checkbox', { name: /^RenewBerry/ }).check({ force: true });
+    // Visually hidden inputs: click them directly (force-check can report "outside of the viewport").
+    const role = dialog.getByRole('radio', { name: 'Designer' });
+    const product = dialog.getByRole('checkbox', { name: /^RenewBerry/ });
+    await role.evaluate((el: HTMLInputElement) => el.click());
+    if (!(await product.isChecked())) await product.evaluate((el: HTMLInputElement) => el.click());
+    await expect(role).toBeChecked();
+    await expect(product).toBeChecked();
     await dialog.getByRole('button', { name: 'Create invite' }).click();
 
     // Sensitive: either it goes straight through (fresh verification) or asks for a code.

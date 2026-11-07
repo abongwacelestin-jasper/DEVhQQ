@@ -36,7 +36,7 @@ test.describe('Project manager journey', () => {
 
     await page.getByRole('textbox', { name: 'New subtask' }).fill(subtask);
     await page.getByRole('textbox', { name: 'New subtask' }).press('Enter');
-    await expect(page.getByText(subtask)).toBeVisible();
+    await expect(page.getByText(subtask, { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Log time' }).click();
     const log = page.getByRole('dialog', { name: `Log time · ${key}` });
@@ -47,7 +47,7 @@ test.describe('Project manager journey', () => {
     await page.reload();
     await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible();
     await expect(page.getByText(comment)).toBeVisible();
-    await expect(page.getByText(subtask)).toBeVisible();
+    await expect(page.getByText(subtask, { exact: true })).toBeVisible();
     await expect(page.getByLabel('Due date')).toHaveValue('2026-12-15');
     await expect(page.getByText('Kofi Mensah').first()).toBeVisible();
 

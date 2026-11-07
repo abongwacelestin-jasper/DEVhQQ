@@ -165,7 +165,7 @@ test.describe('Keyboard', () => {
     const signIn = page.waitForResponse((r) => r.url().endsWith('/api/auth/sign-in'));
     await page.keyboard.press('Enter');
     expect((await signIn).status(), 'Enter submits the form').toBe(200);
-    // The code step itself is blocked by QA-002; the keyboard part of the story is proven here.
+    // The code step is covered by the Owner journey (QA-002 fixed); the keyboard part is proven here.
   });
 
   test('every sign-in control shows a visible focus indicator', async ({ page }) => {
