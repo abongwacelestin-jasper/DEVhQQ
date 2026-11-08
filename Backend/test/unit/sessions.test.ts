@@ -41,7 +41,13 @@ const stored = (id: string) => repos.sessions.get(id);
 
 describe('auth/sessions — creation and validation', () => {
   it('creates a verified session bound to UA, IP and location', async () => {
-    const { token, session } = await createSession(member(), req(), '102.89.1.1', 'password', 'verified');
+    const { token, session } = await createSession(
+      member(),
+      req(),
+      '102.89.1.1',
+      'password',
+      'verified',
+    );
     assert.ok(session.verifiedAt > 0);
     assert.equal(session.client, 'Chrome · macOS');
     assert.equal(session.location.city, 'Lagos');
@@ -52,7 +58,13 @@ describe('auth/sessions — creation and validation', () => {
   });
 
   it('a password-stage session starts with verifiedAt = 0 (step-up required)', async () => {
-    const { token, session } = await createSession(member(), req(), '127.0.0.1', 'password', 'password');
+    const { token, session } = await createSession(
+      member(),
+      req(),
+      '127.0.0.1',
+      'password',
+      'password',
+    );
     assert.equal(session.stage, 'password');
     assert.equal((await validateSession(token, req(), '127.0.0.1')).stepUpRequired, true);
   });
@@ -83,7 +95,13 @@ describe('auth/sessions — creation and validation', () => {
       ['', 'Client · Unknown OS'],
     ];
     for (const [ua, label] of cases) {
-      const { session } = await createSession(member(), req(ua), '127.0.0.1', 'password', 'verified');
+      const { session } = await createSession(
+        member(),
+        req(ua),
+        '127.0.0.1',
+        'password',
+        'verified',
+      );
       assert.equal(session.client, label, ua);
       assert.ok(!JSON.stringify(session).includes(ua) || ua === '', 'raw UA not stored');
     }
@@ -112,13 +130,23 @@ describe('auth/sessions — lifetimes (fake time)', () => {
     const { token } = await createSession(member(), req(), '127.0.0.1', 'password', 'verified');
     for (let i = 0; i < 5; i++) {
       t.mock.timers.tick(config.sessionIdleMs - 1000);
-      assert.equal((await validateSession(token, req(), '127.0.0.1')).stepUpRequired, false, `hop ${i}`);
+      assert.equal(
+        (await validateSession(token, req(), '127.0.0.1')).stepUpRequired,
+        false,
+        `hop ${i}`,
+      );
     }
   });
 
   it('absolute lifetime ends the session regardless of activity', async (t) => {
     t.mock.timers.enable({ apis: ['Date'], now: 1_000_000_000_000 });
-    const { token, session } = await createSession(member(), req(), '127.0.0.1', 'password', 'verified');
+    const { token, session } = await createSession(
+      member(),
+      req(),
+      '127.0.0.1',
+      'password',
+      'verified',
+    );
     const hop = Math.floor(config.sessionIdleMs / 2);
     let elapsed = 0;
     while (elapsed + hop <= config.sessionAbsoluteMs) {
@@ -151,7 +179,13 @@ describe('auth/sessions — context binding', () => {
   });
 
   it('an IP change keeps the session, moves its location and clears verifiedAt', async () => {
-    const { token, session } = await createSession(member(), req(), '102.89.1.1', 'password', 'verified');
+    const { token, session } = await createSession(
+      member(),
+      req(),
+      '102.89.1.1',
+      'password',
+      'verified',
+    );
     const v = await validateSession(token, req(), '91.64.2.2');
     assert.equal(v.stepUpRequired, true);
     for (const s of [v.session, (await stored(session.id))!]) {
@@ -223,9 +257,15 @@ describe('auth/sessions — rotation and revocation', () => {
     const other2 = await createSession(a, req(FIREFOX_WIN), '127.0.0.3', 'passkey', 'verified');
     const b1 = await createSession(b, req(), '127.0.0.4', 'password', 'verified');
     assert.equal(await revokeAllExcept(a, keep.session.id), 2);
-    assert.equal((await validateSession(keep.token, req(), '127.0.0.1')).session.id, keep.session.id);
+    assert.equal(
+      (await validateSession(keep.token, req(), '127.0.0.1')).session.id,
+      keep.session.id,
+    );
     await expectCode(() => validateSession(other1.token, req(), '127.0.0.2'), 'session_revoked');
-    await expectCode(() => validateSession(other2.token, req(FIREFOX_WIN), '127.0.0.3'), 'session_revoked');
+    await expectCode(
+      () => validateSession(other2.token, req(FIREFOX_WIN), '127.0.0.3'),
+      'session_revoked',
+    );
     assert.equal((await validateSession(b1.token, req(), '127.0.0.4')).session.memberId, b);
     assert.equal(await revokeAllExcept(a, keep.session.id), 0);
   });

@@ -132,7 +132,7 @@ describe('worker: runOnce', () => {
     // Sessions and members are relational tables now (ADR 0011); backups reach them
     // through the data layer under the same names.
     const { relationalTables } = await import('../../data/index.ts');
-    const tables = relationalTables().map((t) => t.name);
+    const tables: string[] = relationalTables().map((t) => t.name);
     for (const expected of ['sessions', 'members'])
       assert.ok(tables.includes(expected), `${expected} missing from ${tables.join(', ')}`);
   });

@@ -32,7 +32,6 @@ import { HttpError } from '../types.ts';
 
 export type { SessionRecord, SessionStage } from '../data/sessions.ts';
 
-
 /** How stale a persisted `lastSeenAt` may get before it is written again. */
 const LAST_SEEN_PERSIST_MS = 60_000;
 /** Last persisted `lastSeenAt` per session handled by this process (memory only, best effort). */

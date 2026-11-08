@@ -64,7 +64,10 @@ describe('backup codes', () => {
     const old = await passwordOnly(app, EMAIL);
     assert.equal((await old.post('/api/auth/mfa/backup', { code: codes[1] })).status, 401);
     const fresh = await passwordOnly(app, EMAIL);
-    assert.equal((await fresh.post('/api/auth/mfa/backup', { code: res.json.codes[1] })).status, 200);
+    assert.equal(
+      (await fresh.post('/api/auth/mfa/backup', { code: res.json.codes[1] })).status,
+      200,
+    );
   });
 
   it('a personal access token cannot generate codes', async () => {

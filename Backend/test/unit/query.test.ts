@@ -139,22 +139,19 @@ describe('lib/query — operator laws (property)', () => {
   // overlap, but `nin` compares the whole array with `includes`, so
   // `{ products: { nin: ['blog'] } }` returns every row — including members of
   // blog. `nin` must be the complement of `in` for array fields too.
-  it(
-    'nin is the complement of in for array-valued fields',
-    () => {
-      for (let i = 0; i < 50; i++) {
-        const data = randomRows(12);
-        const set = [r.pick(['x', 'y', 'z'])];
-        const inIds = new Set(ids({ where: { tags: { in: set } } }, data));
-        const nin = ids({ where: { tags: { nin: set } } }, data);
-        assert.ok(
-          nin.every((id) => !inIds.has(id)),
-          `rows matched by both in and nin ${JSON.stringify(set)}`,
-        );
-        assert.equal(inIds.size + nin.length, data.length);
-      }
-    },
-  );
+  it('nin is the complement of in for array-valued fields', () => {
+    for (let i = 0; i < 50; i++) {
+      const data = randomRows(12);
+      const set = [r.pick(['x', 'y', 'z'])];
+      const inIds = new Set(ids({ where: { tags: { in: set } } }, data));
+      const nin = ids({ where: { tags: { nin: set } } }, data);
+      assert.ok(
+        nin.every((id) => !inIds.has(id)),
+        `rows matched by both in and nin ${JSON.stringify(set)}`,
+      );
+      assert.equal(inIds.size + nin.length, data.length);
+    }
+  });
 
   it('exists:true and exists:false partition the rows', () => {
     for (let i = 0; i < 100; i++) {
@@ -280,11 +277,7 @@ describe('lib/query — console collections never expose secrets', () => {
     const rows = await collections.members.rows(owner);
     rejectsWith(
       () =>
-        runQuery(
-          { from: 'members', select: ['passwordHash'] },
-          rows,
-          collections.members.fields,
-        ),
+        runQuery({ from: 'members', select: ['passwordHash'] }, rows, collections.members.fields),
       'field_not_allowed',
     );
   });

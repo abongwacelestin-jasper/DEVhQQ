@@ -175,11 +175,7 @@ export function registerIncidentActionRoutes(r: Router) {
       const owner = body.owner ?? p.memberId;
       await assertOwner(i, owner);
       if (actionsOf(i.id).length >= MAX_ACTIONS_PER_INCIDENT)
-        throw new HttpError(
-          409,
-          'too_many_actions',
-          'An incident can have at most 100 actions',
-        );
+        throw new HttpError(409, 'too_many_actions', 'An incident can have at most 100 actions');
       const at = new Date().toISOString();
       const a: IncidentAction = {
         id: sortableId('act'),

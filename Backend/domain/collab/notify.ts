@@ -152,11 +152,7 @@ async function onDeployment(data: Record<string, unknown>) {
     return;
   }
   // Decided elsewhere: approval requests are no longer actionable.
-  await repos.notifications.markRefRead(
-    'approval',
-    `deployment:${d.id}`,
-    new Date().toISOString(),
-  );
+  await repos.notifications.markRefRead('approval', `deployment:${d.id}`, new Date().toISOString());
 }
 
 /** Domain observers still running (tests and graceful shutdown can await them). */

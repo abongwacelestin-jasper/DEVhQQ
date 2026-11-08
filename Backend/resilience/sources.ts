@@ -168,8 +168,7 @@ export async function applyRestore(
   for (const t of [...rel].reverse()) {
     const wanted = new Map(snap.collections[t.name]);
     let n = 0;
-    for (const k of current.get(t.name)!.keys())
-      if (!wanted.has(k) && (await t.delete(k))) n++;
+    for (const k of current.get(t.name)!.keys()) if (!wanted.has(k) && (await t.delete(k))) n++;
     changed[t.name] = n;
   }
   for (const t of rel) {

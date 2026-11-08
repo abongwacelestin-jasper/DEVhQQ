@@ -96,10 +96,7 @@ async function complete(ctx: Ctx, m: Member, r: Resignation) {
   const by = ctx.principal!.memberId;
   if (m.id === by)
     throw new HttpError(403, 'self_offboard', 'Another admin must complete your offboarding');
-  if (
-    m.role === 'Owner' &&
-    (await repos.members.count({ role: 'Owner', status: 'active' })) === 1
-  )
+  if (m.role === 'Owner' && (await repos.members.count({ role: 'Owner', status: 'active' })) === 1)
     throw new HttpError(409, 'last_owner', 'The workspace needs at least one Owner');
   const now = new Date().toISOString();
   r.checklist = r.checklist.map((c) =>

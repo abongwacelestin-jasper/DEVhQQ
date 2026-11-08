@@ -447,7 +447,9 @@ export function registerMessagingRoutes(r: Router) {
         };
       const removed = new Set(body.removeMembers ?? []);
       if (body.addMembers)
-        c.members = [...new Set([...c.members, ...(await validMembers(body.addMembers, c.product))])];
+        c.members = [
+          ...new Set([...c.members, ...(await validMembers(body.addMembers, c.product))]),
+        ];
       if (removed.size) c.members = c.members.filter((id) => !removed.has(id));
       if (body.addAdmins)
         c.admins = [

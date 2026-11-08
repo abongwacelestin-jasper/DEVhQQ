@@ -71,8 +71,9 @@ export function registerProjectRoutes(r: Router) {
       const project = db.projects.get(ctx.params.projectId);
       if (!project) throw new HttpError(404, 'not_found', 'Not found');
       assertProduct(ctx.principal!, project.product);
-      const people = (await repos.members.list({ status: 'active', product: project.product }))
-        .map((m) => ({ id: m.id, name: m.name, role: m.role }));
+      const people = (await repos.members.list({ status: 'active', product: project.product })).map(
+        (m) => ({ id: m.id, name: m.name, role: m.role }),
+      );
       const docs = [...db.docs.values()].filter((d) => d.projectId === project.id).length;
       return { ...project, people, docs };
     },
