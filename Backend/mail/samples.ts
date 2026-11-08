@@ -246,10 +246,10 @@ export function sampleEmails(
   };
 }
 
-/** Brand used by previews and tests when the environment has none configured. */
+/** Brand used by previews and tests. An unset address shows an obvious placeholder, never a plausible fake one. */
 export function sampleBrand(base: Brand): Brand {
   return {
     ...base,
-    postalAddress: base.postalAddress || '100 Example Street, Suite 400, Example City, EX 00000',
+    postalAddress: base.postalAddress || '[Postal address not set: BRAND_POSTAL_ADDRESS]',
   };
 }

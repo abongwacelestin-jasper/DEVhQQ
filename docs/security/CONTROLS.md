@@ -22,7 +22,7 @@ commit. "smoke:N" means the check whose `expect(...)` call is on line N of
 | C-13 | **Origin guard.** Every non-GET/HEAD/OPTIONS from a non-allow-listed Origin (including `null`) is blocked; `Sec-Fetch-Site: cross-site/same-site` blocked even without Origin; cross-site no-cors loads of the API blocked; preflight from unknown origins refused | `security/headers.ts:159`, `:185`, `:190`, `:194`; JSON-only bodies `lib/http.ts:230` | smoke:364, smoke:376 |
 | C-14 | Credential-stuffing resistance: equal timing for unknown users, lock after 5 failures, risk gate | `routes/auth.routes.ts:431`, `:445`, `:248` | existing smoke "same error for wrong password and unknown user" |
 | C-15 | **Rate limiting.** Per IP (`apiLimiter`); auth routes per IP **and** per account email (`authLimiter`); per member on second-factor checks (`accountLimiter`, `chargeAccount` for passkeys) | `security/rateLimit.ts:173`, `:179`, `:189`, `:194`; limits `config/env.ts:192` | Exercised on every smoke auth call; values shown at `GET /api/security/posture` |
-| C-16 | Pluggable rate-limit store (memory now; shared store later) | `security/rateLimit.ts:53` (`RateLimitStore`), `:87` (`MemoryRateLimitStore`), `:128` (`setRateLimitStore`) | n/a (interface); see "Rate limiting" below |
+| C-16 | **Shared rate-limit store across replicas.** Memory store without `REDIS_URL`; with it, `RedisRateLimitStore` runs the same token-bucket math as one atomic Lua script (Redis `TIME`, per-key expiry). Redis down: `api` fails open to a local bucket, `auth`/`acct` fail closed (`503 rate_limit_unavailable`, `Retry-After`) | `security/rateLimit.ts` (`RateLimitStore`, `MemoryRateLimitStore`, `setRateLimitStore`), `security/rateLimitRedis.ts` (`TOKEN_BUCKET_LUA`, `RedisRateLimitStore`), installed by `lib/redisBoot.ts` | `test/redis/rate-limit.test.ts`, `test/redis/two-instances.test.ts`, `test/unit/redis.test.ts`; `security-tests/checks/ratelimit-two-instances.ts` |
 | C-17 | Client IP from XFF only behind a trusted proxy | `lib/http.ts` (`clientIp`) | S1 gate runs with `TRUST_PROXY=1` |
 | C-18 | Every state change audited; hash-chained, verifiable | `audit/auditLog.ts:204` (`append`), `audit/chain.ts:61` (`digest`); SEC audit actions: `auth.totp_enroll_started/enrolled/replaced/enroll_failed`, `auth.step_up(_failed)`, `auth.passkey_ok/failed/registered/removed/suspended`, `token.created/revoked`, `security.totp_secrets_sealed` | the existing "audit chain intact" check, which runs after the SEC block (smoke:1727) |
 | C-19 | Resource exhaustion limits: body cap, header and request timeouts, capped WebAuthn challenge map | `lib/http.ts:224`, `server.ts:84`, `auth/webauthn.ts:67` | — |
@@ -32,6 +32,7 @@ commit. "smoke:N" means the check whose `expect(...)` call is on line N of
 | C-23 | **Audit and console reads need Administration:view (QA-028).** `GET /api/audit`, `/api/audit/verify`, `/api/_logs`, `/api/_metrics`, `/api/_config`, `/api/security/posture`, `/api/security/rate-limits` and `GET /api/backups` return 403 to roles without Administration ≥ view; the query runner's `audit` collection returns zero rows for them | `routes/security.routes.ts:20`, `routes/system.routes.ts:145` | smoke:1729 |
 | C-24 | **One audit chain across restarts.** Each boot verifies the durable store end to end (`audit_entries` with `DATABASE_URL`, else `AUDIT_LOG_FILE`) and continues it: `seq` carries on and `prevHash` is the last stored hash, behind a boot marker. If the store is unreadable or broken, the boot still goes ahead, but its first entry is a sensitive `audit.chain_discontinuity`: there is never a silent fresh genesis. `GET /api/audit/verify` (Administration:view) re-reads the store across every boot and detects edited, missing, reordered and duplicated entries and a cut tail. `scripts/verify-audit.ts` does the same offline and reports the first break. File, table and archive writes, and bus events, follow chain order even for re-entrant appends | `audit/auditLog.ts:120` (`resume`), `:289` (`verifyAll`); `audit/chain.ts:196` (`ChainVerifier`); `db/auditSink.ts:165` (`pgAuditSource`); `db/boot.ts:52`, `:72`; `scripts/verify-audit.ts` | `test/unit/auditContinuity.test.ts` (file and fake-pg restarts, every tamper type across a boundary, unreadable stores, v2.0.0 data, the script); `test/integration/audit-continuity.test.ts` (boot on a tampered store); `smoke:pg` "audit chain resumed … after the restart" |
 | C-25 | **JIT production access enforced.** Approving a production deploy, rolling back a production deploy that was approved or ran, changing an incident's severity and resolving a SEV1 need an `active`, unexpired grant for `production:<product>` (`403 elevation_required`, `details.scope`); checked after role, `404` scope and two-person checks. Owner passes via `hasOwnerPowers`; PATs never carry an elevation and never pass (`403 elevation_unavailable`, even with `organization:admin`). Elevations are rebuilt per request with `expiresAt > now`, so expiry and revocation apply on the next request. Each use audited `jit.used` (sensitive, grant id, request id); approvers notified of requests | `auth/rbac.ts:216` (`assertElevation`), `:248` (`requireElevation`); `auth/jit.ts:115` (`isLive`), `:120` (`activeElevations`), `:145` (`expireDueGrants`); `middleware/authenticate.ts:65` (PAT `elevations: []`); `routes/operations.routes.ts:136`, `:180`, `:325`; `GET /api/access/grants/mine` `routes/team.routes.ts` | smoke:1277; `test/integration/jit-enforcement.test.ts`; `test/unit/rbac.test.ts` (JIT elevation); `security-tests/checks/jit-production-access.ts` |
+| C-26 | **Turnstile bot protection (optional, `TURNSTILE_MODE=on`).** Password sign-in, demo sign-in (non-production), the password reset request and accept-invite need a Cloudflare Turnstile token (`turnstileToken` in the body), checked after the route's rate limiter so bots still spend rate-limit tokens. siteverify gets the secret, token, client IP and an idempotency key (5 s budget, one retry); `success`, `hostname` = `APP_ORIGIN`'s host and `action` (`sign-in` / `recover` / `accept-invite`) must match; a token seen in the last 5 min is refused locally (Cloudflare also enforces single use). Stable errors `400 turnstile_required`, `403 turnstile_failed` (audited `security.turnstile_failed`), `503 turnstile_unavailable` (fail closed); `TURNSTILE_FAIL_OPEN=1` passes unverifiable requests during an incident, each audited `security.turnstile_fail_open`. Production refuses to boot with mode on and a key missing, or with a test key. Exempt: MFA, step-up and enrollment (already hold a session), passkey sign-in (needs an origin-bound private key), reset and invite preview (need a 256-bit link token), and explicit CLI clients (`X-DevHQ-Client: cli` with no `Origin` and no `Sec-Fetch-Site`, the C-01 rule). Browsers always send those headers and page script cannot remove them, so a browser cannot use the CLI exemption; a raw-HTTP bot can, so that path relies on C-14/C-15 alone. `TURNSTILE_EXEMPT_CLI=0` closes it (CLI automation uses PATs) | `security/turnstile.ts` (`createTurnstileVerifier`, `turnstileGuard`, `isCliClient`); `config/turnstile.ts` (`loadTurnstileConfig`); guards in `routes/auth.routes.ts` and `routes/recovery.routes.ts`; public `GET /api/auth/config`; widget `Frontend/src/components/auth/TurnstileWidget.tsx` | `test/unit/turnstile.test.ts`; `test/integration/turnstile.test.ts` (mode on), `test/integration/turnstile-off.test.ts`; smoke "auth config publishes Turnstile mode"; `security-tests/checks/turnstile-bot-check.ts`; `e2e/tests/turnstile.spec.ts` (`E2E_TURNSTILE=1` uses Cloudflare test keys) |
 
 ## Rate limiting
 
@@ -41,12 +42,19 @@ export interface RateLimitStore {
   take(key: string, opts: LimitOptions): TakeResult | Promise<TakeResult>; // must be atomic per key
   snapshot(limit: number): BucketView[];
 }
-setRateLimitStore(new RedisRateLimitStore(...)); // at boot, before listen
+setRateLimitStore(new RedisRateLimitStore(...)); // lib/redisBoot.ts, at boot, before listen
 ```
 
-- Use `refillAndTake()` (exported) so a remote store computes buckets the
-  same way as the memory store. For Redis, run it as a Lua `EVAL` on a hash.
-  For Postgres, use `SELECT … FOR UPDATE` on a `(key)` row.
+- Without `REDIS_URL` the store is `MemoryRateLimitStore` (per process). With
+  it, `lib/redisBoot.ts` installs `RedisRateLimitStore`
+  (`security/rateLimitRedis.ts`): `refillAndTake()` ported to one Lua script
+  run with `EVALSHA` (falls back to `EVAL` after a script flush) on a hash
+  `<prefix>rl:<key>`. Read, refill, decrement and write happen in one atomic
+  step, so concurrent requests on different replicas never read the same
+  bucket state. Time comes from Redis `TIME`, so clock skew between replicas
+  cannot mint tokens. Each key expires once it would have refilled completely,
+  plus 60 s; at that point it equals a new bucket, so expiry never changes a
+  decision.
 - Bucket keys look like `auth:ip:<ip>`, `auth:acct:<sha256(email)[0..16]>`,
   `acct:member:<id>` and `api:sess:<session|pat:id>`. Emails are never stored
   in plain text.
@@ -58,8 +66,24 @@ setRateLimitStore(new RedisRateLimitStore(...)); // at boot, before listen
 | `acct` (per member, second factor) | 30 burst, 1/s | 5 burst, 1 per 30 s |
 
 With more than one backend replica, per-process memory buckets multiply the
-effective limit by the number of replicas. Install a shared store before you
-scale out.
+effective limit by the number of replicas. That is why production with
+`EXPECT_REPLICAS` above 1 refuses to boot without `REDIS_URL`.
+
+### When Redis is down
+
+A take counts as failed when the connection is down (the offline queue is
+off, so this is immediate) or Redis is slower than `REDIS_COMMAND_TIMEOUT_MS`
+(500 ms).
+
+| Limiter | Behaviour | Why |
+|---|---|---|
+| `api` | **Fails open to a local bucket** with the same numbers, per replica | It damps abuse and scraping; it is not an authentication control. Failing closed would make Redis a single point of failure for the whole API. The local bucket still limits each client, at worst N× the budget across N replicas, for the length of the outage. That is the pre-Redis behaviour. |
+| `auth`, `acct` | **Fails closed**: `503 rate_limit_unavailable`, `Retry-After: 5` | These budgets bound password spraying and 6-digit TOTP guessing. An outage must not multiply them by the replica count, and an attacker who can slow Redis down must not gain extra guesses. Only sign-in, recovery and second-factor routes are refused; signed-in sessions keep working. |
+
+The first failure logs `ratelimit.redis_unavailable` (error) and recovery logs
+`ratelimit.redis_recovered`. The client reconnects on its own with capped,
+jittered backoff (50 ms up to 5 s). `GET /api/ready` reports `redis`; with
+`EXPECT_REPLICAS` above 1, a Redis outage also makes readiness fail.
 
 ## Key management
 
@@ -91,6 +115,10 @@ const raw = open(row.token, `github-installation:${row.id}:token`); // throws De
   `member.deactivated`; it calls `revokeStandingAccess` directly, which
   revokes the member's PATs and JIT grants at once (CYBER-010).
 - Trusted Types (`require-trusted-types-for 'script'`) is not enforced yet.
+- Turnstile's replay set (C-26) is per process. With several backend
+  replicas it only catches replays on the same replica; Cloudflare's own
+  single-use check still applies everywhere. Move it to the shared store
+  when the rate limiter gets one.
 - C-24 proves the chain, not its newest end. Entries removed from the tail of
   the store while no process runs are only caught against an independent
   copy, such as the archive's latest `headHash` (`verify-audit.ts --head`).

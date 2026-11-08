@@ -9,8 +9,9 @@
  * idle timeout keeps the session but clears `verifiedAt`, so the next
  * sensitive action demands step-up verification.
  *
- * Storage: sessions live in the session store (data/sessions.ts) — the
- * `sessions` table with DATABASE_URL, so every replica validates every
+ * Storage: sessions live in the session store (`repos.sessions`, the shared
+ * `SessionStore` contract of auth/sessionStore.ts, implemented in
+ * data/sessions.ts) — the `sessions` table with DATABASE_URL, so every replica validates every
  * session and a revocation on one replica is effective on all of them on the
  * next request. The bearer token is `sign(rawId)`; the stored record is keyed
  * by SHA-256(rawId) and never contains the raw id or the token, so a database
@@ -49,7 +50,7 @@ function track(s: SessionRecord) {
 }
 
 async function store(s: SessionRecord) {
-  await repos.sessions.put(s);
+  await repos.sessions.put(s, s.createdAt + config.sessionAbsoluteMs);
   track(s);
 }
 
@@ -192,9 +193,7 @@ export async function revoke(id: string) {
 
 /** Used on password reset, deactivation, role change, or suspected compromise. */
 export async function revokeAllFor(memberId: string): Promise<number> {
-  const ids = await repos.sessions.deleteForMember(memberId);
-  for (const id of ids) persistedSeen.delete(id);
-  return ids.length;
+  return repos.sessions.deleteAllFor(memberId);
 }
 
 /**
@@ -202,9 +201,7 @@ export async function revokeAllFor(memberId: string): Promise<number> {
  * Used after a password change and for "sign out everywhere else".
  */
 export async function revokeAllExcept(memberId: string, keepId: string): Promise<number> {
-  const ids = await repos.sessions.deleteForMember(memberId, keepId);
-  for (const id of ids) persistedSeen.delete(id);
-  return ids.length;
+  return repos.sessions.deleteAllFor(memberId, keepId);
 }
 
 /** Public projection — the id is truncated to an 8-char handle and is useless as a credential. */
@@ -225,7 +222,9 @@ function publicView(s: SessionRecord, currentId?: string) {
 }
 
 export async function listSessions(memberId: string, currentId?: string) {
-  return (await repos.sessions.listForMember(memberId)).map((s) => publicView(s, currentId));
+  return (await repos.sessions.listByMember(memberId))
+    .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+    .map((s) => publicView(s, currentId));
 }
 
 export async function listAllSessions(currentId?: string) {
@@ -237,7 +236,7 @@ export async function findSessionByPrefix(
   prefix: string,
 ): Promise<SessionRecord | undefined> {
   if (prefix.length < 8) return undefined;
-  return (await repos.sessions.listForMember(memberId)).find((s) => s.id.startsWith(prefix));
+  return (await repos.sessions.listByMember(memberId)).find((s) => s.id.startsWith(prefix));
 }
 
 export function sessionCount(): Promise<number> {

@@ -12,7 +12,7 @@ same route table produces `GET /api/openapi.json` (OpenAPI 3.1) and
 `GET /api/_inventory`, so this page, the OpenAPI document and the backend
 console cannot disagree about which endpoints exist.
 
-**192 routes** — 19 public, 167 session,
+**193 routes** — 20 public, 167 session,
 6 partial-session.
 
 How to read the columns:
@@ -29,62 +29,63 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/health` | Liveness probe | public | — | 429 | [system.routes.ts:254](../../Backend/routes/system.routes.ts#L254) |
-| `GET` | `/api/ready` | Readiness probe — database reachable, write queue healthy, audit chain intact | public | — | 503 | [system.routes.ts:259](../../Backend/routes/system.routes.ts#L259) |
-| `GET` | `/api/version` | Build and runtime version | public | — | 429 | [system.routes.ts:291](../../Backend/routes/system.routes.ts#L291) |
-| `GET` | `/api/openapi.json` | OpenAPI 3.1 document generated from the route table | public | — | 429 | [system.routes.ts:303](../../Backend/routes/system.routes.ts#L303) |
-| `GET` | `/api/_inventory` | Every registered route — API discovery | session | — | 401 403 429 | [system.routes.ts:314](../../Backend/routes/system.routes.ts#L314) |
-| `GET` | `/api/_status-codes` | Status codes this API can return | public | — | 429 | [system.routes.ts:322](../../Backend/routes/system.routes.ts#L322) |
-| `GET` | `/api/_config` | Effective configuration, secrets redacted | session | Administration ≥ view | 401 403 429 | [system.routes.ts:329](../../Backend/routes/system.routes.ts#L329) |
-| `GET` | `/api/_metrics` | Request metrics (format=prometheus for text exposition) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:338](../../Backend/routes/system.routes.ts#L338) |
-| `GET` | `/api/_logs` | Recent structured logs (level, q, limit) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:355](../../Backend/routes/system.routes.ts#L355) |
-| `GET` | `/api/_events` | Live event stream (Server-Sent Events) | session | — | 401 403 429 | [system.routes.ts:373](../../Backend/routes/system.routes.ts#L373) |
-| `GET` | `/console` | Backend console (HTML) | public | — | 429 | [system.routes.ts:464](../../Backend/routes/system.routes.ts#L464) |
-| `GET` | `/backend.html` | Backend console (HTML, alias) | public | — | 429 | [system.routes.ts:470](../../Backend/routes/system.routes.ts#L470) |
-| `GET` | `/fonts/:file` | Console webfonts (self-hosted) | public | — | 429 | [system.routes.ts:498](../../Backend/routes/system.routes.ts#L498) |
-| `GET` | `/` | Redirect to the console | public | — | 429 | [system.routes.ts:504](../../Backend/routes/system.routes.ts#L504) |
+| `GET` | `/api/health` | Liveness probe | public | — | 429 | [system.routes.ts:255](../../Backend/routes/system.routes.ts#L255) |
+| `GET` | `/api/ready` | Readiness probe — database reachable, write queue healthy, audit chain intact, Redis up when required | public | — | 503 | [system.routes.ts:260](../../Backend/routes/system.routes.ts#L260) |
+| `GET` | `/api/version` | Build and runtime version | public | — | 429 | [system.routes.ts:297](../../Backend/routes/system.routes.ts#L297) |
+| `GET` | `/api/openapi.json` | OpenAPI 3.1 document generated from the route table | public | — | 429 | [system.routes.ts:309](../../Backend/routes/system.routes.ts#L309) |
+| `GET` | `/api/_inventory` | Every registered route — API discovery | session | — | 401 403 429 | [system.routes.ts:320](../../Backend/routes/system.routes.ts#L320) |
+| `GET` | `/api/_status-codes` | Status codes this API can return | public | — | 429 | [system.routes.ts:328](../../Backend/routes/system.routes.ts#L328) |
+| `GET` | `/api/_config` | Effective configuration, secrets redacted | session | Administration ≥ view | 401 403 429 | [system.routes.ts:335](../../Backend/routes/system.routes.ts#L335) |
+| `GET` | `/api/_metrics` | Request metrics (format=prometheus for text exposition) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:344](../../Backend/routes/system.routes.ts#L344) |
+| `GET` | `/api/_logs` | Recent structured logs (level, q, limit) | session | Administration ≥ view | 401 403 429 | [system.routes.ts:361](../../Backend/routes/system.routes.ts#L361) |
+| `GET` | `/api/_events` | Live event stream (Server-Sent Events) | session | — | 401 403 429 | [system.routes.ts:379](../../Backend/routes/system.routes.ts#L379) |
+| `GET` | `/console` | Backend console (HTML) | public | — | 429 | [system.routes.ts:471](../../Backend/routes/system.routes.ts#L471) |
+| `GET` | `/backend.html` | Backend console (HTML, alias) | public | — | 429 | [system.routes.ts:477](../../Backend/routes/system.routes.ts#L477) |
+| `GET` | `/fonts/:file` | Console webfonts (self-hosted) | public | — | 429 | [system.routes.ts:505](../../Backend/routes/system.routes.ts#L505) |
+| `GET` | `/` | Redirect to the console | public | — | 429 | [system.routes.ts:511](../../Backend/routes/system.routes.ts#L511) |
 
 ## query
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/_query/collections` | Queryable collections and their fields | session | — | 401 403 429 | [system.routes.ts:411](../../Backend/routes/system.routes.ts#L411) |
-| `POST` | `/api/_query` | Run a safe JSON query against an allow-listed collection | session | — | 401 422 | [system.routes.ts:425](../../Backend/routes/system.routes.ts#L425) |
+| `GET` | `/api/_query/collections` | Queryable collections and their fields | session | — | 401 403 429 | [system.routes.ts:418](../../Backend/routes/system.routes.ts#L418) |
+| `POST` | `/api/_query` | Run a safe JSON query against an allow-listed collection | session | — | 401 422 | [system.routes.ts:432](../../Backend/routes/system.routes.ts#L432) |
 
 ## auth
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/auth/invite` | Inspect an invite link before accepting it | public | auth rate limit | 400 410 429 | [auth.routes.ts:346](../../Backend/routes/auth.routes.ts#L346) |
-| `POST` | `/api/auth/accept-invite` | Set a password and activate an invited account | public | auth rate limit | 400 410 422 429 | [auth.routes.ts:377](../../Backend/routes/auth.routes.ts#L377) |
-| `GET` | `/api/auth/demo-accounts` | Demo accounts available outside production | public | — | 429 | [auth.routes.ts:414](../../Backend/routes/auth.routes.ts#L414) |
-| `POST` | `/api/auth/demo` | One-step demo sign-in by role (non-production only) | public | auth rate limit | 404 422 429 | [auth.routes.ts:439](../../Backend/routes/auth.routes.ts#L439) |
-| `POST` | `/api/auth/sign-in` | Password sign-in (step 1 of 2) | public | auth rate limit | 401 403 422 423 429 | [auth.routes.ts:466](../../Backend/routes/auth.routes.ts#L466) |
-| `GET` | `/api/auth/pending` | Member for the current password-only session | partial (password only) | — | 401 | [auth.routes.ts:540](../../Backend/routes/auth.routes.ts#L540) |
-| `POST` | `/api/auth/mfa/enroll` | First authenticator enrollment during sign-in (only for members with no second factor) | partial (password only) | per-account rate limit · auth rate limit | 401 403 409 429 | [auth.routes.ts:557](../../Backend/routes/auth.routes.ts#L557) |
-| `POST` | `/api/auth/mfa/enroll/confirm` | Confirm the first authenticator with one valid code and finish sign-in | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:597](../../Backend/routes/auth.routes.ts#L597) |
-| `POST` | `/api/auth/mfa/totp` | Verify a 6-digit authenticator code (step 2 of 2) | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 422 429 | [auth.routes.ts:655](../../Backend/routes/auth.routes.ts#L655) |
-| `POST` | `/api/auth/mfa/backup` | Use a one-time backup code as the second factor (step 2 of 2) | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 422 429 | [auth.routes.ts:695](../../Backend/routes/auth.routes.ts#L695) |
-| `GET` | `/api/auth/backup-codes` | How many unused backup codes you have | session | interactive session | 401 403 | [auth.routes.ts:745](../../Backend/routes/auth.routes.ts#L745) |
-| `POST` | `/api/auth/backup-codes` | Generate a new set of one-time backup codes — returned once, replaces the old set (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:754](../../Backend/routes/auth.routes.ts#L754) |
-| `POST` | `/api/auth/step-up` | Re-verify with an authenticator code for sensitive actions or to unlock | session | interactive session · per-account rate limit · auth rate limit | 401 403 422 429 | [auth.routes.ts:784](../../Backend/routes/auth.routes.ts#L784) |
-| `POST` | `/api/auth/totp/enroll` | Start authenticator-app enrollment — returns the secret once (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:827](../../Backend/routes/auth.routes.ts#L827) |
-| `POST` | `/api/auth/totp/confirm` | Finish authenticator-app enrollment with one valid code | session | interactive session · per-account rate limit · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:860](../../Backend/routes/auth.routes.ts#L860) |
-| `POST` | `/api/auth/webauthn/options` | Passkey challenge for sign-in, second factor or step-up/unlock | public | auth rate limit | 401 403 409 422 429 | [auth.routes.ts:912](../../Backend/routes/auth.routes.ts#L912) |
-| `POST` | `/api/auth/webauthn/verify` | Passkey sign-in, second factor or step-up/unlock verification | public | auth rate limit | 400 401 403 422 429 | [auth.routes.ts:940](../../Backend/routes/auth.routes.ts#L940) |
-| `GET` | `/api/auth/passkeys` | Your registered passkeys | session | interactive session | 401 403 | [auth.routes.ts:1036](../../Backend/routes/auth.routes.ts#L1036) |
-| `POST` | `/api/auth/passkeys/options` | Begin passkey registration (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:1057](../../Backend/routes/auth.routes.ts#L1057) |
-| `POST` | `/api/auth/passkeys` | Complete passkey registration | session | interactive session · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:1071](../../Backend/routes/auth.routes.ts#L1071) |
-| `DELETE` | `/api/auth/passkeys/:credentialId` | Remove one of your passkeys (step-up) | session | step-up · interactive session | 401 403 404 409 | [auth.routes.ts:1105](../../Backend/routes/auth.routes.ts#L1105) |
-| `GET` | `/api/auth/session` | Current principal, sessions and elevations | session | — | 401 403 429 | [auth.routes.ts:1139](../../Backend/routes/auth.routes.ts#L1139) |
-| `DELETE` | `/api/auth/sessions/:sessionPrefix` | Revoke one of your other sessions | session | interactive session | 401 403 404 | [auth.routes.ts:1157](../../Backend/routes/auth.routes.ts#L1157) |
-| `POST` | `/api/auth/sign-out` | End this session | partial (password only) | — | 401 403 429 | [auth.routes.ts:1177](../../Backend/routes/auth.routes.ts#L1177) |
-| `POST` | `/api/auth/sign-out-everywhere` | Revoke all sessions for this account | session | interactive session | 401 403 429 | [auth.routes.ts:1194](../../Backend/routes/auth.routes.ts#L1194) |
-| `POST` | `/api/auth/sign-out-others` | Revoke every session for this account except this one | session | interactive session | 401 403 | [auth.routes.ts:1214](../../Backend/routes/auth.routes.ts#L1214) |
-| `POST` | `/api/auth/password` | Change your password (step-up; current password required; signs out your other sessions) | session | step-up · interactive session · per-account rate limit · auth rate limit | 401 403 422 429 | [auth.routes.ts:1243](../../Backend/routes/auth.routes.ts#L1243) |
+| `GET` | `/api/auth/invite` | Inspect an invite link before accepting it | public | auth rate limit | 400 410 429 | [auth.routes.ts:353](../../Backend/routes/auth.routes.ts#L353) |
+| `POST` | `/api/auth/accept-invite` | Set a password and activate an invited account | public | auth rate limit | 400 403 410 422 429 503 | [auth.routes.ts:384](../../Backend/routes/auth.routes.ts#L384) |
+| `GET` | `/api/auth/config` | Public sign-in settings (bot-protection widget) | public | — | 429 | [auth.routes.ts:426](../../Backend/routes/auth.routes.ts#L426) |
+| `GET` | `/api/auth/demo-accounts` | Demo accounts available outside production | public | — | 429 | [auth.routes.ts:433](../../Backend/routes/auth.routes.ts#L433) |
+| `POST` | `/api/auth/demo` | One-step demo sign-in by role (non-production only) | public | auth rate limit | 400 403 404 422 429 503 | [auth.routes.ts:458](../../Backend/routes/auth.routes.ts#L458) |
+| `POST` | `/api/auth/sign-in` | Password sign-in (step 1 of 2) | public | auth rate limit | 400 401 403 422 423 429 503 | [auth.routes.ts:486](../../Backend/routes/auth.routes.ts#L486) |
+| `GET` | `/api/auth/pending` | Member for the current password-only session | partial (password only) | — | 401 | [auth.routes.ts:561](../../Backend/routes/auth.routes.ts#L561) |
+| `POST` | `/api/auth/mfa/enroll` | First authenticator enrollment during sign-in (only for members with no second factor) | partial (password only) | per-account rate limit · auth rate limit | 401 403 409 429 | [auth.routes.ts:578](../../Backend/routes/auth.routes.ts#L578) |
+| `POST` | `/api/auth/mfa/enroll/confirm` | Confirm the first authenticator with one valid code and finish sign-in | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:618](../../Backend/routes/auth.routes.ts#L618) |
+| `POST` | `/api/auth/mfa/totp` | Verify a 6-digit authenticator code (step 2 of 2) | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 422 429 | [auth.routes.ts:676](../../Backend/routes/auth.routes.ts#L676) |
+| `POST` | `/api/auth/mfa/backup` | Use a one-time backup code as the second factor (step 2 of 2) | partial (password only) | per-account rate limit · auth rate limit | 400 401 403 422 429 | [auth.routes.ts:716](../../Backend/routes/auth.routes.ts#L716) |
+| `GET` | `/api/auth/backup-codes` | How many unused backup codes you have | session | interactive session | 401 403 | [auth.routes.ts:766](../../Backend/routes/auth.routes.ts#L766) |
+| `POST` | `/api/auth/backup-codes` | Generate a new set of one-time backup codes — returned once, replaces the old set (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:775](../../Backend/routes/auth.routes.ts#L775) |
+| `POST` | `/api/auth/step-up` | Re-verify with an authenticator code for sensitive actions or to unlock | session | interactive session · per-account rate limit · auth rate limit | 401 403 422 429 | [auth.routes.ts:805](../../Backend/routes/auth.routes.ts#L805) |
+| `POST` | `/api/auth/totp/enroll` | Start authenticator-app enrollment — returns the secret once (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:848](../../Backend/routes/auth.routes.ts#L848) |
+| `POST` | `/api/auth/totp/confirm` | Finish authenticator-app enrollment with one valid code | session | interactive session · per-account rate limit · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:881](../../Backend/routes/auth.routes.ts#L881) |
+| `POST` | `/api/auth/webauthn/options` | Passkey challenge for sign-in, second factor or step-up/unlock | public | auth rate limit | 401 403 409 422 429 | [auth.routes.ts:933](../../Backend/routes/auth.routes.ts#L933) |
+| `POST` | `/api/auth/webauthn/verify` | Passkey sign-in, second factor or step-up/unlock verification | public | auth rate limit | 400 401 403 422 429 | [auth.routes.ts:961](../../Backend/routes/auth.routes.ts#L961) |
+| `GET` | `/api/auth/passkeys` | Your registered passkeys | session | interactive session | 401 403 | [auth.routes.ts:1057](../../Backend/routes/auth.routes.ts#L1057) |
+| `POST` | `/api/auth/passkeys/options` | Begin passkey registration (step-up) | session | step-up · interactive session · auth rate limit | 401 403 429 | [auth.routes.ts:1078](../../Backend/routes/auth.routes.ts#L1078) |
+| `POST` | `/api/auth/passkeys` | Complete passkey registration | session | interactive session · auth rate limit | 400 401 403 409 422 429 | [auth.routes.ts:1092](../../Backend/routes/auth.routes.ts#L1092) |
+| `DELETE` | `/api/auth/passkeys/:credentialId` | Remove one of your passkeys (step-up) | session | step-up · interactive session | 401 403 404 409 | [auth.routes.ts:1126](../../Backend/routes/auth.routes.ts#L1126) |
+| `GET` | `/api/auth/session` | Current principal, sessions and elevations | session | — | 401 403 429 | [auth.routes.ts:1160](../../Backend/routes/auth.routes.ts#L1160) |
+| `DELETE` | `/api/auth/sessions/:sessionPrefix` | Revoke one of your other sessions | session | interactive session | 401 403 404 | [auth.routes.ts:1178](../../Backend/routes/auth.routes.ts#L1178) |
+| `POST` | `/api/auth/sign-out` | End this session | partial (password only) | — | 401 403 429 | [auth.routes.ts:1198](../../Backend/routes/auth.routes.ts#L1198) |
+| `POST` | `/api/auth/sign-out-everywhere` | Revoke all sessions for this account | session | interactive session | 401 403 429 | [auth.routes.ts:1215](../../Backend/routes/auth.routes.ts#L1215) |
+| `POST` | `/api/auth/sign-out-others` | Revoke every session for this account except this one | session | interactive session | 401 403 | [auth.routes.ts:1235](../../Backend/routes/auth.routes.ts#L1235) |
+| `POST` | `/api/auth/password` | Change your password (step-up; current password required; signs out your other sessions) | session | step-up · interactive session · per-account rate limit · auth rate limit | 401 403 422 429 | [auth.routes.ts:1264](../../Backend/routes/auth.routes.ts#L1264) |
 | `GET` | `/api/me/capabilities` | Effective permissions for the signed-in member | session | — | 401 403 429 | [team.routes.ts:136](../../Backend/routes/team.routes.ts#L136) |
-| `POST` | `/api/auth/recovery/request` | Request a password reset link (always 202, no enumeration) | public | — | 202 422 429 | [recovery.routes.ts:56](../../Backend/routes/recovery.routes.ts#L56) |
-| `POST` | `/api/auth/recovery/reset` | Set a new password from a reset link (signs out every session) | public | — | 400 410 422 429 | [recovery.routes.ts:113](../../Backend/routes/recovery.routes.ts#L113) |
+| `POST` | `/api/auth/recovery/request` | Request a password reset link (always 202, no enumeration) | public | — | 202 400 403 422 429 503 | [recovery.routes.ts:61](../../Backend/routes/recovery.routes.ts#L61) |
+| `POST` | `/api/auth/recovery/reset` | Set a new password from a reset link (signs out every session) | public | — | 400 410 422 429 | [recovery.routes.ts:119](../../Backend/routes/recovery.routes.ts#L119) |
 
 ## products
 

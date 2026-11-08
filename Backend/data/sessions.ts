@@ -1,10 +1,13 @@
 /**
- * Session store (ADR 0011): where `auth/sessions.ts` keeps its records.
+ * Session storage for auth/sessions.ts (ADR 0011).
  *
- * Decision: sessions live in PostgreSQL in phase 1 (`sessions` table), behind
- * this `SessionStore` interface, which is deliberately small and key/value
- * shaped so a Redis implementation (hash per session + a set per member, TTL =
- * absolute lifetime) can replace it without touching auth/sessions.ts.
+ * Decision: sessions live in PostgreSQL in phase 1 (`sessions` table, next to
+ * members, durable and auditable, no extra component). The store implements
+ * the shared `SessionStore` contract from auth/sessionStore.ts (the Redis
+ * lane's seam, which also has a Redis implementation), plus three admin
+ * reads the console needs (`AdminSessionStore`). Moving sessions to Redis
+ * later means giving `RedisSessionStore` those three methods (SCAN-based) and
+ * installing it as `repos.sessions`; auth/sessions.ts does not change.
  *
  * Records are keyed by SHA-256 of the token's random id; neither the token nor
  * the raw id is ever stored (auth/sessions.ts). A revoked session is deleted,
@@ -24,6 +27,8 @@ import {
   type Queryable,
   noMirror,
 } from './common.ts';
+
+import type { SessionStore } from '../auth/sessionStore.ts';
 
 export type SessionStage = 'password' | 'verified';
 
@@ -47,17 +52,10 @@ export interface SessionRecord {
   lastTotpCounter: number;
 }
 
-export interface SessionStore {
-  get(id: string): Promise<SessionRecord | undefined>;
-  put(s: SessionRecord): Promise<void>;
-  /** Deletes one session. True if it existed. */
-  delete(id: string): Promise<boolean>;
-  /** Newest activity first. */
-  listForMember(memberId: string): Promise<SessionRecord[]>;
-  /** Newest activity first, at most `limit`. */
+/** The shared contract plus the admin reads the console uses. */
+export interface AdminSessionStore extends SessionStore {
+  /** Every session, newest activity first, at most `limit`. */
   listAll(limit?: number): Promise<SessionRecord[]>;
-  /** Deletes every session of a member except `keepId`. Returns the ids removed. */
-  deleteForMember(memberId: string, keepId?: string): Promise<string[]>;
   /** Deletes sessions created before `cutoffMs`. Returns how many. */
   deleteCreatedBefore(cutoffMs: number): Promise<number>;
   count(): Promise<number>;
@@ -65,33 +63,39 @@ export interface SessionStore {
 
 const byActivity = (a: SessionRecord, b: SessionRecord) => b.lastSeenAt - a.lastSeenAt;
 
-export class MemorySessionStore implements SessionStore {
+/** One process (tests, development). Lists are newest activity first. */
+export class MemorySessionStore implements AdminSessionStore {
+  readonly name = 'memory';
   private readonly rows = new Map<string, SessionRecord>();
 
   async get(id: string) {
     const s = this.rows.get(id);
     return s && clone(s);
   }
-  async put(s: SessionRecord) {
+  async put(s: SessionRecord, expiresAt?: number) {
+    if (expiresAt !== undefined && expiresAt <= Date.now()) {
+      this.rows.delete(s.id);
+      return;
+    }
     this.rows.set(s.id, clone({ ...s, revoked: false }));
   }
   async delete(id: string) {
     return this.rows.delete(id);
   }
-  async listForMember(memberId: string) {
+  async listByMember(memberId: string) {
     return [...this.rows.values()].filter((s) => s.memberId === memberId).sort(byActivity).map(clone);
   }
   async listAll(limit = 1000) {
     return [...this.rows.values()].sort(byActivity).slice(0, limit).map(clone);
   }
-  async deleteForMember(memberId: string, keepId?: string) {
-    const ids: string[] = [];
+  async deleteAllFor(memberId: string, keepId?: string) {
+    let n = 0;
     for (const s of [...this.rows.values()])
       if (s.memberId === memberId && s.id !== keepId) {
         this.rows.delete(s.id);
-        ids.push(s.id);
+        n++;
       }
-    return ids;
+    return n;
   }
   async deleteCreatedBefore(cutoffMs: number) {
     let n = 0;
@@ -161,7 +165,8 @@ function fromRow(r: SessionRow): SessionRecord {
   });
 }
 
-export class PgSessionStore implements SessionStore {
+export class PgSessionStore implements AdminSessionStore {
+  readonly name = 'postgres';
   private readonly pool: Queryable;
   private readonly mirror: DocumentMirror;
 
@@ -177,7 +182,12 @@ export class PgSessionStore implements SessionStore {
     );
     return res.rows[0] ? fromRow(res.rows[0]) : undefined;
   }
-  async put(s: SessionRecord) {
+  /** `expiresAt` is implied by created_at + the absolute lifetime; validateSession enforces it. */
+  async put(s: SessionRecord, expiresAt?: number) {
+    if (expiresAt !== undefined && expiresAt <= Date.now()) {
+      await this.delete(s.id);
+      return;
+    }
     await this.pool.query(
       `INSERT INTO sessions (org_id, id, member_id, stage, method, created_at, last_seen_at,
          verified_at, ua_hash, client, ip, location, last_totp_counter, extra)
@@ -214,7 +224,7 @@ export class PgSessionStore implements SessionStore {
     this.mirror.remove('sessions', id);
     return (res.rowCount ?? 0) > 0;
   }
-  async listForMember(memberId: string) {
+  async listByMember(memberId: string) {
     const res = await this.pool.query<SessionRow>(
       `SELECT ${COLUMNS} FROM sessions WHERE org_id = $1 AND member_id = $2
        ORDER BY last_seen_at DESC`,
@@ -229,14 +239,14 @@ export class PgSessionStore implements SessionStore {
     );
     return res.rows.map(fromRow);
   }
-  async deleteForMember(memberId: string, keepId?: string) {
+  async deleteAllFor(memberId: string, keepId?: string) {
     const res = await this.pool.query<{ id: string }>(
       `DELETE FROM sessions WHERE org_id = $1 AND member_id = $2 AND id IS DISTINCT FROM $3
        RETURNING id`,
       [ORG_ID, memberId, keepId ?? null],
     );
     for (const r of res.rows) this.mirror.remove('sessions', r.id);
-    return res.rows.map((r) => r.id);
+    return res.rows.length;
   }
   async deleteCreatedBefore(cutoffMs: number) {
     const res = await this.pool.query<{ id: string }>(

@@ -10,13 +10,20 @@
  *       Long-running: the jobs in WORKER_JOBS (default: all of lib/jobs.ts)
  *       until SIGTERM. Pair it with JOBS_IN_PROCESS=0 on the API.
  *
+ * Exactly once across processes: every periodic run takes a lease first
+ * (lib/scheduler.ts; `SET NX PX` in Redis when REDIS_URL is set), so any mix
+ * of API replicas and workers with the same job enabled runs it once per
+ * slot. Without Redis the lease is per process: keep JOBS_IN_PROCESS=0 on
+ * the API when a worker runs the jobs.
+ *
  * Why the long-running mode is fenced in production (WORKER_LOOP_ENABLED=1):
  * every process loads all collections into memory at boot and never sees
  * another process's later writes (known-limits.md, "Run exactly one backend
  * replica"). Monitors and digests *write* (monitor state, incidents,
  * `emailedAt`), so running them here today would let the API and the worker
- * overwrite each other's rows. Until the Redis/data-layer wave adds
- * cross-instance invalidation, they stay in the API (JOBS_IN_PROCESS) and
+ * overwrite each other's rows. Redis leases stop double *runs*, not stale
+ * *caches*: until the data layer serves those collections from Postgres on
+ * demand (docs/operations/known-limits.md lists them), they stay in the API (JOBS_IN_PROCESS) and
  * only the read-only tasks (backup, drill) run here, one-shot, from a fresh
  * hydrate — which is also the only way to get a consistent snapshot.
  *
@@ -35,6 +42,8 @@ import { createBackup, pruneBackups, restoreDrill } from './resilience/backups.t
 import { flushAuditArchive, installAuditArchive } from './storage/auditArchive.ts';
 import { startMonitorScheduler, stopMonitorScheduler } from './monitors/scheduler.ts';
 import { runDigest } from './domain/collab/notify.ts';
+import { scheduleEvery } from './lib/scheduler.ts';
+import { installRedis, shutdownRedis } from './lib/redisBoot.ts';
 import './server.ts';
 
 /** One-shot tasks. Read-only on collections, so safe beside a running API. */
@@ -161,27 +170,21 @@ async function shutdown(code: number): Promise<never> {
   await closePersistence().catch((e) =>
     logger.error('worker.flush_failed', { err: String((e as Error)?.message ?? e) }),
   );
+  await shutdownRedis();
   process.exit(code);
 }
 
 function startLoop(jobs: JobName[]) {
   setEnabledJobs(jobs);
   if (jobs.includes('monitors')) startMonitorScheduler();
+  // Leases (lib/scheduler.ts): with REDIS_URL each run happens in exactly one
+  // process, whether that is this worker, another worker or an API replica.
   if (jobs.includes('backup'))
-    setInterval(
-      () =>
-        void defaultRunners
-          .backup()
-          .catch((e) => logger.error('backup failed', { err: String(e) })),
-      24 * 60 * 60_000,
-    ).unref();
+    scheduleEvery('backup', 24 * 60 * 60_000, () => defaultRunners.backup(), { tickMs: 60_000 });
   const digestMinutes = Number(process.env.MAIL_DIGEST_MINUTES ?? 0);
   if (jobs.includes('digest') && Number.isFinite(digestMinutes) && digestMinutes > 0) {
     const ms = digestMinutes * 60_000;
-    setInterval(
-      () => void runDigest(ms).catch((e) => logger.error('digest failed', { err: String(e) })),
-      ms,
-    ).unref();
+    scheduleEvery('digest', ms, () => runDigest(ms));
   }
   // Every job timer is unref'd; this one keeps the process alive until SIGTERM.
   setInterval(() => logger.debug('worker.alive', { jobs }), 60 * 60_000);
@@ -203,6 +206,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
   // The worker never seeds: it only ever works on data the API created.
   await initPersistence(async () => {});
+  // Job leases (and event fan-out) shared with the API when REDIS_URL is set.
+  await installRedis();
   installAuditArchive();
   process.on('unhandledRejection', (err) =>
     logger.error('unhandledRejection', { err: String(err) }),

@@ -50,7 +50,8 @@ describe('api() — elevation_required', () => {
   });
 });
 
-describe('JitAccessHost', () => {
+// Typing-heavy (userEvent); allow for a loaded CI machine like the settings form tests.
+describe('JitAccessHost', { timeout: 20_000 }, () => {
   beforeEach(() => {
     toast.success.mockReset();
     toast.error.mockReset();

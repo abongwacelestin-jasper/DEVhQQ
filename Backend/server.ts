@@ -31,6 +31,8 @@ import { closePersistence, initPersistence } from './db/boot.ts';
 import { audit } from './audit/auditLog.ts';
 import { createBackup, pruneBackups } from './resilience/backups.ts';
 import { jobEnabled } from './lib/jobs.ts';
+import { scheduleEvery } from './lib/scheduler.ts';
+import { installRedis, shutdownRedis } from './lib/redisBoot.ts';
 import { registerSystemRoutes } from './routes/system.routes.ts';
 import { registerAuthRoutes, sealLegacyTotpSecrets } from './routes/auth.routes.ts';
 import { registerProjectRoutes } from './routes/projects.routes.ts';
@@ -65,6 +67,8 @@ import { registerAssistantRoutes } from './routes/assistant.routes.ts';
 export async function buildApp() {
   // Postgres when DATABASE_URL is set (migrate → driver → hydrate → seed-if-empty), else in-memory.
   await initPersistence(seed);
+  // REDIS_URL: shared rate limits, event fan-out, job leases (no-op without it).
+  await installRedis();
   const router = new Router();
   router.use(securityHeaders);
   router.use(originGuard);
@@ -135,9 +139,10 @@ async function main() {
     void createBackup()
       .then(pruneBackups)
       .catch((e) => logger.error('backup failed', { err: String(e) }));
+  // Daily, once per UTC day across replicas (lib/scheduler.ts lease; Redis-backed with REDIS_URL).
   if (jobEnabled('backup')) {
     if (!config.isProd) setTimeout(backup, 2000).unref();
-    setInterval(backup, 24 * 60 * 60_000).unref();
+    scheduleEvery('backup', 24 * 60 * 60_000, backup, { tickMs: 60_000 });
   }
 
   const shutdown = (signal: string) => {
@@ -146,6 +151,7 @@ async function main() {
     // Stop accepting requests, then flush queued writes before exiting.
     server.close(() =>
       void closePersistence()
+        .then(shutdownRedis)
         .then(() => process.exit(0))
         .catch((err) => {
           logger.error('shutdown flush failed', { err: String(err) });

@@ -24,6 +24,7 @@ import { audit } from '../audit/auditLog.ts';
 import { findMemberByEmail } from '../store/db.ts';
 import { repos } from '../data/index.ts';
 import { HttpError } from '../types.ts';
+import { MAX_TOKEN_LENGTH, turnstileGuard } from '../security/turnstile.ts';
 import { sendPasswordChanged, sendPasswordReset } from '../mail/events.ts';
 import { recoveryTokens, saveMember } from '../domain/collab/store.ts';
 import { passwordProblem } from '../domain/collab/passwordPolicy.ts';
@@ -38,7 +39,11 @@ const TOKEN_TTL_MS = 30 * 60_000;
 export const RECOVERY_MIN_MS = 350;
 const tokenPattern = /^[A-Za-z0-9_-]{20,200}$/;
 
-const requestBody = v.object({ email: v.email() });
+const requestBody = v.object({
+  email: v.email(),
+  // Cloudflare Turnstile token, checked by `turnstileGuard` (security/turnstile.ts).
+  turnstileToken: v.optional(v.string({ max: MAX_TOKEN_LENGTH, trim: false })),
+});
 const resetBody = v.object({
   token: v.string({ max: 200, pattern: tokenPattern }),
   password: v.string({ min: 1, max: 400, trim: false }),
@@ -61,9 +66,10 @@ export function registerRecoveryRoutes(r: Router) {
       summary: 'Request a password reset link (always 202, no enumeration)',
       tag,
       auth: 'public',
-      responses: [202, 422, 429],
+      responses: [202, 400, 403, 422, 429, 503],
     },
     recoveryIpLimiter,
+    turnstileGuard('recover'),
     async (ctx) => {
       const started = Date.now();
       const { email } = parse(requestBody, ctx.body);

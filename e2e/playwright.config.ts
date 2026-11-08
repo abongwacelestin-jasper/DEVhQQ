@@ -27,6 +27,20 @@ process.env.E2E_API_URL = apiURL;
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..');
 const state = process.env.E2E_STATE_DIR ?? '';
+/**
+ * E2E_TURNSTILE=1 starts the API with Cloudflare Turnstile on, using Cloudflare's published
+ * always-pass test keys (the widget solves itself, siteverify accepts its dummy token).
+ * Needs internet: the widget and siteverify are on challenges.cloudflare.com. The default
+ * run keeps it off. Journeys that sign in through the API (signInViaApi) need it off.
+ */
+const turnstileEnv: Record<string, string> =
+  process.env.E2E_TURNSTILE === '1'
+    ? {
+        TURNSTILE_MODE: 'on',
+        TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
+        TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
+      }
+    : { TURNSTILE_MODE: 'off' };
 
 export default defineConfig({
   testDir: '.',
@@ -113,6 +127,7 @@ export default defineConfig({
             AUDIT_LOG_FILE: join(state, 'audit.log'),
             BACKUP_DIR: join(state, 'backups'),
             LOG_LEVEL: 'warn',
+            ...turnstileEnv,
           },
         },
         {

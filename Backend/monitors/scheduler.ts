@@ -15,6 +15,7 @@
 import { audit } from '../audit/auditLog.ts';
 import { publish } from '../lib/events.ts';
 import { logger } from '../lib/logger.ts';
+import { runExclusive } from '../lib/scheduler.ts';
 import { db } from '../store/db.ts';
 import type { Incident } from '../types.ts';
 import {
@@ -243,6 +244,25 @@ function recoverIncident(m: MonitorRow) {
 
 let timer: ReturnType<typeof setInterval> | undefined;
 
+/**
+ * One check per monitor per interval across every process that runs the
+ * `monitors` job (lib/scheduler.ts lease; Redis-backed with REDIS_URL). A
+ * loser pushes its local `nextCheckAt` out by one interval; when the lock
+ * store is down the check is skipped and retried on a later tick.
+ */
+export function leaseMs(m: MonitorRow): number {
+  return Math.round(Math.max(MIN_INTERVAL_SEC, m.intervalSec) * 1000 * 0.8);
+}
+
+async function checkOnce(m: MonitorRow) {
+  try {
+    const r = await runExclusive(`monitor:${m.id}`, leaseMs(m), () => runCheck(m.id));
+    if (r === 'held') m.nextCheckAt = Date.now() + jitteredDelayMs(m.intervalSec);
+  } catch (e) {
+    logger.error('monitor check crashed', { monitor: m.id, err: String(e) });
+  }
+}
+
 /** Starts the scheduler loop (idempotent). The interval is unref'd so it never holds the process open. */
 export function startMonitorScheduler() {
   if (timer) return;
@@ -254,10 +274,7 @@ export function startMonitorScheduler() {
       )
       .sort((a, b) => a.nextCheckAt - b.nextCheckAt)
       .slice(0, Math.max(0, MAX_CONCURRENT - inFlight.size));
-    for (const m of due)
-      void runCheck(m.id).catch((e) =>
-        logger.error('monitor check crashed', { monitor: m.id, err: String(e) }),
-      );
+    for (const m of due) void checkOnce(m);
   }, TICK_MS);
   timer.unref();
 }

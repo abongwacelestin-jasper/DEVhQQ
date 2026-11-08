@@ -17,6 +17,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { roleByKey, type RoleKey } from '../../data/roles';
 import { useDemoConfig } from '../../api/auth/useDemoConfig';
 import { passkeySupported } from '../../utils/webauthn';
+import { TURNSTILE_PENDING, useTurnstile } from '../../components/auth/TurnstileWidget';
 
 const input =
   'h-9 w-full rounded-md border border-line-strong bg-white px-3 text-[13px] text-ink outline-none transition-colors duration-150 placeholder:text-subtle focus:border-accent focus:ring-2 focus:ring-accent/20';
@@ -31,6 +32,8 @@ export function SignIn() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
+  // One widget for the password form and the demo buttons (both are "sign-in").
+  const turnstile = useTurnstile('sign-in');
 
   const lockedFor = lockedUntil ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
   useEffect(() => {
@@ -43,21 +46,26 @@ export function SignIn() {
     e.preventDefault();
     if (busy) return;
     if (!email.trim() || !password) return setError('Enter your work email and password.');
+    if (turnstile.enabled && !turnstile.token) return setError(TURNSTILE_PENDING);
     setBusy(true);
-    const r = await signInPassword(email, password);
+    const r = await signInPassword(email, password, turnstile.token);
     setBusy(false);
+    // Tokens are single-use: a fresh check for the next attempt.
+    turnstile.reset();
     if (!r.ok) return setError(r.error ?? 'Sign-in failed.');
     navigate('/verify');
   };
 
   const signInAs = async (key: RoleKey) => {
     if (busy) return;
+    if (turnstile.enabled && !turnstile.token) return setError(TURNSTILE_PENDING);
     setBusy(true);
     setError('');
     try {
-      await signInDemo(key);
+      await signInDemo(key, turnstile.token);
       navigate('/verify');
     } catch (e) {
+      turnstile.reset();
       setError(
         e instanceof Error ? e.message : 'Demo sign-in failed — is the backend running on :8080?',
       );
@@ -137,6 +145,7 @@ export function SignIn() {
             </button>
           </span>
         </label>
+        {turnstile.widget}
         {(error || lockedFor > 0) && (
           <p
             role="alert"

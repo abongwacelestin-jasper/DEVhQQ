@@ -12,7 +12,7 @@ and `Models/`. What each one means and its defaults are in the
 hand-written [configuration reference](configuration.md); this page is the
 drift check: if code starts reading a new variable, it appears here.
 
-**101 variables.** "`_FILE`" means the container can pass the
+**107 variables.** "`_FILE`" means the container can pass the
 value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 
 | Variable | Backend | Frontend | Models | `_FILE` | In `.env.example` |
@@ -77,7 +77,7 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `ML_TRAIN_THREADS` |  |  | `devhq_models/training/pipeline.py` |  |  |
 | `MODEL_DIR` |  |  | `devhq_models/config.py` |  |  |
 | `MODEL_SIGNING_KEY` |  |  | `devhq_models/config.py` | yes |  |
-| `NAME` | `config/mail.ts` |  |  |  |  |
+| `NAME` | `config/mail.ts`<br>`config/turnstile.ts` |  |  |  |  |
 | `NODE_ENV` | `config/env.ts`<br>`db/boot.ts`<br>`db/pool.ts`<br>`domain/collab/limits.ts` |  | `devhq_models/config.py` |  | yes |
 | `OMP_NUM_THREADS` |  |  | `devhq_models/cli.py` |  |  |
 | `OPENBLAS_NUM_THREADS` |  |  | `devhq_models/cli.py` |  |  |
@@ -113,6 +113,12 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `STORAGE_LOCK_MODE` | `storage/index.ts` |  |  |  | yes |
 | `STREAM_HEARTBEAT_MS` | `domain/collab/realtime.ts` |  |  |  | yes |
 | `TRUST_PROXY` | `lib/http.ts`<br>`scripts/smoke.ts` |  |  |  | yes |
+| `TURNSTILE_EXEMPT_CLI` | `config/turnstile.ts` |  |  |  | yes |
+| `TURNSTILE_FAIL_OPEN` | `config/turnstile.ts` |  |  |  | yes |
+| `TURNSTILE_MODE` | `config/turnstile.ts`<br>`scripts/smoke.ts` |  |  |  | yes |
+| `TURNSTILE_SECRET_KEY` | `config/turnstile.ts` |  |  | yes | yes |
+| `TURNSTILE_SECRET_KEY_FILE` | `config/turnstile.ts` |  |  |  |  |
+| `TURNSTILE_SITE_KEY` | `config/turnstile.ts` |  |  |  | yes |
 | `VITE_API_BASE` |  | `src/api/client.ts`<br>`src/components/assistant/askAssistant.ts` |  |  |  |
 | `WEBAUTHN_ALGORITHMS` | `config/env.ts` |  |  |  | yes |
 | `WEBAUTHN_RP_ID` | `config/env.ts` |  |  |  | yes |
@@ -124,4 +130,4 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 Usually Compose or edge settings (read by `docker-compose.yml`, the Caddyfile
 or scripts, not by the Node/Python code).
 
-`ACME_EMAIL` · `DEVHQ_DOMAIN` · `DEVHQ_IMAGE_PREFIX` · `DEVHQ_SECRETS_GID` · `DEVHQ_TAG` · `EDGE_BIND` · `EDGE_HTTPS_PORT` · `EDGE_HTTP_PORT` · `EDGE_MAX_BODY_SIZE` · `HSTS_VALUE` · `MINIO_ENABLE_SSE` · `S3_PUBLIC_HOST` · `WORKER_JOBS`
+`ACME_EMAIL` · `DEVHQ_DOMAIN` · `DEVHQ_IMAGE_PREFIX` · `DEVHQ_SECRETS_GID` · `DEVHQ_TAG` · `EDGE_BIND` · `EDGE_HTTPS_PORT` · `EDGE_HTTP_PORT` · `EDGE_MAX_BODY_SIZE` · `EXPECT_REPLICAS` · `HSTS_VALUE` · `MINIO_ENABLE_SSE` · `REDIS_COMMAND_TIMEOUT_MS` · `REDIS_KEY_PREFIX` · `REDIS_URL` · `S3_PUBLIC_HOST` · `WORKER_JOBS`

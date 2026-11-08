@@ -82,7 +82,7 @@ configuration change. Defaults keep development working.
 | `BRAND_LOGO_URL` | unset → text wordmark | Absolute `https://` URL of a PNG (or SVG). Use a PNG: Gmail and Outlook do not display SVG. Export it at twice the display width for sharp rendering. |
 | `BRAND_LOGO_WIDTH` | `120` | Display width in pixels; height scales. |
 | `BRAND_PRIMARY_COLOR` | `#4f46e5` | Buttons and the top rule. Button text is white or near-black, whichever contrasts better. |
-| `BRAND_ACCENT_COLOR` | `#0e7490` | Links and highlights (lightened automatically in dark mode). |
+| `BRAND_ACCENT_COLOR` | `#3730a3` | Links and highlights (lightened automatically in dark mode). |
 | `BRAND_SUPPORT_EMAIL` | `support@<app host>` | "Questions? Contact …" in every footer. |
 | `BRAND_POSTAL_ADDRESS` | unset | Physical address in the footer. Set it before going live: anti-spam law (CAN-SPAM, PECR) and mailbox providers expect one; a warning is logged in production while it is missing. |
 | `BRAND_WEBSITE_URL` | `APP_URL` | Logo link and the footer link. |

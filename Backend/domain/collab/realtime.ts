@@ -22,6 +22,17 @@
  * channel events are checked against that view — members are no longer held
  * in process memory (ADR 0011), so a per-event database read is avoided.
  * Reconnects may send `Last-Event-ID` to replay recent events they can read.
+ *
+ * Across replicas (lib/redisBus.ts installs a transport when REDIS_URL is
+ * set): the publishing process delivers to its own subscribers at once and
+ * forwards the event; every other replica receives it through
+ * `receiveRemote` and runs the same `visibleTo` check against its own
+ * subscribers. The publisher ignores its own echo, so nothing is delivered
+ * twice. Event ids are then hybrid-logical-clock values (wall-clock µs,
+ * bumped past every id seen), so they stay increasing on every replica and a
+ * reconnect to another replica can still replay by `Last-Event-ID`. Replay
+ * across replicas is best effort: each replica keeps the last REPLAY events
+ * it saw, and clock skew between replicas can reorder ids by the skew.
  */
 
 import type { ServerResponse } from 'node:http';
@@ -59,6 +70,31 @@ export const HEARTBEAT_MS = Number(process.env.STREAM_HEARTBEAT_MS ?? 15_000);
 const subscribers = new Set<Subscriber>();
 const recent: CollabEvent[] = [];
 let seq = 0;
+
+/** Carries locally emitted events to the other replicas. */
+export interface RealtimeTransport {
+  publish(e: CollabEvent): void;
+}
+let transport: RealtimeTransport | undefined;
+
+export function setRealtimeTransport(t: RealtimeTransport | undefined) {
+  transport = t;
+}
+
+/** Sequential ids in one process; HLC ids (see above) once events cross replicas. */
+function nextId(): number {
+  seq = transport ? Math.max(seq + 1, Date.now() * 1000) : seq + 1;
+  return seq;
+}
+
+function remember(e: CollabEvent) {
+  recent.push(e);
+  if (recent.length > REPLAY) recent.shift();
+}
+
+function deliver(e: CollabEvent) {
+  for (const sub of [...subscribers]) if (visibleTo(sub, e)) write(sub, frame(e));
+}
 
 function visibleTo(sub: Subscriber, e: CollabEvent): boolean {
   if ('memberId' in e.audience) return e.audience.memberId === sub.memberId;
@@ -103,10 +139,18 @@ onMemberWrite((memberId) => {
 
 /** Publishes a collaboration event. Never forwarded to the global /api/_events bus. */
 export function emit(type: string, audience: Audience, data: unknown) {
-  const e: CollabEvent = { id: ++seq, type, at: new Date().toISOString(), audience, data };
-  recent.push(e);
-  if (recent.length > REPLAY) recent.shift();
-  for (const sub of [...subscribers]) if (visibleTo(sub, e)) write(sub, frame(e));
+  const e: CollabEvent = { id: nextId(), type, at: new Date().toISOString(), audience, data };
+  remember(e);
+  deliver(e);
+  transport?.publish(e);
+}
+
+/** An event emitted on another replica: same per-subscriber checks, never re-forwarded. */
+export function receiveRemote(e: CollabEvent) {
+  if (!Number.isSafeInteger(e.id) || e.id <= 0) return;
+  seq = Math.max(seq, e.id);
+  remember(e);
+  deliver(e);
 }
 
 /** Takes over the response and keeps it open. Caller returns STREAM. */

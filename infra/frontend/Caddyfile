@@ -61,8 +61,10 @@
 	# jsDelivr (the Monaco loader), worker-src blob: (code runner, Monaco), and
 	# the object-storage origin for presigned uploads and image previews.
 	# No nonce: the Vite build emits only external module scripts.
+	# Turnstile: https://challenges.cloudflare.com in script-src and frame-src
+	# only (api.js and its iframe; loaded only when TURNSTILE_MODE=on).
 	header @spa {
-		Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https://avatars.githubusercontent.com https://cdn.magicpatterns.com {$S3_PUBLIC_ORIGIN}; connect-src 'self' https://api.github.com {$S3_PUBLIC_ORIGIN}; worker-src 'self' blob:; frame-src https://js.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests"
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://js.stripe.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https://avatars.githubusercontent.com https://cdn.magicpatterns.com {$S3_PUBLIC_ORIGIN}; connect-src 'self' https://api.github.com {$S3_PUBLIC_ORIGIN}; worker-src 'self' blob:; frame-src https://js.stripe.com https://challenges.cloudflare.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests"
 		Strict-Transport-Security "{$HSTS_VALUE:max-age=63072000; includeSubDomains; preload}"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"

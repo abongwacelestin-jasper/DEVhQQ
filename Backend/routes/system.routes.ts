@@ -19,7 +19,8 @@ import { authenticate } from '../middleware/authenticate.ts';
 import { can, canSeeProduct, hasOwnerPowers, requireArea } from '../auth/rbac.ts';
 import { logger } from '../lib/logger.ts';
 import { metrics } from '../lib/metrics.ts';
-import { subscribe } from '../lib/events.ts';
+import { subscribeFanout } from '../lib/events.ts';
+import { redisHealth } from '../lib/redis.ts';
 import { runQuery, type Query } from '../lib/query.ts';
 import { consoleCsp } from '../security/headers.ts';
 import { canReceiveEvent } from '../security/eventPolicy.ts';
@@ -262,7 +263,8 @@ export function registerSystemRoutes(r: Router) {
     'GET',
     '/api/ready',
     {
-      summary: 'Readiness probe — database reachable, write queue healthy, audit chain intact',
+      summary:
+        'Readiness probe — database reachable, write queue healthy, audit chain intact, Redis up when required',
       tag: 'system',
       auth: 'public',
       responses: [503],
@@ -270,15 +272,19 @@ export function registerSystemRoutes(r: Router) {
     async (ctx) => {
       const chain = audit.verify();
       const persistence = persistenceStatus();
-      const dbOk = await pingDatabase();
+      const [dbOk, cache] = await Promise.all([pingDatabase(), redisHealth()]);
+      // Redis down fails readiness only when it is required (EXPECT_REPLICAS > 1);
+      // a single replica degrades to its documented fallbacks and stays ready.
+      const redisOk = cache.status !== 'down' || !cache.required;
       // An empty production database is still "ready" (the deploy gate must pass before the
       // first Owner exists); `bootstrapRequired` tells operators no one can sign in yet.
       const memberCount = dbOk ? await repos.members.count().catch(() => 0) : 0;
-      const ready = dbOk && chain.ok && !persistence.saturated;
+      const ready = dbOk && chain.ok && !persistence.saturated && redisOk;
       if (!ready) ctx.status = 503;
       return {
         ready,
         database: dbOk ? 'up' : 'down',
+        redis: cache.status,
         persistence: {
           mode: persistence.mode,
           pending: persistence.pending,
@@ -390,7 +396,8 @@ export function registerSystemRoutes(r: Router) {
         `event: hello\ndata: ${JSON.stringify({ at: new Date().toISOString(), member: ctx.principal!.memberId })}\n\n`,
       );
       // CYBER-001: filter per subscriber at delivery time (security/eventPolicy.ts),
-      // and end the stream once the member is no longer active. Member status is
+      // and end the stream once the member is no longer active. Fan-out: events
+      // from every replica when Redis is configured (lib/redisBus.ts). Member status is
       // re-read from the repository on every heartbeat and whenever this process
       // changes the member, so the per-event check stays synchronous.
       const principal = ctx.principal!;
@@ -405,7 +412,7 @@ export function registerSystemRoutes(r: Router) {
         active = (await repos.members.get(principal.memberId))?.status === 'active';
         if (!active) end();
       };
-      const off = subscribe((e) => {
+      const off = subscribeFanout((e) => {
         if (!active) return end();
         if (canReceiveEvent(principal, e))
           res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
