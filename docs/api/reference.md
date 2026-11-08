@@ -83,7 +83,7 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 | `POST` | `/api/auth/sign-out-everywhere` | Revoke all sessions for this account | session | interactive session | 401 403 429 | [auth.routes.ts:1231](../../Backend/routes/auth.routes.ts#L1231) |
 | `POST` | `/api/auth/sign-out-others` | Revoke every session for this account except this one | session | interactive session | 401 403 | [auth.routes.ts:1251](../../Backend/routes/auth.routes.ts#L1251) |
 | `POST` | `/api/auth/password` | Change your password (step-up; current password required; signs out your other sessions) | session | step-up · interactive session · per-account rate limit · auth rate limit | 401 403 422 429 | [auth.routes.ts:1280](../../Backend/routes/auth.routes.ts#L1280) |
-| `GET` | `/api/me/capabilities` | Effective permissions for the signed-in member | session | — | 401 403 429 | [team.routes.ts:173](../../Backend/routes/team.routes.ts#L173) |
+| `GET` | `/api/me/capabilities` | Effective permissions for the signed-in member | session | — | 401 403 429 | [team.routes.ts:174](../../Backend/routes/team.routes.ts#L174) |
 | `POST` | `/api/auth/recovery/request` | Request a password reset link (always 202, no enumeration) | public | — | 202 400 403 422 429 503 | [recovery.routes.ts:63](../../Backend/routes/recovery.routes.ts#L63) |
 | `POST` | `/api/auth/recovery/reset` | Set a new password from a reset link (signs out every session) | public | — | 400 410 422 429 | [recovery.routes.ts:121](../../Backend/routes/recovery.routes.ts#L121) |
 
@@ -125,21 +125,21 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/team` | Members who share a product with the caller | session | Organization ≥ view | 401 403 429 | [team.routes.ts:131](../../Backend/routes/team.routes.ts#L131) |
-| `GET` | `/api/team/roles` | Role × area permission matrix | session | — | 401 403 429 | [team.routes.ts:160](../../Backend/routes/team.routes.ts#L160) |
-| `POST` | `/api/team/invites` | Invite a member to the workspace | session | Organization ≥ admin · step-up | 401 403 409 422 | [team.routes.ts:207](../../Backend/routes/team.routes.ts#L207) |
-| `PATCH` | `/api/team/:memberId` | Change role, products or status | session | Organization ≥ admin · step-up | 401 403 429 | [team.routes.ts:262](../../Backend/routes/team.routes.ts#L262) |
-| `POST` | `/api/access/requests` | Ask the admins for access to an area of the app | session | — | 401 422 429 | [team.routes.ts:310](../../Backend/routes/team.routes.ts#L310) |
-| `GET` | `/api/access/grants/mine` | My JIT grants | session | — | 401 | [team.routes.ts:365](../../Backend/routes/team.routes.ts#L365) |
+| `GET` | `/api/team` | Members who share a product with the caller | session | Organization ≥ view | 401 403 429 | [team.routes.ts:132](../../Backend/routes/team.routes.ts#L132) |
+| `GET` | `/api/team/roles` | Role × area permission matrix | session | — | 401 403 429 | [team.routes.ts:161](../../Backend/routes/team.routes.ts#L161) |
+| `POST` | `/api/team/invites` | Invite a member to the workspace | session | Organization ≥ admin · step-up | 401 403 409 422 | [team.routes.ts:208](../../Backend/routes/team.routes.ts#L208) |
+| `PATCH` | `/api/team/:memberId` | Change role, products or status | session | Organization ≥ admin · step-up | 401 403 429 | [team.routes.ts:263](../../Backend/routes/team.routes.ts#L263) |
+| `POST` | `/api/access/requests` | Ask the admins for access to an area of the app | session | — | 401 422 429 | [team.routes.ts:316](../../Backend/routes/team.routes.ts#L316) |
+| `GET` | `/api/access/grants/mine` | My JIT grants | session | — | 401 | [team.routes.ts:371](../../Backend/routes/team.routes.ts#L371) |
 
 ## access
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/access/grants` | All JIT grants | session | Administration ≥ view | 401 403 429 | [team.routes.ts:352](../../Backend/routes/team.routes.ts#L352) |
-| `POST` | `/api/access/grants` | Request time-boxed production access | session | step-up | 401 403 429 | [team.routes.ts:373](../../Backend/routes/team.routes.ts#L373) |
-| `POST` | `/api/access/grants/:grantId/approve` | Approve a JIT grant (two-person rule) | session | step-up | 401 403 429 | [team.routes.ts:413](../../Backend/routes/team.routes.ts#L413) |
-| `POST` | `/api/access/grants/:grantId/revoke` | Revoke or deny a JIT grant | session | Deployment ≥ manage · step-up | 401 403 429 | [team.routes.ts:430](../../Backend/routes/team.routes.ts#L430) |
+| `GET` | `/api/access/grants` | All JIT grants | session | Administration ≥ view | 401 403 429 | [team.routes.ts:358](../../Backend/routes/team.routes.ts#L358) |
+| `POST` | `/api/access/grants` | Request time-boxed production access | session | step-up | 401 403 429 | [team.routes.ts:379](../../Backend/routes/team.routes.ts#L379) |
+| `POST` | `/api/access/grants/:grantId/approve` | Approve a JIT grant (two-person rule) | session | step-up | 401 403 429 | [team.routes.ts:419](../../Backend/routes/team.routes.ts#L419) |
+| `POST` | `/api/access/grants/:grantId/revoke` | Revoke or deny a JIT grant | session | Deployment ≥ manage · step-up | 401 403 429 | [team.routes.ts:436](../../Backend/routes/team.routes.ts#L436) |
 
 ## docs
 
@@ -276,10 +276,10 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/offboarding` | Offboardings: all for Administration:view, otherwise only your own | session | — | 401 403 429 | [offboarding.routes.ts:131](../../Backend/routes/offboarding.routes.ts#L131) |
-| `GET` | `/api/offboarding/:memberId` | A member’s current offboarding (self or Administration:view) | session | — | 401 404 | [offboarding.routes.ts:147](../../Backend/routes/offboarding.routes.ts#L147) |
-| `POST` | `/api/offboarding/:memberId` | Start offboarding (self-resignation, or Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:166](../../Backend/routes/offboarding.routes.ts#L166) |
-| `PATCH` | `/api/offboarding/:memberId` | Update the offboarding checklist or status (Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:225](../../Backend/routes/offboarding.routes.ts#L225) |
+| `GET` | `/api/offboarding` | Offboardings: all for Administration:view, otherwise only your own | session | — | 401 403 429 | [offboarding.routes.ts:132](../../Backend/routes/offboarding.routes.ts#L132) |
+| `GET` | `/api/offboarding/:memberId` | A member’s current offboarding (self or Administration:view) | session | — | 401 404 | [offboarding.routes.ts:148](../../Backend/routes/offboarding.routes.ts#L148) |
+| `POST` | `/api/offboarding/:memberId` | Start offboarding (self-resignation, or Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:167](../../Backend/routes/offboarding.routes.ts#L167) |
+| `PATCH` | `/api/offboarding/:memberId` | Update the offboarding checklist or status (Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:226](../../Backend/routes/offboarding.routes.ts#L226) |
 
 ## github
 
