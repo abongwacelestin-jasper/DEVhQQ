@@ -437,9 +437,32 @@ Domain verification (SPF, DKIM, DMARC), the brand variables, previews
    it would send traffic from Cloudflare to Railway in clear text.
 4. SSL/TLS → Edge Certificates: *Always Use HTTPS* on, minimum TLS 1.2 (1.3
    preferred), HSTS can stay off at Cloudflare (the frontend sets it).
-5. Rules → no caching rule for `/api/*` is needed (the API sends
-   `Cache-Control: no-store`); hashed `/assets/*` are cached at Cloudflare's
-   edge because they are `immutable`.
+5. Caching and speed (see [Performance](../operations/performance.md)):
+   - Caching → Cache Rules: one rule, *hostname is app.example.com and URI
+     path starts with `/assets/`* → **Eligible for cache**, Edge TTL *use
+     cache-control header if present*, Browser TTL *respect origin*. The
+     files are content-hashed and sent `public, max-age=31536000, immutable`,
+     so the edge and browsers keep them for a year and a deploy never serves a
+     stale one (new names). Cloudflare caches `.js`, `.css`, fonts and images
+     by extension anyway; the rule makes it explicit and covers `.woff2`.
+   - No rule for anything else. `index.html` and client routes are
+     `no-cache` (revalidated on every load, so a deploy is picked up at
+     once); `/api/*` sends `no-store`. Never enable *Cache Everything* on the
+     whole host: it would cache the HTML shell and API answers.
+   - Speed → Optimization: **Early Hints** on. Caddy sends a `Link: …;
+     rel=preload` header on the shell naming the entry scripts, stylesheet and
+     Inter font (generated per build, `infra/frontend/preload-links.mjs`);
+     Cloudflare replays it as a `103` so the browser starts those fetches
+     while the HTML is still on its way (**verify** with
+     `curl -sI --http2 https://app.example.com/ | grep -i link`, and a `103`
+     in the browser's network log on the second visit).
+   - Network: **HTTP/2** and **HTTP/3 (with QUIC)** on, **0-RTT** off (it
+     replays requests). Railway → Cloudflare is HTTP/1.1 or h2c; the browser
+     leg is what matters.
+   - Leave *Auto Minify* and *Rocket Loader* off (the build is minified, and
+     Rocket Loader rewrites scripts, which the CSP refuses) and leave
+     compression to the origin: Caddy serves pre-compressed brotli and gzip,
+     and Cloudflare passes brotli through.
 6. Delete the generated `*.up.railway.app` domain from the frontend once the
    custom domain works, so the app has a single origin (WebAuthn and the
    cookie are bound to it).
@@ -617,7 +640,9 @@ The worker in phase 2 adds about the backend's idle cost (5–10).
 7. Cloudflare: proxied, **Full (strict)**, Always Use HTTPS.
 8. `curl -sI https://app.example.com/` shows `Cache-Control: no-cache`,
    the CSP with the R2 origin, HSTS; an `/assets/*.js` file shows
-   `immutable` and `Content-Encoding: br`; `/api/health` is `200`;
+   `immutable` and `Content-Encoding: br` (and `cf-cache-status: HIT` on a
+   second request), the shell carries a `Link` preload header;
+   `/api/health` is `200`;
    `/api/ready` is `"ready":true`.
 9. **Client IP:** sign in, then check Security → Sign-in history shows your
    real public IP, not a Cloudflare or Railway address. Then
