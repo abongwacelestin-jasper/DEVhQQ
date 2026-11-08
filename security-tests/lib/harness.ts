@@ -92,7 +92,8 @@ export async function spawnServer(opts: ServerOpts = {}): Promise<Server> {
   };
 
   // Wait for readiness (seed loaded + audit chain intact).
-  const deadline = Date.now() + 8000;
+  // Generous on a loaded machine: SECURITY_READY_MS=60000 (default 8 s).
+  const deadline = Date.now() + Number(process.env.SECURITY_READY_MS ?? 8000);
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       stop();
