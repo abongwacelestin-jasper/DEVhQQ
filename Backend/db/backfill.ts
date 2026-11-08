@@ -348,9 +348,11 @@ async function verify(
     'SELECT count(*)::text AS n FROM documents WHERE collection = $1',
     [name],
   );
-  const tableRows = await count(pool, `SELECT count(*)::text AS n FROM ${s.table} WHERE org_id = $1`, [
-    ORG_ID,
-  ]);
+  const tableRows = await count(
+    pool,
+    `SELECT count(*)::text AS n FROM ${s.table} WHERE org_id = $1`,
+    [ORG_ID],
+  );
   const missingCond = `d.collection = '${name}' AND NOT EXISTS (
       SELECT 1 FROM ${s.table} t WHERE t.org_id = $1 AND t.${s.keyColumn} = d.key)`;
   const missing = await count(
@@ -389,7 +391,11 @@ async function verify(
 /** Copies (and verifies) the given collections. Each collection is one transaction. */
 export async function backfill(
   pool: Pool,
-  opts: { mode?: BackfillMode; collections?: readonly MigratedCollection[]; verifyOnly?: boolean } = {},
+  opts: {
+    mode?: BackfillMode;
+    collections?: readonly MigratedCollection[];
+    verifyOnly?: boolean;
+  } = {},
 ): Promise<CollectionReport[]> {
   const mode = opts.mode ?? 'fill';
   const wanted = opts.collections ?? MIGRATED;

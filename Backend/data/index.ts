@@ -111,7 +111,8 @@ export function relationalTables(): RelationalTable[] {
     {
       name: 'sessions',
       entries: async () => (await r.sessions.listAll(1_000_000_000)).map((s) => [s.id, s]),
-      put: (_k, v) => r.sessions.put(v as Parameters<AdminSessionStore['put']>[0], Number.MAX_SAFE_INTEGER),
+      put: (_k, v) =>
+        r.sessions.put(v as Parameters<AdminSessionStore['put']>[0], Number.MAX_SAFE_INTEGER),
       delete: (k) => r.sessions.delete(k),
     },
     {

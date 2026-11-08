@@ -12,7 +12,6 @@ import { audit } from '../audit/auditLog.ts';
 import { limiterStats } from '../security/rateLimit.ts';
 import { backupStatus, createBackup, restoreDrill } from '../resilience/backups.ts';
 import { config } from '../config/env.ts';
-import { db } from '../store/db.ts';
 import { repos } from '../data/index.ts';
 
 export function registerSecurityRoutes(r: Router) {

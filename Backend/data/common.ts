@@ -42,7 +42,10 @@ export function encodeCursor(parts: (string | number)[]): string {
 }
 
 /** Decodes a cursor made by `encodeCursor`; malformed input yields undefined (treated as "start"). */
-export function decodeCursor(cursor: string | undefined, arity: number): (string | number)[] | undefined {
+export function decodeCursor(
+  cursor: string | undefined,
+  arity: number,
+): (string | number)[] | undefined {
   if (!cursor) return undefined;
   try {
     const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
@@ -142,7 +145,11 @@ export function text(v: string | undefined | null): string | null {
 }
 
 export const iso = (v: Date | string | null | undefined): string | undefined =>
-  v === null || v === undefined ? undefined : v instanceof Date ? v.toISOString() : new Date(v).toISOString();
+  v === null || v === undefined
+    ? undefined
+    : v instanceof Date
+      ? v.toISOString()
+      : new Date(v).toISOString();
 
 /** bigint columns arrive as strings. */
 export const num = (v: string | number | null | undefined): number | undefined =>

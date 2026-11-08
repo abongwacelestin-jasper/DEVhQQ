@@ -83,7 +83,10 @@ export class MemorySessionStore implements AdminSessionStore {
     return this.rows.delete(id);
   }
   async listByMember(memberId: string) {
-    return [...this.rows.values()].filter((s) => s.memberId === memberId).sort(byActivity).map(clone);
+    return [...this.rows.values()]
+      .filter((s) => s.memberId === memberId)
+      .sort(byActivity)
+      .map(clone);
   }
   async listAll(limit = 1000) {
     return [...this.rows.values()].sort(byActivity).slice(0, limit).map(clone);

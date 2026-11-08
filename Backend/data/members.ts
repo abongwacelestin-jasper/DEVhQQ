@@ -146,7 +146,9 @@ export class MemoryMembersRepo implements MembersRepo {
     const last = items[items.length - 1];
     return {
       items,
-      ...(rows.length > limit && last ? { nextCursor: encodeCursor([this.seq.get(last.id) ?? 0]) } : {}),
+      ...(rows.length > limit && last
+        ? { nextCursor: encodeCursor([this.seq.get(last.id) ?? 0]) }
+        : {}),
     };
   }
   async count(filter?: MemberFilter) {
@@ -247,27 +249,29 @@ const COLUMNS = `seq, id, name, email, role, products, status, password_hash, to
 
 function fromRow(r: MemberRow): Member {
   // Field order matches how members were always built (seed / invite).
-  return remember(compact({
-    ...(r.extra ?? {}),
-    id: r.id,
-    name: r.name,
-    email: r.email,
-    role: r.role as RoleName,
-    products: r.products as ProductId[],
-    status: r.status as Member['status'],
-    passwordHash: r.password_hash,
-    passkeys: r.passkeys ?? [],
-    failedLogins: r.failed_logins,
-    totpSecret: r.totp_secret ?? undefined,
-    backupCodes: r.backup_codes ?? undefined,
-    lockedUntil: num(r.locked_until),
-    inviteTokenHash: r.invite_token_hash ?? undefined,
-    inviteExpiresAt: num(r.invite_expires_at),
-    ndaSignedAt: r.nda_signed_at ?? undefined,
-    ndaVersion: r.nda_version ?? undefined,
-    profile: r.profile ?? undefined,
-    offboarding: r.offboarding ?? undefined,
-  }));
+  return remember(
+    compact({
+      ...(r.extra ?? {}),
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      role: r.role as RoleName,
+      products: r.products as ProductId[],
+      status: r.status as Member['status'],
+      passwordHash: r.password_hash,
+      passkeys: r.passkeys ?? [],
+      failedLogins: r.failed_logins,
+      totpSecret: r.totp_secret ?? undefined,
+      backupCodes: r.backup_codes ?? undefined,
+      lockedUntil: num(r.locked_until),
+      inviteTokenHash: r.invite_token_hash ?? undefined,
+      inviteExpiresAt: num(r.invite_expires_at),
+      ndaSignedAt: r.nda_signed_at ?? undefined,
+      ndaVersion: r.nda_version ?? undefined,
+      profile: r.profile ?? undefined,
+      offboarding: r.offboarding ?? undefined,
+    }),
+  );
 }
 
 /** Member field → column, value and cast, for field-level updates. */
@@ -363,7 +367,9 @@ export async function inTransaction<T>(pool: TxPool, fn: (c: Queryable) => Promi
 }
 
 function pgCode(err: unknown): string {
-  return err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+  return err && typeof err === 'object' && 'code' in err
+    ? String((err as { code: unknown }).code)
+    : '';
 }
 function pgConstraint(err: unknown): string {
   return err && typeof err === 'object' && 'constraint' in err

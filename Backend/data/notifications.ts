@@ -32,7 +32,11 @@ export interface NotificationsRepo {
   insert(n: Notification): Promise<void>;
   get(id: string): Promise<Notification | undefined>;
   /** An unread notification of `kind` about `refId` for the member (duplicates collapse onto it). */
-  findUnread(memberId: string, kind: NotificationKind, refId: string): Promise<Notification | undefined>;
+  findUnread(
+    memberId: string,
+    kind: NotificationKind,
+    refId: string,
+  ): Promise<Notification | undefined>;
   /** Newest first; `hasMore` when another page exists. */
   inbox(memberId: string, q: InboxQuery): Promise<{ items: Notification[]; hasMore: boolean }>;
   countUnread(memberId: string): Promise<number>;
@@ -303,7 +307,10 @@ export class PgNotificationsRepo implements NotificationsRepo {
       : this.many(`SELECT ${COLUMNS} FROM notifications WHERE org_id = $1 ORDER BY id`, [ORG_ID]);
   }
   async put(n: Notification) {
-    await this.pool.query('DELETE FROM notifications WHERE org_id = $1 AND id = $2', [ORG_ID, n.id]);
+    await this.pool.query('DELETE FROM notifications WHERE org_id = $1 AND id = $2', [
+      ORG_ID,
+      n.id,
+    ]);
     await this.insert(n);
   }
   async delete(id: string) {

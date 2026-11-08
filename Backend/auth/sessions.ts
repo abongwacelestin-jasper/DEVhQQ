@@ -50,7 +50,8 @@ function track(s: SessionRecord) {
 }
 
 async function store(s: SessionRecord) {
-  await repos.sessions.put(s, s.createdAt + config.sessionAbsoluteMs);
+  // Valid through the absolute end inclusive (validateSession rejects only past it).
+  await repos.sessions.put(s, s.createdAt + config.sessionAbsoluteMs + 1);
   track(s);
 }
 

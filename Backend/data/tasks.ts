@@ -50,7 +50,10 @@ export interface TasksRepo {
   /** Matching tasks in insertion order. */
   list(q?: TaskQuery): Promise<Task[]>;
   /** Matching tasks ordered by due date, with the total count (offset paging, the public API). */
-  search(q: TaskQuery, opts: { limit: number; offset: number }): Promise<{ total: number; items: Task[] }>;
+  search(
+    q: TaskQuery,
+    opts: { limit: number; offset: number },
+  ): Promise<{ total: number; items: Task[] }>;
   /** Keyset page ordered by (due, insertion). */
   page(q: TaskQuery, opts?: PageOptions): Promise<Page<Task>>;
   /** Next free key for a prefix (`RB` → `RB-232`). Atomic across replicas. */
@@ -158,7 +161,10 @@ export class MemoryTasksRepo implements TasksRepo {
   }
   async search(q: TaskQuery, opts: { limit: number; offset: number }) {
     const rows = this.sorted(q);
-    return { total: rows.length, items: rows.slice(opts.offset, opts.offset + opts.limit).map(outT) };
+    return {
+      total: rows.length,
+      items: rows.slice(opts.offset, opts.offset + opts.limit).map(outT),
+    };
   }
   async page(q: TaskQuery, opts: PageOptions = {}) {
     const limit = pageLimit(opts.limit);
@@ -340,26 +346,28 @@ const TASK_FIELD_COLUMNS: Record<string, [string, (t: Task) => unknown, string]>
 };
 
 function taskFromRow(r: TaskRow): Task {
-  return remember(compact({
-    ...(r.extra ?? {}),
-    key: r.key,
-    title: r.title,
-    product: r.product as ProductId,
-    projectId: r.project_id,
-    type: r.type as Task['type'],
-    status: r.status as Task['status'],
-    priority: r.priority as Task['priority'],
-    assignee: r.assignee,
-    reviewer: r.reviewer ?? undefined,
-    due: r.due_text,
-    estimate: r.estimate,
-    description: r.description ?? undefined,
-    pr: r.pr ?? undefined,
-    blockedBy: r.blocked_by ?? undefined,
-    createdBy: r.created_by,
-    createdAt: iso(r.created_at) ?? '',
-    updatedAt: iso(r.updated_at) ?? '',
-  }));
+  return remember(
+    compact({
+      ...(r.extra ?? {}),
+      key: r.key,
+      title: r.title,
+      product: r.product as ProductId,
+      projectId: r.project_id,
+      type: r.type as Task['type'],
+      status: r.status as Task['status'],
+      priority: r.priority as Task['priority'],
+      assignee: r.assignee,
+      reviewer: r.reviewer ?? undefined,
+      due: r.due_text,
+      estimate: r.estimate,
+      description: r.description ?? undefined,
+      pr: r.pr ?? undefined,
+      blockedBy: r.blocked_by ?? undefined,
+      createdBy: r.created_by,
+      createdAt: iso(r.created_at) ?? '',
+      updatedAt: iso(r.updated_at) ?? '',
+    }),
+  );
 }
 
 const TASK_INSERT = `INSERT INTO tasks (org_id, key, title, product, project_id, type, status,
@@ -491,7 +499,10 @@ export class PgTasksRepo implements TasksRepo {
     return `${prefix}-${res.rows[0].last}`;
   }
   async insert(t: Task) {
-    const res = await this.pool.query(`${TASK_INSERT} ON CONFLICT (org_id, key) DO NOTHING`, taskParams(t));
+    const res = await this.pool.query(
+      `${TASK_INSERT} ON CONFLICT (org_id, key) DO NOTHING`,
+      taskParams(t),
+    );
     if ((res.rowCount ?? 0) === 0) return false;
     this.mirror.write('tasks', t.key, t);
     return true;
@@ -723,7 +734,15 @@ export class PgTaskCommentsRepo implements TaskCommentsRepo {
     await this.pool.query(
       `INSERT INTO task_comments (org_id, id, task_key, author, text, at, extra)
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) ${conflict}`,
-      [ORG_ID, c.id, c.taskKey, c.author, text(c.text), c.at, json(extras(c, COMMENT_KNOWN)) ?? '{}'],
+      [
+        ORG_ID,
+        c.id,
+        c.taskKey,
+        c.author,
+        text(c.text),
+        c.at,
+        json(extras(c, COMMENT_KNOWN)) ?? '{}',
+      ],
     );
     this.mirror.write('taskComments', c.id, c);
   }
