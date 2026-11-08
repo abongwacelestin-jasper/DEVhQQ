@@ -105,7 +105,7 @@ describe('mail wiring — sign-in alerts', () => {
       await fullSignIn(app, KOFI); // a brand-new client IP
       const [alert] = await sent((x) => x.category === 'sign-in-alert');
       assert.ok(alert, 'sent even with every alert turned off');
-      assert.ok(alert.text.includes('Hello Kofi,'), 'uses the display name');
+      assert.ok(alert.text.includes('Hi Kofi,'), 'greets by the display name, first name only');
     } finally {
       m.profile = saved;
       await repos.members.put(m);
@@ -205,7 +205,7 @@ describe('mail wiring — lock-out, invite, incident, preferences', () => {
       'same token link',
     );
     assert.ok(!m.html.includes('<b>Hire</b>'));
-    assert.ok(m.text.includes('Developer') && m.text.includes('Renewberry'));
+    assert.ok(m.text.includes('Developer') && m.text.includes('RenewBerry'));
   });
 
   it('emails the owner of a newly declared incident', async () => {

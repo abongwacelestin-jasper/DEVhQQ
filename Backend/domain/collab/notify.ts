@@ -20,7 +20,7 @@ import type { Member, Principal } from '../../types.ts';
 import { sendMail } from '../../mail/index.ts';
 import { digestEmail } from '../../mail/templates.ts';
 import { appLink } from '../../mail/layout.ts';
-import { emailForNotification, observeMailEvents } from '../../mail/events.ts';
+import { emailForNotification, observeMailEvents, workspaceOf } from '../../mail/events.ts';
 import { seesProduct } from './access.ts';
 import { emit } from './realtime.ts';
 import { sortableId } from './store.ts';
@@ -221,8 +221,10 @@ export async function runDigest(minAgeMs: number): Promise<number> {
         body: n.body,
         link: appLink(config.mail.brand, n.link),
         at: n.at,
+        kind: n.kind,
       })),
       {
+        workspace: workspaceOf(memberId),
         period: minAgeMs >= 7 * DAY_MS ? 'weekly' : minAgeMs >= DAY_MS ? 'daily' : undefined,
         timeZone: m.profile?.timezone,
       },

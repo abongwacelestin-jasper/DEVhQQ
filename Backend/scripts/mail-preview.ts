@@ -10,11 +10,17 @@
  *
  *   BRAND_NAME="Acme" BRAND_LOGO_URL=https://… npm run mail:preview
  *
- * Nothing is sent; no network access is needed.
+ * Nothing is sent; no network access is needed. Production HTML points at
+ * absolute image URLs (APP_URL / BRAND_ASSET_BASE_URL); for the preview, every
+ * image whose file exists under Frontend/public/ is copied into the output
+ * folder and the preview HTML points at the copy, so previews never show
+ * broken images even when that server is not running. The rewrite is
+ * preview-only: the templates themselves always emit absolute URLs.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from '../config/env.ts';
 import { escapeHtml } from '../mail/layout.ts';
 import { sampleBrand, sampleEmails } from '../mail/samples.ts';
@@ -27,9 +33,42 @@ mkdirSync(out, { recursive: true });
 const brand = sampleBrand(config.mail.brand);
 const emails = sampleEmails(brand);
 
+const PUBLIC = resolve(dirname(fileURLToPath(import.meta.url)), '../../Frontend/public');
+
+/** Local file behind an image URL: relative to the asset base, or by its path. */
+function localFile(src: string): string | undefined {
+  const candidates: string[] = [];
+  if (src.startsWith(`${brand.assetBaseUrl}/`))
+    candidates.push(join(PUBLIC, 'brand', src.slice(brand.assetBaseUrl.length + 1)));
+  try {
+    candidates.push(join(PUBLIC, decodeURIComponent(new URL(src).pathname)));
+  } catch {
+    return undefined;
+  }
+  return candidates.find((f) => f.startsWith(`${PUBLIC}/`) && existsSync(f));
+}
+
+const copied = new Map<string, string>();
+function localizeImages(html: string): string {
+  return html.replace(
+    /(<img\b[^>]*\bsrc=")([^"]+)(")/g,
+    (all, pre: string, src: string, post: string) => {
+      const file = localFile(src.replace(/&amp;/g, '&'));
+      if (!file) return all;
+      const rel = `assets/${file.slice(PUBLIC.length + 1)}`;
+      if (!copied.has(rel)) {
+        mkdirSync(dirname(join(out, rel)), { recursive: true });
+        copyFileSync(file, join(out, rel));
+        copied.set(rel, src);
+      }
+      return `${pre}${rel}${post}`;
+    },
+  );
+}
+
 const rows: string[] = [];
 for (const [name, mail] of Object.entries(emails)) {
-  writeFileSync(join(out, `${name}.html`), mail.html);
+  writeFileSync(join(out, `${name}.html`), localizeImages(mail.html));
   writeFileSync(join(out, `${name}.txt`), mail.text);
   rows.push(
     `<tr><td style="padding:8px 12px"><code>${escapeHtml(mail.category)}</code></td><td style="padding:8px 12px">${escapeHtml(mail.subject)}</td><td style="padding:8px 12px"><a href="${name}.html">HTML</a> · <a href="${name}.txt">text</a></td></tr>`,
@@ -48,4 +87,7 @@ writeFileSync(
 );
 
 console.log(`Wrote ${Object.keys(emails).length} emails (.html + .txt) to ${out}`);
+console.log(
+  `Copied ${copied.size} images into ${join(out, 'assets')}; production HTML keeps absolute URLs`,
+);
 console.log(`Open ${join(out, 'index.html')}`);

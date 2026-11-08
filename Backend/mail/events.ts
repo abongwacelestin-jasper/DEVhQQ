@@ -24,7 +24,7 @@ import { lookupIp } from '../lib/geo.ts';
 import { logger } from '../lib/logger.ts';
 import { subscribe } from '../lib/events.ts';
 import { db } from '../store/db.ts';
-import { resignations } from '../domain/collab/store.ts';
+import { resignations, workspaces } from '../domain/collab/store.ts';
 import { repos } from '../data/index.ts';
 import type { Notification } from '../domain/collab/types.ts';
 import type { GeoLocation, Member, SignInRecord } from '../types.ts';
@@ -67,7 +67,13 @@ const nameOf = async (id: string) => {
   const m = await repos.members.get(id);
   return m ? displayName(m) : id === 'system' ? 'Automated monitoring' : id;
 };
-const productName = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
+/** Name of the member's workspace for the email header; undefined when none or ambiguous. */
+export function workspaceOf(memberId: string): string | undefined {
+  const mine = [...workspaces.values()].filter((ws) =>
+    ws.members.some((m) => m.memberId === memberId),
+  );
+  return mine.length === 1 ? mine[0].name : undefined;
+}
 
 /** "Chrome on macOS", "Safari on iPhone", … from a User-Agent header; undefined when unknown. */
 export function describeDevice(ua: string | undefined): string | undefined {
@@ -292,7 +298,8 @@ export const sendInvite = guard(
       inviteeEmail: member.email,
       inviterName: await nameOf(inviterId),
       role: member.role,
-      products: member.products.map(productName),
+      products: member.products,
+      workspace: workspaceOf(member.id) ?? workspaceOf(inviterId),
       expiresAt: member.inviteExpiresAt ?? Date.now(),
       link: appLink(config.mail.brand, `/accept-invite?token=${encodeURIComponent(token)}`),
     });
@@ -315,6 +322,8 @@ export const sendOffboardingStarted = guard(
       lastDay: r.lastDay,
       handoverName: await nameOf(r.handoverTo),
       startedByName: r.startedBy === member.id ? 'you' : await nameOf(r.startedBy),
+      workspace: workspaceOf(member.id),
+      timeZone: member.profile?.timezone,
     });
     return deliver(member.email, mail, `offboarding-started/${r.id}`);
   },
@@ -325,6 +334,8 @@ export const sendOffboardingStarted = guard(
 async function forNotification(n: Notification, to: Member): Promise<RenderedEmail | undefined> {
   const [kind, ...rest] = n.refId.split(':');
   const name = displayName(to);
+  const workspace = workspaceOf(to.id);
+  const timeZone = to.profile?.timezone;
   if (kind === 'task') {
     // task:<key>:assignee|reviewer:<memberId>
     const [key, role] = rest;
@@ -338,10 +349,12 @@ async function forNotification(n: Notification, to: Member): Promise<RenderedEma
       title: task.title,
       actorName: await nameOf(n.actor),
       as,
-      product: productName(task.product),
+      product: task.product,
       priority: task.priority,
       status: task.status,
       due: task.due,
+      timeZone,
+      workspace,
     });
   }
   if (kind === 'deployment') {
@@ -350,13 +363,14 @@ async function forNotification(n: Notification, to: Member): Promise<RenderedEma
     return deploymentApprovalEmail({
       name,
       deploymentId: d.id,
-      product: productName(d.product),
+      product: d.product,
       version: d.version,
       env: d.env,
       requesterName: await nameOf(d.requestedBy),
       requestedAt: d.createdAt,
       commit: d.sha ? d.sha.slice(0, 12) : undefined,
-      timeZone: to.profile?.timezone,
+      timeZone,
+      workspace,
     });
   }
   if (kind === 'access') {
@@ -373,7 +387,8 @@ async function forNotification(n: Notification, to: Member): Promise<RenderedEma
       path: path.join(':'),
       reason: n.body && n.body !== 'No reason given.' ? n.body : undefined,
       at: n.at,
-      timeZone: to.profile?.timezone,
+      timeZone,
+      workspace,
     });
   }
   if (kind === 'offboarding') {
@@ -389,6 +404,8 @@ async function forNotification(n: Notification, to: Member): Promise<RenderedEma
       lastDay: r.lastDay,
       handoverName: name,
       startedByName: await nameOf(r.startedBy),
+      timeZone,
+      workspace,
     });
   }
   // Mentions and doc comments go out in the digest only.
@@ -430,7 +447,7 @@ export const sendIncidentDeclared = guard('incident', async (incidentId: string)
     title: i.title,
     severity: i.severity,
     status: i.status,
-    product: productName(i.product),
+    product: i.product,
     service: i.service,
     impact: i.impact,
     startedAt: i.startedAt,
@@ -447,6 +464,7 @@ export const sendIncidentDeclared = guard('incident', async (incidentId: string)
           name: displayName(owner),
           owner: true,
           timeZone: owner.profile?.timezone,
+          workspace: workspaceOf(owner.id),
         }),
         `incident/${i.id}/${owner.id}`,
       ),
@@ -464,6 +482,7 @@ export const sendIncidentDeclared = guard('incident', async (incidentId: string)
             name: displayName(m),
             owner: false,
             timeZone: m.profile.timezone,
+            workspace: workspaceOf(m.id),
           }),
           `incident/${i.id}/${m.id}`,
         ),

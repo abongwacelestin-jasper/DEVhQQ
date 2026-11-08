@@ -3,7 +3,22 @@ import '../setup.ts';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadMailConfig } from '../../config/mail.ts';
-import { appLink, onColor, renderEmail, safeHref, wrap } from '../../mail/layout.ts';
+import {
+  TONES,
+  appLink,
+  contrast,
+  onColor,
+  renderEmail,
+  safeHref,
+  wrap,
+} from '../../mail/layout.ts';
+import {
+  firstName,
+  formatDay,
+  priorityLabel,
+  product,
+  taskStatusLabel,
+} from '../../mail/labels.ts';
 import { sampleEmails } from '../../mail/samples.ts';
 import { recoveryEmail } from '../../mail/templates.ts';
 
@@ -33,6 +48,27 @@ const IMG = '<img src=x onerror=alert(1)>';
 const hostile = sampleEmails(brand, { person: XSS, title: `${IMG} "quoted" 'single'` });
 
 const hrefs = (html: string) => [...html.matchAll(/\bhref="([^"]*)"/g)].map((m) => m[1]);
+const imgs = (html: string) =>
+  [...html.matchAll(/<img\b[^>]*>/g)].map((m) => ({
+    tag: m[0],
+    src: /\bsrc="([^"]*)"/.exec(m[0])?.[1] ?? '',
+  }));
+
+const SECURITY = new Set([
+  'password-reset',
+  'password-changed',
+  'sign-in-alert',
+  'mfa-enrolled',
+  'backup-codes-generated',
+  'backup-code-used',
+  'account-locked',
+]);
+
+/** Raw values of the task, incident and deployment enums, as a whole value (cell, pill, text field). */
+const RAW =
+  '(?:todo|in-progress|review|backlog|urgent|high|medium|low|investigating|identified|monitoring|resolved|staging|production|renewberry|Renewberry)';
+const RAW_HTML = new RegExp(`>\\s*${RAW}\\s*<`);
+const RAW_TEXT = new RegExp(`(?:^|: +| · )${RAW}(?: · |$)`, 'm');
 
 describe('mail templates — coverage', () => {
   it('covers every email the product sends', () => {
@@ -86,14 +122,63 @@ for (const name of names) {
       assert.ok(!mail.text.includes('DevHQ'), 'no hard-coded product name in text');
     });
 
-    it('uses only absolute links, and the only image is the logo', () => {
+    it('uses only absolute https links', () => {
       const links = hrefs(mail.html);
       assert.ok(links.length >= 2);
       for (const h of links) assert.match(h, /^(https:\/\/|mailto:)/, h);
       for (const u of mail.text.match(/\b(?:https?:\/\/|www\.)\S+/g) ?? [])
         assert.match(u, /^https:\/\//, u);
-      const imgs = [...mail.html.matchAll(/<img\b[^>]*\bsrc="([^"]*)"/g)].map((m) => m[1]);
-      assert.deepEqual(imgs, ['https://cdn.acme.example/brand/logo@2x.png']);
+    });
+
+    it('uses absolute https images, each with alt, width and height', () => {
+      const tags = imgs(mail.html);
+      assert.ok(tags.length >= 1);
+      assert.equal(tags[0].src, 'https://cdn.acme.example/brand/logo@2x.png', 'logo first');
+      for (const t of tags) {
+        assert.match(t.src, /^https:\/\//, t.src);
+        assert.ok(/\balt="[^"]*"/.test(t.tag), `alt on ${t.src}`);
+        assert.ok(/\bwidth="\d+"/.test(t.tag), `width on ${t.src}`);
+        assert.ok(/display:(block|inline-block)/.test(t.tag), `display on ${t.src}`);
+      }
+      for (const t of tags.slice(1)) {
+        assert.ok(/\bheight="\d+"/.test(t.tag), `height on ${t.src}`);
+        assert.ok(/background-color:#[0-9a-f]{6}/.test(t.tag), `fallback colour on ${t.src}`);
+        assert.ok(t.src.startsWith(`${brand.assetBaseUrl}/email/`), t.src);
+      }
+    });
+
+    if (SECURITY.has(mail.category))
+      it('is a security notice: no image but the logo, a shield drawn in HTML', () => {
+        assert.deepEqual(
+          imgs(mail.html).map((t) => t.src),
+          ['https://cdn.acme.example/brand/logo@2x.png'],
+        );
+        assert.ok(/class="tile-(warn|bad|accent)"/.test(mail.html), 'HTML shield tile');
+        assert.ok(!mail.html.includes('Notification settings'), 'cannot be turned off');
+      });
+    else
+      it('has exactly one hero image with alt text, width and height', () => {
+        const heroes = imgs(mail.html).filter((t) => /class="hero"/.test(t.tag));
+        assert.equal(heroes.length, 1);
+        const [h] = heroes;
+        assert.match(h.tag, /\bwidth="520"/);
+        assert.match(h.tag, /\bheight="208"/);
+        assert.match(h.tag, /\balt="[^"]{10,}"/);
+        assert.match(h.src, /^https:\/\/app\.acme\.example\/brand\/email\/hero-[a-z]+\.jpg$/);
+        assert.ok(mail.html.includes('>Help<'), 'footer navigation');
+      });
+
+    it('greets by first name', () => {
+      if (!/\bHi /.test(mail.text)) return;
+      assert.ok(!/Hello /.test(mail.text));
+      assert.ok(!/Hi [A-Z][a-z]+ [A-Z][a-z]+,/.test(mail.text), 'no full name in the greeting');
+      assert.ok(!/>Hi [A-Z][a-z]+ [A-Z][a-z]+,/.test(mail.html));
+    });
+
+    it('shows human labels, never raw enum values or lower-case product ids', () => {
+      assert.ok(!RAW_HTML.test(mail.html), `raw value in HTML: ${RAW_HTML.exec(mail.html)?.[0]}`);
+      assert.ok(!RAW_TEXT.test(mail.text), `raw value in text: ${RAW_TEXT.exec(mail.text)?.[0]}`);
+      assert.ok(!/\bRenewberry\b/.test(mail.html + mail.text), 'product display name');
     });
 
     it('has no script, external stylesheet or remote CSS', () => {
@@ -187,5 +272,97 @@ describe('mail layout', () => {
     assert.ok(tpl.html.includes('&lt;script&gt;'));
     assert.ok(tpl.text.includes('token=abc'));
     assert.equal(tpl.category, 'password-reset');
+  });
+});
+
+describe('mail content — human details', () => {
+  it('greets by first name and falls back to a single-word name', () => {
+    assert.equal(firstName('Kofi Mensah'), 'Kofi');
+    assert.equal(firstName('  Ines  Duarte '), 'Ines');
+    assert.equal(firstName('Prince'), 'Prince');
+    assert.match(emails['task-assigned'].text, /^Hi Kofi,$/m);
+    assert.ok(emails['task-assigned'].html.includes('>Hi Kofi,</p>'));
+    assert.match(emails['offboarding-handover'].text, /^Hi Ines,$/m);
+  });
+
+  it('labels every enum and shows the product display name with its mark', () => {
+    assert.deepEqual(priorityLabel('high'), { label: 'High', tone: 'warn' });
+    assert.equal(taskStatusLabel('todo').label, 'To do');
+    assert.equal(taskStatusLabel('review').label, 'In review');
+    assert.equal(taskStatusLabel('some_new-state').label, 'Some new state');
+    assert.deepEqual(product('Renewberry'), { id: 'renewberry', name: 'RenewBerry' });
+    assert.deepEqual(product('mirror'), { id: 'mirror', name: 'Mirror Acture' });
+    const task = emails['task-assigned'];
+    for (const l of ['To do', 'High priority', 'RenewBerry']) assert.ok(task.text.includes(l), l);
+    assert.ok(task.html.includes('class="pill pill-warn"'));
+    assert.ok(task.html.includes('src="https://app.acme.example/brand/email/mark-renewberry.png"'));
+    const inc = emails['incident-assigned'];
+    for (const l of ['SEV1 · Critical', 'Investigating']) assert.ok(inc.text.includes(l), l);
+    assert.ok(emails['deployment-approval'].text.includes('Production'));
+  });
+
+  it('formats dates with weekday and a relative day in the member time zone', () => {
+    assert.equal(
+      formatDay('2026-11-14', { now: '2026-11-07T14:03:00Z' }),
+      'Sat 14 Nov 2026 · in 7 days',
+    );
+    assert.equal(
+      formatDay('2026-11-08', { now: '2026-11-07T23:30:00Z', timeZone: 'Africa/Lagos' }),
+      'Sun 8 Nov 2026 · today',
+    );
+    assert.equal(formatDay('2026-11-07T23:30:00Z', { timeZone: 'Africa/Lagos' }), 'Sun 8 Nov 2026');
+    assert.ok(emails['task-assigned'].text.includes('Sat 14 Nov 2026 · in 7 days'));
+  });
+
+  it('links straight to the task, incident and deployment', () => {
+    assert.ok(
+      hrefs(emails['task-assigned'].html).includes('https://app.acme.example/tasks/RB-142'),
+    );
+    assert.ok(
+      hrefs(emails['incident-assigned'].html).includes('https://app.acme.example/incidents/INC-27'),
+    );
+    assert.ok(
+      hrefs(emails['deployment-approval'].html).includes(
+        'https://app.acme.example/deployments/dep-311',
+      ),
+    );
+  });
+
+  it('groups the digest by type with counts', () => {
+    const d = emails['digest-daily'];
+    for (const g of [
+      'Waiting for your approval (1)',
+      'Assigned to you (1)',
+      'Mentions and comments (2)',
+    ])
+      assert.ok(d.text.includes(g), g);
+    assert.ok(d.text.indexOf('Waiting for your approval') < d.text.indexOf('Assigned to you'));
+  });
+
+  it('keeps pill text readable in light and dark mode', () => {
+    for (const [tone, t] of Object.entries(TONES)) {
+      assert.ok(contrast(t.fg, t.bg) >= 4.5, `${tone} light ${contrast(t.fg, t.bg).toFixed(2)}`);
+      assert.ok(contrast(t.darkFg, t.darkBg) >= 4.5, `${tone} dark`);
+    }
+  });
+
+  it('refuses an illustration on a security notice', () => {
+    assert.throws(
+      () =>
+        renderEmail(
+          {
+            category: 'sign-in-alert',
+            kind: 'security',
+            subject: 's',
+            preheader: 'p',
+            heading: 'h',
+            hero: 'invite',
+            blocks: [],
+            reason: 'r',
+          },
+          brand,
+        ),
+      /no illustration/,
+    );
   });
 });

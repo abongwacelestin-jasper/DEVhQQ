@@ -51,8 +51,9 @@ With `NODE_ENV=production` the backend refuses to start when:
 - `MAIL_TRANSPORT` is not `console`, `smtp` or `resend`,
 - `MAIL_FROM` or `MAIL_REPLY_TO` is not a valid single address, or contains a
   line break,
-- `APP_URL`, `BRAND_LOGO_URL` or `BRAND_WEBSITE_URL` is set to anything but an
-  `https://` URL, or a brand colour is not a hex colour.
+- `APP_URL`, `BRAND_LOGO_URL`, `BRAND_WEBSITE_URL` or `BRAND_ASSET_BASE_URL`
+  is set to anything but an `https://` URL, or a brand colour is not a hex
+  colour.
 
 Outside production, `resend` without a key falls back to `console` with a
 warning, so development and the test suites never need a provider.
@@ -62,8 +63,8 @@ warning, so development and the test suites never need a provider.
 | Variable | Default | Notes |
 |---|---|---|
 | `MAIL_TRANSPORT` | `console` | `console`, `resend` or `smtp`. |
-| `MAIL_FROM` | `<BRAND_NAME> <no-reply@<app host>>` | Required for `resend` in production, e.g. `DevHQ <no-reply@mail.example.com>`. Its domain must be verified in Resend. |
-| `MAIL_REPLY_TO` | unset | Optional single address, usually the support inbox. |
+| `MAIL_FROM` | `<BRAND_NAME> <no-reply@<registrable domain>>` | Required for `resend` in production, e.g. `DevHQ <no-reply@mail.example.com>`, because its domain must be verified in Resend. The default serves `console` and `smtp`. |
+| `MAIL_REPLY_TO` | the support address | Single address that replies go to. |
 | `RESEND_API_KEY` | unset | Secret. In containers pass `RESEND_API_KEY_FILE=/run/secrets/resend_api_key` instead; the entrypoint and the app both read `*_FILE`, and setting both is refused. |
 | `RESEND_TIMEOUT_MS` | `10000` | Per attempt. |
 | `RESEND_BASE_URL` | `https://api.resend.com` | Only for a test double. |
@@ -73,19 +74,27 @@ warning, so development and the test suites never need a provider.
 ### Brand variables
 
 Every email reads its branding from the environment, so a rebrand is a
-configuration change. Defaults keep development working.
+configuration change. **Every brand variable is optional**: unset values are
+derived from the app's own address (`APP_URL`, else `APP_ORIGIN`), so emails
+look complete with no `BRAND_*` configuration at all. The *registrable
+domain* is the app host without its subdomains (`app.example.com` →
+`example.com`, `app.example.co.uk` → `example.co.uk`; a short list of
+two-part suffixes and hosting platforms such as `up.railway.app` is
+recognised). Localhost and IP addresses map to `devhq.local`, which can never
+receive mail.
 
 | Variable | Default | Used for |
 |---|---|---|
-| `BRAND_NAME` | `DevHQ` | Subjects, headings and copy ("Reset your DevHQ password"). |
-| `BRAND_LEGAL_NAME` | `BRAND_NAME` | Footer, e.g. `DevHQ Technologies Ltd`. |
-| `BRAND_LOGO_URL` | unset → text wordmark | Absolute `https://` URL of a PNG (or SVG). Use a PNG: Gmail and Outlook do not display SVG. Export it at twice the display width for sharp rendering. |
+| `BRAND_NAME` | `DevHQ` | Subjects, headings, copy and the footer link "Open DevHQ". |
+| `BRAND_LEGAL_NAME` | `BRAND_NAME` (so `DevHQ`) | Footer, e.g. `DevHQ Technologies Ltd`. |
+| `BRAND_LOGO_URL` | `<app origin>/brand/devhq-email-logo.png` | Absolute URL of a PNG (or SVG). Use a PNG: Gmail and Outlook do not display SVG. Export it at twice the display width. |
 | `BRAND_LOGO_WIDTH` | `120` | Display width in pixels; height scales. |
-| `BRAND_PRIMARY_COLOR` | `#4f46e5` | Buttons and the top rule. Button text is white or near-black, whichever contrasts better. |
+| `BRAND_ASSET_BASE_URL` | `<app origin>/brand` | Where the email images live: heroes and product marks are `<base>/email/<file>` ([Brand](brand.md#email-imagery)). Set it only when they are served from a CDN. |
+| `BRAND_PRIMARY_COLOR` | `#4f46e5` | Buttons and the eyebrow dot. Button text is white or near-black, whichever contrasts better. |
 | `BRAND_ACCENT_COLOR` | `#3730a3` | Links and highlights (lightened automatically in dark mode). |
-| `BRAND_SUPPORT_EMAIL` | `support@<app host>` | "Questions? Contact …" in every footer. |
-| `BRAND_POSTAL_ADDRESS` | unset | Physical address in the footer. Set it before going live: anti-spam law (CAN-SPAM, PECR) and mailbox providers expect one; a warning is logged in production while it is missing. |
-| `BRAND_WEBSITE_URL` | `APP_URL` | Logo link and the footer link. |
+| `BRAND_SUPPORT_EMAIL` | `support@<registrable domain>` | "Help" and "Questions? Contact …" in every footer, and the default reply-to. |
+| `BRAND_POSTAL_ADDRESS` | unset (line omitted) | Physical address in the footer. **Never derived or invented**: it is a legal statement, so it must be a real address the company controls. While it is unset the footer omits the line cleanly (in production and in previews) and production logs a warning. Set it before going live: anti-spam law (CAN-SPAM, PECR) and mailbox providers expect one. |
+| `BRAND_WEBSITE_URL` | the app origin | Logo link and the footer link. |
 
 The logo sits on a small white panel so a dark logo stays visible when a mail
 client switches to dark mode; a transparent PNG with dark artwork is fine.
@@ -223,17 +232,39 @@ void sendPasswordChanged(member, ctx, { sessionsSignedOut: true /* if it revoked
 ## Layout and templates
 
 One layout (`Backend/mail/layout.ts`) renders every email from a list of
-content blocks (paragraph, button, facts table, notice, list), once as HTML
-and once as plain text, so the two parts always say the same thing.
+content blocks (paragraph, button with an optional secondary link, facts
+panel, item card, notice, grouped list), once as HTML and once as plain text,
+so the two parts always say the same thing.
 
 - Table layout, 600 px wide, inline styles; tested patterns for Gmail,
   Outlook (Windows Outlook gets MSO-conditional tables and VML buttons),
   Apple Mail and iOS Mail.
-- `color-scheme: light dark` with dark-mode overrides, a hidden preheader,
-  and a footer with the reason for the email, the support contact, the legal
-  name, the postal address and, for notifications, a link to notification
-  settings.
-- No external CSS, no JavaScript, no images other than the logo.
+- Structure: a header (logo, and the member's workspace name when known), a
+  hero illustration for non-security emails, an eyebrow label that tells the
+  email types apart ("Task assigned", "Incident · SEV1", "Security alert"),
+  the heading, a first-name greeting, the content, then a footer with a
+  navigation row (Open DevHQ · Help · Notification settings, the last for
+  non-security emails only; an invitation and the access-ended email, whose
+  recipients cannot sign in, keep only Help), the reason for the email, the support contact,
+  the legal name and the postal address when set.
+- The item an email is about (task, incident, deployment) is a card: key and
+  product mark, title linking straight to the item, coloured status pills
+  and a few facts. Pills, panels and notices have explicit dark-mode colours
+  that keep at least 4.5:1 text contrast (tested).
+- `color-scheme: light dark` with dark-mode overrides (also for Outlook.com's
+  `[data-ogsc]`/`[data-ogsb]`), and a hidden preheader.
+- No external CSS, no JavaScript. Images follow the rules in
+  [Brand](brand.md#email-imagery): one hero per non-security email, product
+  marks, the logo; security notices carry no image but the logo. Every image
+  has alt text, explicit size and a fallback background colour, and every
+  email reads fully with images blocked.
+- Human details (`Backend/mail/labels.ts`): first-name greeting ("Hi Kofi,",
+  the full name when it is a single word), labels for every enum (priority,
+  task status, incident severity and status, environment), the product's
+  display name, dates like "Sat 14 Nov 2026 · in 7 days" in the member's
+  time zone, and links that open the task, incident or deployment directly.
+  The digest groups notifications by type (approvals, assignments, mentions
+  and comments, handovers, security) with counts and HTML icon tiles.
 - Every interpolated value is HTML-escaped; links must be absolute `https`
   (or `http` in development) or `mailto:` URLs and are built only from
   `APP_URL`, never from request headers. A relative or `javascript:` link
@@ -261,8 +292,14 @@ BRAND_NAME="Acme" BRAND_LOGO_URL=https://acme.example/logo.png \
 BRAND_PRIMARY_COLOR=#0f766e npm run mail:preview
 ```
 
-When `BRAND_POSTAL_ADDRESS` is unset the preview fills in a sample address so
-the footer can be reviewed. Nothing is sent. For a check in real clients,
+Images: production HTML always uses absolute URLs (`BRAND_LOGO_URL` and
+`BRAND_ASSET_BASE_URL`). The preview copies every referenced image that
+exists under `Frontend/public/` into `<out>/assets/` and points the preview
+HTML at the copy, so previews never show broken images even when the domain
+does not serve them yet. The rewrite happens only in the preview script.
+
+When `BRAND_POSTAL_ADDRESS` is unset the footer omits the line, exactly as in
+production. Nothing is sent. For a check in real clients,
 send yourself a reset email from a staging deployment and view it in Gmail
 (web and mobile), Outlook for Windows and Apple Mail, in light and dark mode.
 

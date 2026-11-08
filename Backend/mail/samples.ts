@@ -51,6 +51,7 @@ export function sampleEmails(
     timeZone: tz,
   };
   const link = (path: string) => `${brand.appUrl}${path}`;
+  const workspace = 'Tech Organization';
 
   return {
     invite: inviteEmail(
@@ -59,9 +60,11 @@ export function sampleEmails(
         inviteeEmail: 'kofi.mensah@example.com',
         inviterName: actor,
         role: 'Developer',
-        products: ['Renewberry', 'Blog'],
+        products: ['renewberry', 'blog'],
         expiresAt: iso(7 * 24 * 60),
         link: link('/accept-invite?token=sample-invite-token-not-real'),
+        workspace,
+        now,
       },
       brand,
     ),
@@ -118,6 +121,7 @@ export function sampleEmails(
         reason: opts.title ?? 'I need to review the audit trail for the payments incident.',
         at: ctx.at,
         timeZone: tz,
+        workspace,
       },
       brand,
     ),
@@ -127,10 +131,13 @@ export function sampleEmails(
         taskKey: 'RB-142',
         title,
         actorName: actor,
-        product: 'Renewberry',
+        product: 'renewberry',
         priority: 'high',
         status: 'todo',
         due: '2026-11-14',
+        timeZone: tz,
+        workspace,
+        now,
       },
       brand,
     ),
@@ -141,7 +148,11 @@ export function sampleEmails(
         title,
         actorName: actor,
         as: 'reviewer',
-        product: 'Renewberry',
+        product: 'renewberry',
+        status: 'review',
+        priority: 'medium',
+        workspace,
+        now,
       },
       brand,
     ),
@@ -152,13 +163,14 @@ export function sampleEmails(
         title,
         severity: 'SEV1',
         status: 'investigating',
-        product: 'Renewberry',
+        product: 'renewberry',
         service: 'renewberry-api',
         impact: 'About 18% of EU card checkouts fail at the bank redirect.',
         startedAt: iso(-12),
         declaredBy: actor,
         owner: true,
         timeZone: tz,
+        workspace,
       },
       brand,
     ),
@@ -169,13 +181,14 @@ export function sampleEmails(
         title,
         severity: 'SEV1',
         status: 'investigating',
-        product: 'Renewberry',
+        product: 'renewberry',
         service: 'renewberry-api',
         impact: 'About 18% of EU card checkouts fail at the bank redirect.',
         startedAt: iso(-12),
         declaredBy: 'Automated monitoring',
         owner: false,
         timeZone: tz,
+        workspace,
       },
       brand,
     ),
@@ -183,13 +196,14 @@ export function sampleEmails(
       {
         name: person,
         deploymentId: 'dep-311',
-        product: 'Renewberry',
+        product: 'renewberry',
         version: 'v2.14.0',
         env: 'production',
         requesterName: actor,
         requestedAt: iso(-3),
         commit: '9f3c2a1b7d4e',
         timeZone: tz,
+        workspace,
       },
       brand,
     ),
@@ -202,6 +216,9 @@ export function sampleEmails(
         lastDay: '2026-11-28',
         handoverName: 'Ines Duarte',
         startedByName: actor,
+        timeZone: tz,
+        workspace,
+        now,
       },
       brand,
     ),
@@ -214,10 +231,13 @@ export function sampleEmails(
         lastDay: '2026-11-28',
         handoverName: 'Ines Duarte',
         startedByName: actor,
+        timeZone: tz,
+        workspace,
+        now,
       },
       brand,
     ),
-    'offboarding-completed': offboardingCompletedEmail(person, brand),
+    'offboarding-completed': offboardingCompletedEmail(person, brand, { workspace }),
     'digest-daily': digestEmail(
       person,
       [
@@ -226,30 +246,41 @@ export function sampleEmails(
           body: title,
           link: link('/tasks/RB-142'),
           at: iso(-300),
+          kind: 'assignment',
         },
         {
           title: `${actor} mentioned you in #payments`,
           body: 'Can you confirm the retry window before we ship the fix?',
           link: link('/messages'),
           at: iso(-180),
+          kind: 'mention',
         },
         {
-          title: 'Approval needed: renewberry v2.14.0 → production',
+          title: `${actor} commented on Payments retry runbook`,
+          body: 'The backoff table needs the new 3-D Secure timeout.',
+          link: link('/docs'),
+          at: iso(-1500),
+          kind: 'doc-comment',
+        },
+        {
+          title: 'Approval needed: RenewBerry v2.14.0 to Production',
           body: `Requested by ${actor}`,
-          link: link('/deployments'),
+          link: link('/deployments/dep-311'),
           at: iso(-60),
+          kind: 'approval',
         },
       ],
-      { period: 'daily', timeZone: tz },
+      { period: 'daily', timeZone: tz, workspace, now },
       brand,
     ),
   };
 }
 
-/** Brand used by previews and tests. An unset address shows an obvious placeholder, never a plausible fake one. */
+/**
+ * Brand used by previews. It is the configured brand as is: an unset postal
+ * address is omitted from the footer, exactly as in production, because an
+ * address is a legal statement and is never invented.
+ */
 export function sampleBrand(base: Brand): Brand {
-  return {
-    ...base,
-    postalAddress: base.postalAddress || '[Postal address not set: BRAND_POSTAL_ADDRESS]',
-  };
+  return { ...base };
 }
