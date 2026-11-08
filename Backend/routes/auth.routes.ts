@@ -76,7 +76,7 @@ import { requireSession, requireStepUp } from '../auth/rbac.ts';
 import { persistMember } from '../security/persist.ts';
 import { repos } from '../data/index.ts';
 import { passwordProblem } from '../security/passwordPolicy.ts';
-import { looksLikePat } from '../security/pats.ts';
+import { looksLikePat, revokeTokensFor } from '../security/pats.ts';
 import { assessRisk, lookupIp, riskDecision } from '../lib/geo.ts';
 import { publish } from '../lib/events.ts';
 import { audit } from '../audit/auditLog.ts';
@@ -1320,12 +1320,14 @@ export function registerAuthRoutes(r: Router) {
       member.lockedUntil = undefined;
       await persistMember(member);
       const revoked = await revokeAllExcept(member.id, session.id);
+      // A changed password must also end standing API access (W5-04).
+      const tokens = revokeTokensFor(member.id, member.id, 'password changed', ctx.requestId);
       // New credential, new token: the current session continues on a rotated id.
       const { token } = await rotateSession(session);
       audit.append({
         actor: member.id,
         action: 'auth.password_changed',
-        target: `${revoked} other session(s) revoked · ${ctx.ip}`,
+        target: `${revoked} other session(s) and ${tokens} token(s) revoked · ${ctx.ip}`,
         sensitive: true,
         requestId: ctx.requestId,
       });

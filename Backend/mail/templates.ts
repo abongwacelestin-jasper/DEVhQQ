@@ -221,8 +221,8 @@ export function passwordChangedEmail(
         {
           t: 'p',
           text: signedOut
-            ? `The password for your ${brand.name} account was changed. For your protection, every active session was signed out, so you will need to sign in again on your other devices.`
-            : `The password for your ${brand.name} account was changed.`,
+            ? `The password for your ${brand.name} account was changed. For your protection, your other sessions were signed out and any personal access tokens were revoked, so you will need to sign in again on your other devices and create new tokens for scripts.`
+            : `The password for your ${brand.name} account was changed. For your protection, any personal access tokens were revoked; create new ones for scripts that need them.`,
         },
         { t: 'facts', rows: contextRows({ at, ip, ...extra }) },
         notYou(
@@ -480,7 +480,9 @@ export function accessRequestEmail(d: AccessRequestData, brand: Brand = brandDef
       category: 'access-request',
       kind: 'notification',
       subject: `${d.requesterName} requested access to ${d.path}`,
-      preheader: d.reason ? `Reason given: ${d.reason}` : `${d.requesterName} gave no reason.`,
+      // The reason is the requester's free text: body only (escaped), never the
+      // inbox preview, so it cannot dress up as platform copy (W5-06).
+      preheader: `${d.requesterName} asked for access to ${d.path}.`,
       heading: 'Access request',
       greeting: d.adminName,
       blocks: [

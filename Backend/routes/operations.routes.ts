@@ -32,6 +32,8 @@ import { publish } from '../lib/events.ts';
 import { randomToken } from '../security/crypto.ts';
 import { db } from '../store/db.ts';
 import { openActionCounts } from '../domain/incidents/actions.ts';
+import { repos } from '../data/index.ts';
+import { asPrincipal } from '../domain/collab/notify.ts';
 import { HttpError, type Deployment, type Incident } from '../types.ts';
 
 const products = ['renewberry', 'blog', 'mirror'] as const;
@@ -271,9 +273,20 @@ export function registerOperationsRoutes(r: Router) {
     '/api/incidents',
     { summary: 'Declare an incident', tag: 'incidents', responses: [401, 403, 422] },
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       const body = parse(incidentBody, ctx.body);
       assertProduct(ctx.principal!, body.product);
+      // The owner gets an assignment email: only an active member who can see the
+      // product may be named, never an arbitrary address book entry (W5-05).
+      if (body.owner !== undefined && body.owner !== ctx.principal!.memberId) {
+        const m = await repos.members.get(body.owner);
+        if (!m || m.status !== 'active' || !canSeeProduct(asPrincipal(m), body.product))
+          throw new HttpError(
+            422,
+            'invalid_owner',
+            'owner must be an active member who can see this product',
+          );
+      }
       const n =
         [...db.incidents.keys()]
           .map((k) => Number(k.split('-')[1]))

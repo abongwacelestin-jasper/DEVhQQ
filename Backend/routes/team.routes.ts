@@ -12,6 +12,7 @@ import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
 import { can, canSeeProduct, permissionMatrix, requireArea, requireStepUp } from '../auth/rbac.ts';
 import { asPrincipal, notify } from '../domain/collab/notify.ts';
+import { rateLimit } from '../security/rateLimit.ts';
 import {
   APPROVER_ROLES,
   approveGrant,
@@ -50,10 +51,19 @@ const roles = [
 const productIds = ['renewberry', 'blog', 'mirror'] as const;
 
 const accessRequestBody = v.object({
-  /** In-app path the member was refused, e.g. `/audit`. */
-  path: v.string({ min: 1, max: 200 }),
+  /**
+   * In-app path the member was refused, e.g. `/audit`. A strict route shape: it is
+   * shown in the admins' email subject, so it must not carry free text (W5-06).
+   */
+  path: v.string({ min: 2, max: 60, pattern: /^\/[a-z0-9-]+(?:\/[A-Za-z0-9_-]+){0,3}$/ }),
   reason: v.optional(v.string({ max: 500 })),
 });
+
+/** Each request emails every admin: at most 5 per member per hour (W5-06). */
+const accessRequestLimiter = rateLimit(
+  { name: 'accessreq', capacity: 5, refillPerSec: 5 / 3600 },
+  (ctx) => [`member:${ctx.principal?.memberId ?? ctx.ip}`],
+);
 
 /** How long an invite link stays usable. */
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
@@ -303,14 +313,13 @@ export function registerTeamRoutes(r: Router) {
     {
       summary: 'Ask the admins for access to an area of the app',
       tag: 'team',
-      responses: [401, 422],
+      responses: [401, 422, 429],
     },
     authenticate,
+    accessRequestLimiter,
     async (ctx) => {
       const p = ctx.principal!;
       const body = parse(accessRequestBody, ctx.body);
-      if (!body.path.startsWith('/'))
-        throw new HttpError(422, 'validation_failed', 'path must be an in-app path');
       const members = await repos.members.list();
       const me = members.find((m) => m.id === p.memberId);
       const reason = body.reason?.trim();

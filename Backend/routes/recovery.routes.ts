@@ -20,6 +20,7 @@ import { parse, v } from '../lib/validate.ts';
 import { config } from '../config/env.ts';
 import { hashPassword, hashToken, randomToken } from '../security/crypto.ts';
 import { revokeAllFor } from '../auth/sessions.ts';
+import { revokeTokensFor } from '../security/pats.ts';
 import { audit } from '../audit/auditLog.ts';
 import { findMemberByEmail } from '../store/db.ts';
 import { repos } from '../data/index.ts';
@@ -153,10 +154,11 @@ export function registerRecoveryRoutes(r: Router) {
       member.lockedUntil = undefined;
       await saveMember(member);
       const revoked = await revokeAllFor(member.id);
+      const tokens = revokeTokensFor(member.id, member.id, 'password reset', ctx.requestId);
       audit.append({
         actor: member.id,
         action: 'auth.password_reset',
-        target: `${revoked} session(s) revoked · ${ctx.ip}`,
+        target: `${revoked} session(s) and ${tokens} token(s) revoked · ${ctx.ip}`,
         sensitive: true,
         requestId: ctx.requestId,
       });
