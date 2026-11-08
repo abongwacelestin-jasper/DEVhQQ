@@ -11,6 +11,10 @@
  *            subtask, sign-in history and JIT grant survived, that the *same
  *            bearer token* still validates (session persisted), that no raw
  *            token or raw session id is stored, and that boot did not re-seed.
+ *   then     db/smoke-replicas.ts: backfill from the JSONB copy (idempotent,
+ *            counts verified) and two API replicas on one database, writing
+ *            through one and reading through the other for every migrated
+ *            collection (ADR 0011).
  */
 
 import { spawnSync } from 'node:child_process';
@@ -60,6 +64,19 @@ if (!phase) {
   const handoff = run(['write']);
   console.log('— phase 2: restart + verify (fresh process)');
   run(['verify', handoff]);
+  console.log('— phase 3: backfill + two replicas on one database (fresh processes)');
+  const replicas = spawnSync(
+    process.execPath,
+    ['--experimental-strip-types', self.replace(/smoke-pg\.ts$/, 'smoke-replicas.ts')],
+    { env: process.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+  );
+  for (const l of replicas.stdout.split('\n'))
+    if (l.startsWith('✓') || l.startsWith('✗') || l.startsWith('  ')) console.log(l);
+  if (replicas.status !== 0) {
+    console.error(replicas.stderr.split('\n').slice(-30).join('\n'));
+    console.error(`phase 3 failed (exit ${replicas.status})`);
+    process.exit(1);
+  }
   console.log('\nsmoke:pg passed');
   process.exit(0);
 }
@@ -229,6 +246,33 @@ if (phase === 'verify') {
     [rawId, h.token],
   );
   await expect('no raw token or raw session id stored', leaks.rows[0].n === '0', leaks.rows[0]);
+  const tableLeaks = await raw.query<{ n: string }>(
+    "SELECT count(*)::text AS n FROM sessions WHERE id = $1 OR row_to_json(sessions)::text LIKE '%' || $1 || '%' OR row_to_json(sessions)::text LIKE '%' || $2 || '%'",
+    [rawId, h.token],
+  );
+  const live = await raw.query<{ n: string }>('SELECT count(*)::text AS n FROM sessions');
+  await expect(
+    'sessions table holds the live session, never the raw token or id',
+    tableLeaks.rows[0].n === '0' && Number(live.rows[0].n) > 0,
+    [tableLeaks.rows[0], live.rows[0]],
+  );
+  const tableTask = await raw.query<{ status: string; mirrored: string }>(
+    `SELECT t.status, d.data->>'status' AS mirrored FROM tasks t
+     JOIN documents d ON d.collection = 'tasks' AND d.key = t.key WHERE t.key = $1`,
+    [h.key],
+  );
+  await expect(
+    'task row lives in the tasks table, and the JSONB copy is kept in step (dual-write)',
+    tableTask.rows[0]?.status === 'review' && tableTask.rows[0]?.mirrored === 'review',
+    tableTask.rows,
+  );
+  const totp = await raw.query<{ n: string }>(
+    "SELECT count(*)::text AS n FROM members WHERE totp_secret IS NOT NULL AND totp_secret NOT LIKE 'enc:%'",
+  );
+  await expect(
+    'member TOTP secrets are sealed at rest in the members table',
+    totp.rows[0].n === '0',
+  );
 
   const grant = await raw.query<{ status: string }>(
     "SELECT data->>'status' AS status FROM documents WHERE collection = 'jitGrants' AND key = $1",
