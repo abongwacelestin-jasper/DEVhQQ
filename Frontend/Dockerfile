@@ -34,12 +34,14 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 
 # ---------------------------------------------------------------------------
 # build: Vite production bundle, then pre-compress text assets (br + gzip) so
-# the server never compresses static files per request.
+# the server never compresses static files per request, and write the shell's
+# Link preload header (entry chunks, stylesheet, font) for this build's hashes.
 # ---------------------------------------------------------------------------
 FROM deps AS build
 COPY Frontend/ Frontend/
-COPY infra/frontend/precompress.mjs /tmp/precompress.mjs
+COPY infra/frontend/precompress.mjs infra/frontend/preload-links.mjs /tmp/
 RUN npm run build --workspace=Frontend \
+ && node /tmp/preload-links.mjs Frontend/dist > /tmp/preload.caddy \
  && node /tmp/precompress.mjs Frontend/dist
 
 # ---------------------------------------------------------------------------
@@ -73,6 +75,7 @@ RUN apk add --no-cache --virtual .setcap libcap \
 # Files are root-owned and read-only to the runtime user. Caddy's own state
 # (unused: no TLS here) goes to /tmp, a tmpfs under Compose.
 COPY infra/frontend/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /tmp/preload.caddy /etc/caddy/preload.caddy
 COPY --from=build /app/Frontend/dist/ /srv/
 
 ENV PORT=8081 \

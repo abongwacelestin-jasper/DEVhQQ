@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
@@ -6,6 +6,7 @@ import { Topbar } from './Topbar';
 import { BottomNav } from './BottomNav';
 import { CommandMenu } from './CommandMenu';
 import { PageSkeleton, type SkeletonVariant } from './PageSkeleton';
+import { Deferred } from './RouteFallback';
 import { AssistantPanel } from '../assistant/AssistantPanel';
 import { CreateTaskModal } from '../work/CreateTaskModal';
 import { CreateWorkspaceModal } from '../workspace/CreateWorkspaceModal';
@@ -13,7 +14,6 @@ import { DeclareIncidentModal } from '../operations/DeclareIncidentModal';
 import { LockScreen } from '../auth/LockScreen';
 import { IdleWarning } from '../auth/IdleWarning';
 import { NoAccess } from '../../pages/NoAccess';
-import { useRouteLoading } from '../../hooks/useRouteLoading';
 import { useIdleLock } from '../../hooks/useIdleLock';
 import { useContinuousVerification } from '../../hooks/useContinuousVerification';
 import { useAssignmentNotifier } from '../../hooks/useAssignmentEmails';
@@ -37,11 +37,8 @@ export function AppShell() {
   const location = useLocation();
   const { selected, project } = useProductFilter();
   const { setMobileNavOpen, sidebarCollapsed } = useWorkspaceUI();
-  const { preset, from } = useDateRange();
+  const { preset } = useDateRange();
   const { can, role, session, lock } = useAuth();
-  const loading = useRouteLoading(
-    `${location.pathname}|${selected}|${project}|${preset}|${from.getTime()}`,
-  );
   const idleWarnLeft = useIdleLock();
   useContinuousVerification();
   useAssignmentNotifier();
@@ -84,17 +81,27 @@ export function AppShell() {
           <div className="mx-auto w-full min-w-0 max-w-[1560px]">
             {!allowed ? (
               <NoAccess />
-            ) : loading ? (
-              <PageSkeleton variant={variantFor(location.pathname)} />
             ) : (
-              <motion.div
-                key={location.pathname + selected + project + preset}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.16, ease: 'easeOut' }}
+              // Pages are lazy chunks. Navigations run in a transition, so the page on screen
+              // stays until the next one is ready; the skeleton only shows on a first load
+              // that takes longer than a moment.
+              <Suspense
+                fallback={
+                  <Deferred>
+                    <PageSkeleton variant={variantFor(location.pathname)} />
+                  </Deferred>
+                }
               >
-                <Outlet />
-              </motion.div>
+                <motion.div
+                  key={location.pathname + selected + project + preset}
+                  // No fade on the page a visit lands on: it would only delay the first paint.
+                  initial={location.key === 'default' ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.16, ease: 'easeOut' }}
+                >
+                  <Outlet />
+                </motion.div>
+              </Suspense>
             )}
           </div>
         </main>

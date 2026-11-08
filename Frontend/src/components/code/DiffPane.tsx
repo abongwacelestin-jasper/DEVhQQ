@@ -1,4 +1,5 @@
 import { DiffEditor } from '@monaco-editor/react';
+import './monacoLoader';
 import { setupMonaco } from '../../utils/monacoSetup';
 import { languageOf } from '../../utils/codeFiles';
 import type { IdeSettings } from '../../types/ide';

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Editor, type Monaco, type OnMount } from '@monaco-editor/react';
+import './monacoLoader';
 import { setupMonaco } from '../../utils/monacoSetup';
 import { languageOf } from '../../utils/codeFiles';
 import type { CodeFile } from '../../data/codeWorkspace';
@@ -30,9 +31,8 @@ const lintMessages: Record<string, string> = {
 const uriFor = (monaco: Monaco, path: string) => monaco.Uri.parse(`file:///${path}`);
 
 /**
- * The editor's own types (`monaco-editor`) are not a dependency of this app —
- * Monaco is loaded at runtime by @monaco-editor/react. These structural types
- * describe exactly what we touch, instead of silently falling back to `any`.
+ * The few Monaco shapes this component touches, typed structurally so the
+ * callbacks below never fall back to `any`.
  */
 interface MonacoModel {
   uri: { scheme: string; path: string; toString(): string };

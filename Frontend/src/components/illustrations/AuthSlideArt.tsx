@@ -15,9 +15,12 @@ const art: Record<SlideArt, IllustrationId> = {
 export function AuthSlideArt({
   variant,
   className = '',
+  priority = false,
 }: {
   variant: SlideArt;
   className?: string;
+  /** The first slide on screen: see RenderedArt's `priority`. */
+  priority?: boolean;
 }) {
   const reduce = useReducedMotion();
   return (
@@ -26,7 +29,7 @@ export function AuthSlideArt({
       animate={reduce ? undefined : { y: [0, -4, 0] }}
       transition={reduce ? undefined : { duration: 5, repeat: Infinity, ease: 'easeInOut' }}
     >
-      <RenderedArt id={art[variant]} className="h-auto w-full" decorative />
+      <RenderedArt id={art[variant]} className="h-auto w-full" decorative priority={priority} />
     </motion.div>
   );
 }

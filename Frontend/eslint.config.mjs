@@ -28,4 +28,13 @@ export default [
       'no-undef': 'off',
     },
   },
+  {
+    // Node measurement scripts (bundle report, Lighthouse runner).
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'module',
+      globals: { process: 'readonly', console: 'readonly', fetch: 'readonly' },
+    },
+  },
 ];

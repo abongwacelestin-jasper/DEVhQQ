@@ -123,6 +123,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Faster web app loads** ([performance](docs/operations/performance.md)):
+  every page is a lazily loaded, prefetched chunk (entry JavaScript 333 kB to
+  173 kB brotli), the 420 ms route skeleton timer is gone, fonts and the
+  Monaco editor are self-hosted (Google Fonts and jsDelivr leave the CSP),
+  illustrations are WebP (1.57 MB to 0.28 MB), and the shell sends a `Link`
+  preload header for Cloudflare Early Hints. Lighthouse (desktop): `/sign-in`
+  95 to 96, `/` signed in 58 to 95, `/my-work` 53 to 96. A build-time chunk
+  budget fails any chunk over 500 kB except Monaco's.
 - **Frontend image runs Caddy instead of nginx** (`infra/frontend/`): Brotli
   and gzip pre-compressed assets, `PORT`, optional same-origin `/api` proxy
   (`API_MODE=proxy`) with a client-IP computation that ignores spoofed

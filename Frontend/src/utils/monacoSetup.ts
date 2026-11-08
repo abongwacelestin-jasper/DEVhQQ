@@ -63,7 +63,7 @@ export function setupMonaco(monaco: Monaco) {
     },
   });
 
-  const ts = monaco.languages.typescript;
+  const ts = monaco.typescript;
   const options = {
     target: ts.ScriptTarget.ES2020,
     module: ts.ModuleKind.CommonJS,

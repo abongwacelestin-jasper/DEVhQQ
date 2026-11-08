@@ -23,7 +23,7 @@ export default {
         info: { DEFAULT: v('info'), soft: v('info-soft') },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Inter', '"Inter Fallback"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       fontSize: {
