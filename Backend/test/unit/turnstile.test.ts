@@ -333,7 +333,7 @@ describe('turnstile configuration', () => {
     const c = loadTurnstileConfig({}, prod);
     assert.equal(c.mode, 'off');
     assert.equal(c.failOpen, false);
-    assert.equal(c.exemptCli, true);
+    assert.equal(c.exemptCli, false); // opt-in (W5-03)
     assert.equal(c.expectedHostname, HOST);
   });
 
@@ -402,5 +402,26 @@ describe('turnstile configuration', () => {
     );
     assert.equal(c.failOpen, true);
     assert.ok(c.warnings.some((w) => /FAIL_OPEN/.test(w)));
+  });
+});
+
+describe('W5-03 — the CLI exemption is an acknowledged choice in production', () => {
+  const prodKeys = {
+    TURNSTILE_MODE: 'on',
+    TURNSTILE_SITE_KEY: '0x4AAAAAAAproductionSite',
+    TURNSTILE_SECRET_KEY: '0x4AAAAAAAproductionSecret0123456789',
+  };
+  const opts = { isProd: true, appOrigin: 'https://app.example.com' };
+  it('refuses TURNSTILE_EXEMPT_CLI=1 without the acknowledgement, accepts it with', () => {
+    assert.throws(
+      () => loadTurnstileConfig({ ...prodKeys, TURNSTILE_EXEMPT_CLI: '1' }, opts),
+      /TURNSTILE_EXEMPT_CLI_ACK/,
+    );
+    const ok = loadTurnstileConfig(
+      { ...prodKeys, TURNSTILE_EXEMPT_CLI: '1', TURNSTILE_EXEMPT_CLI_ACK: 'bots-can-claim-cli' },
+      opts,
+    );
+    assert.equal(ok.exemptCli, true);
+    assert.equal(loadTurnstileConfig(prodKeys, opts).exemptCli, false);
   });
 });

@@ -103,16 +103,16 @@ describe('lib/redis — configuration', () => {
     );
     assert.equal(problems.length, 1);
     assert.match(problems[0], /EXPECT_REPLICAS=2 needs REDIS_URL/);
-    assert.deepEqual(
-      redisBootProblems(
-        redisSettings({
-          NODE_ENV: 'production',
-          EXPECT_REPLICAS: '2',
-          REDIS_URL: 'rediss://h:6380',
-        }),
-      ),
-      [],
+    // With Redis it is still refused until the remaining per-process collections move (W5-09).
+    const withRedis = redisBootProblems(
+      redisSettings({
+        NODE_ENV: 'production',
+        EXPECT_REPLICAS: '2',
+        REDIS_URL: 'rediss://h:6380',
+      }),
     );
+    assert.equal(withRedis.length, 1);
+    assert.match(withRedis[0], /not supported yet/);
     // One replica in production without Redis is today's supported set-up.
     assert.deepEqual(redisBootProblems(redisSettings({ NODE_ENV: 'production' })), []);
   });

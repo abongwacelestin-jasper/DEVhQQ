@@ -76,6 +76,15 @@ export function redisBootProblems(s: RedisSettings): string[] {
       `EXPECT_REPLICAS=${s.replicas} needs REDIS_URL: rate limits, the event bus, realtime ` +
         'streams and job locks would otherwise be per replica',
     );
+  // Redis is necessary but not sufficient: JIT grants, personal access tokens,
+  // recovery and invite tokens and TOTP replay counters are still per process, so a
+  // revoke on one replica would not reach the others (W5-09). Lift this when those
+  // collections are repository-backed (ADR 0011, phase 3).
+  if (s.isProd && s.replicas > 1 && s.url)
+    problems.push(
+      `EXPECT_REPLICAS=${s.replicas} is not supported yet: JIT grants, personal access tokens ` +
+        'and recovery tokens are per process (docs/operations/known-limits.md); run one replica',
+    );
   return problems;
 }
 

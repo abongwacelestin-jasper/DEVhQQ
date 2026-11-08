@@ -83,9 +83,9 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 | `POST` | `/api/auth/sign-out-everywhere` | Revoke all sessions for this account | session | interactive session | 401 403 429 | [auth.routes.ts:1231](../../Backend/routes/auth.routes.ts#L1231) |
 | `POST` | `/api/auth/sign-out-others` | Revoke every session for this account except this one | session | interactive session | 401 403 | [auth.routes.ts:1251](../../Backend/routes/auth.routes.ts#L1251) |
 | `POST` | `/api/auth/password` | Change your password (step-up; current password required; signs out your other sessions) | session | step-up · interactive session · per-account rate limit · auth rate limit | 401 403 422 429 | [auth.routes.ts:1280](../../Backend/routes/auth.routes.ts#L1280) |
-| `GET` | `/api/me/capabilities` | Effective permissions for the signed-in member | session | — | 401 403 429 | [team.routes.ts:148](../../Backend/routes/team.routes.ts#L148) |
-| `POST` | `/api/auth/recovery/request` | Request a password reset link (always 202, no enumeration) | public | — | 202 400 403 422 429 503 | [recovery.routes.ts:62](../../Backend/routes/recovery.routes.ts#L62) |
-| `POST` | `/api/auth/recovery/reset` | Set a new password from a reset link (signs out every session) | public | — | 400 410 422 429 | [recovery.routes.ts:120](../../Backend/routes/recovery.routes.ts#L120) |
+| `GET` | `/api/me/capabilities` | Effective permissions for the signed-in member | session | — | 401 403 429 | [team.routes.ts:173](../../Backend/routes/team.routes.ts#L173) |
+| `POST` | `/api/auth/recovery/request` | Request a password reset link (always 202, no enumeration) | public | — | 202 400 403 422 429 503 | [recovery.routes.ts:63](../../Backend/routes/recovery.routes.ts#L63) |
+| `POST` | `/api/auth/recovery/reset` | Set a new password from a reset link (signs out every session) | public | — | 400 410 422 429 | [recovery.routes.ts:121](../../Backend/routes/recovery.routes.ts#L121) |
 
 ## products
 
@@ -125,21 +125,21 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/team` | Members who share a product with the caller | session | Organization ≥ view | 401 403 429 | [team.routes.ts:106](../../Backend/routes/team.routes.ts#L106) |
-| `GET` | `/api/team/roles` | Role × area permission matrix | session | — | 401 403 429 | [team.routes.ts:135](../../Backend/routes/team.routes.ts#L135) |
-| `POST` | `/api/team/invites` | Invite a member to the workspace | session | Organization ≥ admin · step-up | 401 403 409 422 | [team.routes.ts:182](../../Backend/routes/team.routes.ts#L182) |
-| `PATCH` | `/api/team/:memberId` | Change role, products or status | session | Organization ≥ admin · step-up | 401 403 429 | [team.routes.ts:237](../../Backend/routes/team.routes.ts#L237) |
-| `POST` | `/api/access/requests` | Ask the admins for access to an area of the app | session | — | 401 422 | [team.routes.ts:285](../../Backend/routes/team.routes.ts#L285) |
-| `GET` | `/api/access/grants/mine` | My JIT grants | session | — | 401 | [team.routes.ts:339](../../Backend/routes/team.routes.ts#L339) |
+| `GET` | `/api/team` | Members who share a product with the caller | session | Organization ≥ view | 401 403 429 | [team.routes.ts:131](../../Backend/routes/team.routes.ts#L131) |
+| `GET` | `/api/team/roles` | Role × area permission matrix | session | — | 401 403 429 | [team.routes.ts:160](../../Backend/routes/team.routes.ts#L160) |
+| `POST` | `/api/team/invites` | Invite a member to the workspace | session | Organization ≥ admin · step-up | 401 403 409 422 | [team.routes.ts:207](../../Backend/routes/team.routes.ts#L207) |
+| `PATCH` | `/api/team/:memberId` | Change role, products or status | session | Organization ≥ admin · step-up | 401 403 429 | [team.routes.ts:262](../../Backend/routes/team.routes.ts#L262) |
+| `POST` | `/api/access/requests` | Ask the admins for access to an area of the app | session | — | 401 422 429 | [team.routes.ts:310](../../Backend/routes/team.routes.ts#L310) |
+| `GET` | `/api/access/grants/mine` | My JIT grants | session | — | 401 | [team.routes.ts:365](../../Backend/routes/team.routes.ts#L365) |
 
 ## access
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/access/grants` | All JIT grants | session | Administration ≥ view | 401 403 429 | [team.routes.ts:328](../../Backend/routes/team.routes.ts#L328) |
-| `POST` | `/api/access/grants` | Request time-boxed production access | session | step-up | 401 403 429 | [team.routes.ts:347](../../Backend/routes/team.routes.ts#L347) |
-| `POST` | `/api/access/grants/:grantId/approve` | Approve a JIT grant (two-person rule) | session | step-up | 401 403 429 | [team.routes.ts:387](../../Backend/routes/team.routes.ts#L387) |
-| `POST` | `/api/access/grants/:grantId/revoke` | Revoke or deny a JIT grant | session | Deployment ≥ manage · step-up | 401 403 429 | [team.routes.ts:404](../../Backend/routes/team.routes.ts#L404) |
+| `GET` | `/api/access/grants` | All JIT grants | session | Administration ≥ view | 401 403 429 | [team.routes.ts:352](../../Backend/routes/team.routes.ts#L352) |
+| `POST` | `/api/access/grants` | Request time-boxed production access | session | step-up | 401 403 429 | [team.routes.ts:373](../../Backend/routes/team.routes.ts#L373) |
+| `POST` | `/api/access/grants/:grantId/approve` | Approve a JIT grant (two-person rule) | session | step-up | 401 403 429 | [team.routes.ts:413](../../Backend/routes/team.routes.ts#L413) |
+| `POST` | `/api/access/grants/:grantId/revoke` | Revoke or deny a JIT grant | session | Deployment ≥ manage · step-up | 401 403 429 | [team.routes.ts:430](../../Backend/routes/team.routes.ts#L430) |
 
 ## docs
 
@@ -163,20 +163,20 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/deployments` | Deployments (filter: product, env, status) | session | Deployment ≥ view | 401 403 429 | [operations.routes.ts:62](../../Backend/routes/operations.routes.ts#L62) |
-| `POST` | `/api/deployments` | Request a deployment (production waits for approval) | session | Deployment ≥ contribute | 401 403 422 | [operations.routes.ts:82](../../Backend/routes/operations.routes.ts#L82) |
-| `POST` | `/api/deployments/:id/approve` | Approve a production deployment (two-person rule, step-up, JIT grant) | session | Deployment ≥ manage · step-up | 401 403 404 409 | [operations.routes.ts:117](../../Backend/routes/operations.routes.ts#L117) |
-| `POST` | `/api/deployments/:id/rollback` | Roll back a deployment (production: JIT grant) | session | Deployment ≥ manage | 401 403 404 409 | [operations.routes.ts:164](../../Backend/routes/operations.routes.ts#L164) |
+| `GET` | `/api/deployments` | Deployments (filter: product, env, status) | session | Deployment ≥ view | 401 403 429 | [operations.routes.ts:64](../../Backend/routes/operations.routes.ts#L64) |
+| `POST` | `/api/deployments` | Request a deployment (production waits for approval) | session | Deployment ≥ contribute | 401 403 422 | [operations.routes.ts:84](../../Backend/routes/operations.routes.ts#L84) |
+| `POST` | `/api/deployments/:id/approve` | Approve a production deployment (two-person rule, step-up, JIT grant) | session | Deployment ≥ manage · step-up | 401 403 404 409 | [operations.routes.ts:119](../../Backend/routes/operations.routes.ts#L119) |
+| `POST` | `/api/deployments/:id/rollback` | Roll back a deployment (production: JIT grant) | session | Deployment ≥ manage | 401 403 404 409 | [operations.routes.ts:166](../../Backend/routes/operations.routes.ts#L166) |
 
 ## incidents
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/incidents` | Incidents (filter: product, status, severity) | session | — | 401 403 429 | [operations.routes.ts:200](../../Backend/routes/operations.routes.ts#L200) |
-| `GET` | `/api/incidents/_stats` | Mean time to recover and open-incident counts | session | — | 401 403 429 | [operations.routes.ts:222](../../Backend/routes/operations.routes.ts#L222) |
-| `GET` | `/api/incidents/:id` | One incident with timeline | session | — | 401 404 | [operations.routes.ts:256](../../Backend/routes/operations.routes.ts#L256) |
-| `POST` | `/api/incidents` | Declare an incident | session | — | 401 403 422 | [operations.routes.ts:269](../../Backend/routes/operations.routes.ts#L269) |
-| `PATCH` | `/api/incidents/:id` | Update status/severity or add a timeline note (severity, SEV1 resolve: JIT grant) | session | — | 401 403 404 422 | [operations.routes.ts:308](../../Backend/routes/operations.routes.ts#L308) |
+| `GET` | `/api/incidents` | Incidents (filter: product, status, severity) | session | — | 401 403 429 | [operations.routes.ts:202](../../Backend/routes/operations.routes.ts#L202) |
+| `GET` | `/api/incidents/_stats` | Mean time to recover and open-incident counts | session | — | 401 403 429 | [operations.routes.ts:224](../../Backend/routes/operations.routes.ts#L224) |
+| `GET` | `/api/incidents/:id` | One incident with timeline | session | — | 401 404 | [operations.routes.ts:258](../../Backend/routes/operations.routes.ts#L258) |
+| `POST` | `/api/incidents` | Declare an incident | session | — | 401 403 422 | [operations.routes.ts:271](../../Backend/routes/operations.routes.ts#L271) |
+| `PATCH` | `/api/incidents/:id` | Update status/severity or add a timeline note (severity, SEV1 resolve: JIT grant) | session | — | 401 403 404 422 | [operations.routes.ts:321](../../Backend/routes/operations.routes.ts#L321) |
 | `GET` | `/api/incidents/:id/actions` | Recovery steps and follow-ups of an incident, oldest first | session | — | 401 404 | [incident-actions.routes.ts:149](../../Backend/routes/incident-actions.routes.ts#L149) |
 | `POST` | `/api/incidents/:id/actions` | Add a recovery step or follow-up (Infrastructure ≥ contribute) | session | — | 401 403 404 409 422 | [incident-actions.routes.ts:161](../../Backend/routes/incident-actions.routes.ts#L161) |
 | `PATCH` | `/api/incidents/:id/actions/:actionId` | Update, complete, reopen or reassign an action (Infrastructure ≥ contribute) | session | — | 401 403 404 422 | [incident-actions.routes.ts:210](../../Backend/routes/incident-actions.routes.ts#L210) |

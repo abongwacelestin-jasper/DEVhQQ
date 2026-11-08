@@ -12,7 +12,7 @@ and `Models/`. What each one means and its defaults are in the
 hand-written [configuration reference](configuration.md); this page is the
 drift check: if code starts reading a new variable, it appears here.
 
-**108 variables.** "`_FILE`" means the container can pass the
+**109 variables.** "`_FILE`" means the container can pass the
 value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 
 | Variable | Backend | Frontend | Models | `_FILE` | In `.env.example` |
@@ -115,6 +115,7 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `STREAM_HEARTBEAT_MS` | `domain/collab/realtime.ts` |  |  |  | yes |
 | `TRUST_PROXY` | `lib/http.ts`<br>`scripts/smoke.ts` |  |  |  | yes |
 | `TURNSTILE_EXEMPT_CLI` | `config/turnstile.ts` |  |  |  | yes |
+| `TURNSTILE_EXEMPT_CLI_ACK` | `config/turnstile.ts` |  |  |  | yes |
 | `TURNSTILE_FAIL_OPEN` | `config/turnstile.ts` |  |  |  | yes |
 | `TURNSTILE_MODE` | `config/turnstile.ts`<br>`scripts/smoke.ts` |  |  |  | yes |
 | `TURNSTILE_SECRET_KEY` | `config/turnstile.ts` |  |  | yes | yes |

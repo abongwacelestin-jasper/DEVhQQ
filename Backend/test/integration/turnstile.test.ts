@@ -18,7 +18,7 @@ process.env.TURNSTILE_SITE_KEY = '0x4AAAAAAAintegrationSite';
 process.env.TURNSTILE_SECRET_KEY = '0x4AAAAAAAintegrationSecret0123456789';
 delete process.env.TURNSTILE_SECRET_KEY_FILE;
 delete process.env.TURNSTILE_FAIL_OPEN;
-delete process.env.TURNSTILE_EXEMPT_CLI;
+process.env.TURNSTILE_EXEMPT_CLI = '1'; // off by default (W5-03); these tests cover the opt-in path
 
 const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 const ORIGIN = 'http://localhost:5173'; // test APP_ORIGIN default

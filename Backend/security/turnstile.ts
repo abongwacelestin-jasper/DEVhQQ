@@ -16,15 +16,15 @@
  *    this origin; a bot gains nothing it could not do with the key itself.
  *  - Recovery reset and the invite preview: each needs a 256-bit single-use
  *    link token, which already makes guessing infeasible.
- *  - Explicit CLI clients (`TURNSTILE_EXEMPT_CLI=1`, the default): a request
+ *  - Explicit CLI clients, only with `TURNSTILE_EXEMPT_CLI=1` (off by default;
+ *    production also needs `TURNSTILE_EXEMPT_CLI_ACK=bots-can-claim-cli`): a request
  *    that sends `X-DevHQ-Client: cli` and none of the headers every browser
  *    attaches (`Origin`, `Sec-Fetch-Site`) cannot run the widget. Page script
  *    cannot remove those headers, so a browser — including script injected
  *    into one — can never use this exemption. A raw HTTP bot can, so the
  *    exemption trades bot protection on that path for CLI sign-in; the rate
- *    limits, lockout and risk gate still apply to it. Operators who do not use
- *    password sign-in from the CLI set `TURNSTILE_EXEMPT_CLI=0` (automation
- *    uses personal access tokens, which never touch these routes).
+ *    limits, lockout and risk gate still apply to it. Automation should use
+ *    personal access tokens, which never touch these routes (W5-03).
  *
  * Verification (`createTurnstileVerifier`): POST siteverify with the secret,
  * the token, the client IP and an idempotency key (one retry on a network

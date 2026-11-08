@@ -6,7 +6,8 @@
  *   TURNSTILE_SECRET_KEY    siteverify secret (or TURNSTILE_SECRET_KEY_FILE, a file holding it)
  *   TURNSTILE_FAIL_OPEN     1 = let requests through while Cloudflare is unreachable
  *                           (incident switch; every pass is audited). Default: fail closed.
- *   TURNSTILE_EXEMPT_CLI    1 (default) = explicit CLI clients skip the check; 0 = no exemption
+ *   TURNSTILE_EXEMPT_CLI    0 (default) = no exemption; 1 = explicit CLI clients skip the check
+ *                           (production also needs TURNSTILE_EXEMPT_CLI_ACK=bots-can-claim-cli)
  *
  * Fail closed: an unknown mode refuses to boot everywhere; production with
  * `on` refuses to boot without both keys, and refuses Cloudflare's published
@@ -69,6 +70,7 @@ export function turnstileEnvFromProcess(): MailEnv {
     TURNSTILE_SECRET_KEY_FILE: process.env.TURNSTILE_SECRET_KEY_FILE,
     TURNSTILE_FAIL_OPEN: process.env.TURNSTILE_FAIL_OPEN,
     TURNSTILE_EXEMPT_CLI: process.env.TURNSTILE_EXEMPT_CLI,
+    TURNSTILE_EXEMPT_CLI_ACK: process.env.TURNSTILE_EXEMPT_CLI_ACK,
   };
 }
 
@@ -100,7 +102,9 @@ export function loadTurnstileConfig(
     throw new Error('TURNSTILE_SECRET_KEY does not look like a Turnstile secret key');
 
   const failOpen = flag('TURNSTILE_FAIL_OPEN', env.TURNSTILE_FAIL_OPEN, false);
-  const exemptCli = flag('TURNSTILE_EXEMPT_CLI', env.TURNSTILE_EXEMPT_CLI, true);
+  // Off by default: any HTTP client can claim to be the CLI, so the exemption is an
+  // explicit, acknowledged choice (W5-03).
+  const exemptCli = flag('TURNSTILE_EXEMPT_CLI', env.TURNSTILE_EXEMPT_CLI, false);
   const testKeys =
     (!!secretKey && TURNSTILE_TEST_SECRET_KEYS.has(secretKey)) ||
     (!!siteKey && TURNSTILE_TEST_SITE_KEYS.has(siteKey));
@@ -112,6 +116,11 @@ export function loadTurnstileConfig(
     ];
     if (missing.length)
       throw new Error(`TURNSTILE_MODE=on requires ${missing.join(' and ')} — refusing to boot`);
+    if (opts.isProd && exemptCli && env.TURNSTILE_EXEMPT_CLI_ACK !== 'bots-can-claim-cli')
+      throw new Error(
+        'TURNSTILE_EXEMPT_CLI=1 in production lets any client that claims to be the CLI skip ' +
+          'Turnstile; set TURNSTILE_EXEMPT_CLI_ACK=bots-can-claim-cli to accept that, or use PATs',
+      );
     if (opts.isProd && testKeys)
       throw new Error(
         'TURNSTILE_MODE=on with a Cloudflare test key in production — use the real widget keys',

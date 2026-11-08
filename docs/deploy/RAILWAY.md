@@ -364,7 +364,7 @@ All of the shared runtime settings by reference (`NODE_ENV`, `APP_ORIGIN`,
 | `DATABASE_SSL` | `disable` (private network) |
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | `${{shared.R2_BACKEND_ACCESS_KEY_ID}}`, `${{shared.R2_BACKEND_SECRET_ACCESS_KEY}}` |
 | `REDIS_URL` | `${{Redis.REDIS_URL}}`: shared rate limits, event fan-out and job leases ([Scaling](#11-scaling)). Plain `redis://` on the private network; use `rediss://` for an external Redis |
-| `EXPECT_REPLICAS` | unset (1). Set it to the replica count *before* raising replicas: above 1, the backend refuses to boot without Redis and fails readiness while Redis is down |
+| `EXPECT_REPLICAS` | unset (1). **Production currently refuses to boot with more than 1** (W5-09): JIT grants, personal access tokens and recovery tokens are still per process. Once those move to Postgres, set it to the replica count *before* raising replicas: above 1, the backend refuses to boot without Redis and fails readiness while Redis is down |
 | `ML_SERVICE_URL` | `http://${{models.RAILWAY_PRIVATE_DOMAIN}}:8000` |
 | `ML_SERVICE_TOKEN` | `${{shared.ML_SERVICE_TOKEN}}` |
 | `MAIL_TRANSPORT`, `SMTP_*`, `MAIL_DIGEST_MINUTES` | see [Mail](#mail-resend) |
@@ -449,7 +449,7 @@ and what is exempt: [Security controls, C-26](../security/CONTROLS.md).
    | `TURNSTILE_SITE_KEY` | the widget's *Site key* (public) |
    | `TURNSTILE_SECRET_KEY` | the widget's *Secret key* (secret; seal it in the dashboard) |
    | `TURNSTILE_FAIL_OPEN` | leave unset. `1` only during a Cloudflare incident (see below) |
-   | `TURNSTILE_EXEMPT_CLI` | leave unset (`1`), or `0` if nobody signs in with a password from the CLI |
+   | `TURNSTILE_EXEMPT_CLI` | leave unset (`0`): every client needs a token, CLI automation uses PATs. `1` lets clients that claim to be the CLI skip the check (bots can claim it too), and production then also needs `TURNSTILE_EXEMPT_CLI_ACK=bots-can-claim-cli` |
 
    With `TURNSTILE_MODE=on` and either key missing, or with one of
    Cloudflare's test keys, production refuses to boot, so a typo shows up as
