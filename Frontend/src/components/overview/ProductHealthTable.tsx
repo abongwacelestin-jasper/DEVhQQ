@@ -1,11 +1,34 @@
 import { useNavigate } from 'react-router-dom';
 import { ProductMark } from '../ui/ProductMark';
 import { StatusBadge } from '../ui/StatusBadge';
+import { Skeleton } from '../ui/Skeleton';
 import { healthMeta, deployMeta } from '../../utils/status';
 import type { ProductRow } from '../../hooks/useOverviewData';
 
-export function ProductHealthTable({ rows }: { rows: ProductRow[] }) {
+export function ProductHealthTable({
+  rows,
+  loading = false,
+}: {
+  rows: ProductRow[];
+  loading?: boolean;
+}) {
   const navigate = useNavigate();
+
+  if (rows.length === 0 && loading) {
+    // Holds about the space three product rows take, so the panels below don't jump
+    // down when the data arrives.
+    return (
+      <div aria-hidden className="space-y-3 px-3.5 py-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex h-[38px] items-center gap-2">
+            <Skeleton className="h-4 w-4 rounded-md" />
+            <Skeleton className="h-2.5 w-40" />
+            <Skeleton className="ml-auto h-2.5 w-24" />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   if (rows.length === 0) {
     return <p className="px-3.5 py-6 text-center text-[12px] text-muted">No products available.</p>;
@@ -57,7 +80,9 @@ export function ProductHealthTable({ rows }: { rows: ProductRow[] }) {
                   <td className="whitespace-nowrap px-2.5 py-2 tabular-nums text-ink">
                     {p.projects}
                   </td>
-                  <td className="whitespace-nowrap px-2.5 py-2 tabular-nums text-ink">{p.members}</td>
+                  <td className="whitespace-nowrap px-2.5 py-2 tabular-nums text-ink">
+                    {p.members}
+                  </td>
                   <td
                     className={`whitespace-nowrap px-2.5 py-2 tabular-nums ${p.openIncidents ? 'font-semibold text-bad' : 'text-muted'}`}
                   >

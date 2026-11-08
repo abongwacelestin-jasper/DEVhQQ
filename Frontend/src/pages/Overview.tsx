@@ -326,7 +326,7 @@ export function Overview() {
           />
         }
       >
-        <ProductHealthTable rows={productHits} />
+        <ProductHealthTable rows={productHits} loading={loading} />
       </Panel>
 
       <div className="grid gap-3 lg:grid-cols-3">
