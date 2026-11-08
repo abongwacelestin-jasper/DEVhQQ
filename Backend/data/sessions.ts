@@ -79,6 +79,15 @@ export class MemorySessionStore implements AdminSessionStore {
     }
     this.rows.set(s.id, clone({ ...s, revoked: false }));
   }
+  async refresh(s: SessionRecord, expiresAt?: number) {
+    if (!this.rows.has(s.id)) return false;
+    if (expiresAt !== undefined && expiresAt <= Date.now()) {
+      this.rows.delete(s.id);
+      return false;
+    }
+    this.rows.set(s.id, clone({ ...s, revoked: false }));
+    return true;
+  }
   async delete(id: string) {
     return this.rows.delete(id);
   }
@@ -218,6 +227,36 @@ export class PgSessionStore implements AdminSessionStore {
       ],
     );
     this.mirror.write('sessions', s.id, { ...s, revoked: false });
+  }
+  /** UPDATE only: a row deleted by a concurrent revoke stays deleted (W5-01). */
+  async refresh(s: SessionRecord, expiresAt?: number) {
+    if (expiresAt !== undefined && expiresAt <= Date.now()) {
+      await this.delete(s.id);
+      return false;
+    }
+    const res = await this.pool.query(
+      `UPDATE sessions SET stage = $3, method = $4, last_seen_at = $5, verified_at = $6,
+         ua_hash = $7, client = $8, ip = $9, location = $10::jsonb, last_totp_counter = $11,
+         extra = $12::jsonb
+       WHERE org_id = $1 AND id = $2`,
+      [
+        ORG_ID,
+        s.id,
+        s.stage,
+        s.method,
+        s.lastSeenAt,
+        s.verifiedAt,
+        s.uaHash,
+        text(s.client),
+        text(s.ip),
+        json(s.location) ?? '{}',
+        s.lastTotpCounter,
+        json(extras(s, KNOWN)) ?? '{}',
+      ],
+    );
+    const updated = (res.rowCount ?? 0) > 0;
+    if (updated) this.mirror.write('sessions', s.id, { ...s, revoked: false });
+    return updated;
   }
   async delete(id: string) {
     const res = await this.pool.query('DELETE FROM sessions WHERE org_id = $1 AND id = $2', [

@@ -132,6 +132,15 @@ export function activeGrantFor(memberId: string, scope: string): Grant | undefin
     .sort((a, b) => (b.expiresAt ?? 0) - (a.expiresAt ?? 0))[0];
 }
 
+export function getGrant(id: string): Grant | undefined {
+  return grants.get(id);
+}
+
+/** The product a `production:<product>` scope names. */
+export function grantProduct(g: Pick<Grant, 'scope'>): ProductId {
+  return g.scope.split(':')[1] as ProductId;
+}
+
 export function listGrants(): Grant[] {
   return [...grants.values()].sort((a, b) => b.requestedAt - a.requestedAt);
 }

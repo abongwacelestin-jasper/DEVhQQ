@@ -54,9 +54,23 @@ async function store(s: SessionRecord) {
   track(s);
 }
 
+/**
+ * Writes back changes to an existing session. Never recreates one: if a concurrent
+ * revoke removed it, the caller gets 401 instead of resurrecting it (W5-01).
+ */
+async function refreshStored(s: SessionRecord) {
+  const ok = await repos.sessions.refresh(s, s.createdAt + config.sessionAbsoluteMs + 1);
+  if (!ok) {
+    persistedSeen.delete(s.id);
+    throw new HttpError(401, 'session_revoked', 'Session ended');
+  }
+  track(s);
+}
+
 async function drop(id: string) {
-  await repos.sessions.delete(id);
+  const existed = await repos.sessions.delete(id);
   persistedSeen.delete(id);
+  return existed;
 }
 
 function uaHash(req: IncomingMessage): string {
@@ -124,7 +138,9 @@ export async function createSession(
 /** Issues a fresh token for the same session state and kills the old one (prevents session fixation). */
 export async function rotateSession(old: SessionRecord, patch: Partial<SessionRecord> = {}) {
   old.revoked = true;
-  await drop(old.id);
+  // Only the request that actually removes the old session may mint its successor:
+  // if a revoke (or a parallel rotation) got there first, the session is over.
+  if (!(await drop(old.id))) throw new HttpError(401, 'session_revoked', 'Session ended');
   const rawId = randomToken(32);
   const rec: SessionRecord = {
     ...old,
@@ -175,7 +191,8 @@ export async function validateSession(
     changed = true;
   }
   s.lastSeenAt = now;
-  if (changed || now - (persistedSeen.get(s.id) ?? 0) >= LAST_SEEN_PERSIST_MS) await store(s);
+  if (changed || now - (persistedSeen.get(s.id) ?? 0) >= LAST_SEEN_PERSIST_MS)
+    await refreshStored(s);
   return { session: s, stepUpRequired: s.verifiedAt === 0 };
 }
 

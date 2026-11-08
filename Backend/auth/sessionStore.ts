@@ -33,6 +33,12 @@ export interface SessionStore {
   get(id: string): Promise<SessionRecord | undefined>;
   /** Creates or replaces a session. `expiresAt` is the absolute end (epoch ms). */
   put(rec: SessionRecord, expiresAt: number): Promise<void>;
+  /**
+   * Updates an existing session only; never creates one. Resolves false when the
+   * session no longer exists (revoked or expired), so a request that read the
+   * session before a concurrent revoke cannot write it back (W5-01).
+   */
+  refresh(rec: SessionRecord, expiresAt: number): Promise<boolean>;
   /** Removes one session. Resolves true when it existed. */
   delete(id: string): Promise<boolean>;
   listByMember(memberId: string): Promise<SessionRecord[]>;
@@ -64,6 +70,16 @@ export class MemorySessionStore implements SessionStore {
       return;
     }
     this.rows.set(rec.id, { rec: structuredClone(rec), expiresAt });
+  }
+
+  async refresh(rec: SessionRecord, expiresAt: number) {
+    if (!this.live(rec.id)) return false;
+    if (expiresAt <= Date.now()) {
+      this.rows.delete(rec.id);
+      return false;
+    }
+    this.rows.set(rec.id, { rec: structuredClone(rec), expiresAt });
+    return true;
   }
 
   async delete(id: string) {
@@ -143,6 +159,22 @@ export class RedisSessionStore implements SessionStore {
     m.pExpire(mk, ttl, 'GT');
     m.pExpire(mk, ttl, 'NX');
     await this.run(m.exec());
+  }
+
+  async refresh(rec: SessionRecord, expiresAt: number) {
+    const ttl = Math.round(expiresAt - Date.now());
+    if (ttl <= 0) {
+      await this.delete(rec.id);
+      return false;
+    }
+    // XX: only if the key still exists, so a concurrent revoke is never undone.
+    const ok = await this.run(
+      this.client.set(this.key(rec.id), JSON.stringify(rec), {
+        condition: 'XX',
+        expiration: { type: 'PX', value: ttl },
+      }),
+    );
+    return ok === 'OK';
   }
 
   async delete(id: string) {

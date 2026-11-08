@@ -19,6 +19,8 @@ import {
   listGrants,
   requestGrant,
   revokeGrant,
+  getGrant,
+  grantProduct,
 } from '../auth/jit.ts';
 import { revokeAllFor } from '../auth/sessions.ts';
 import { revokeStandingAccess } from '../security/pats.ts';
@@ -31,6 +33,7 @@ import {
   HttpError,
   type Member,
   type PermissionArea,
+  type Principal,
   type PermissionLevel,
   type ProductId,
   type RoleName,
@@ -100,6 +103,18 @@ function nameFromEmail(email: string): string {
     .filter(Boolean)
     .map((part) => part[0].toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+/**
+ * Approving or revoking a grant needs sight of its product: an approver outside the
+ * product must not satisfy the two-person rule there, and gets the same 404 as for
+ * a grant that does not exist (W5-02).
+ */
+function grantInScope(p: Principal, grantId: string): string {
+  const g = getGrant(grantId);
+  if (!g || !canSeeProduct(p, grantProduct(g)))
+    throw new HttpError(404, 'not_found', 'No such grant');
+  return g.id;
 }
 
 export function registerTeamRoutes(r: Router) {
@@ -331,7 +346,9 @@ export function registerTeamRoutes(r: Router) {
     'All JIT grants',
     authenticate,
     requireArea('Administration', 'view'),
-    () => listGrants(),
+    // Only grants for products the caller can see: reasons and requesters are not
+    // shared across products (W5-02).
+    (ctx) => listGrants().filter((g) => canSeeProduct(ctx.principal!, grantProduct(g))),
   );
 
   // The requester's own grants (pending, active, ended), so the place where they act can
@@ -392,7 +409,7 @@ export function registerTeamRoutes(r: Router) {
     requireStepUp(),
     (ctx) =>
       approveGrant(
-        ctx.params.grantId,
+        grantInScope(ctx.principal!, ctx.params.grantId),
         {
           memberId: ctx.principal!.memberId,
           role: ctx.principal!.role,
@@ -408,6 +425,11 @@ export function registerTeamRoutes(r: Router) {
     authenticate,
     requireArea('Deployment', 'manage'),
     requireStepUp(),
-    (ctx) => revokeGrant(ctx.params.grantId, ctx.principal!.memberId, ctx.requestId),
+    (ctx) =>
+      revokeGrant(
+        grantInScope(ctx.principal!, ctx.params.grantId),
+        ctx.principal!.memberId,
+        ctx.requestId,
+      ),
   );
 }
