@@ -17,6 +17,10 @@
  * dropped (slow consumer); heartbeats every HEARTBEAT_MS also re-check that
  * the session still exists and the member is still active, so revoking
  * sessions or deactivating a member closes their streams within one beat.
+ * The member's role and products are read from the members repository on
+ * every beat (and immediately when this process changes the member), and
+ * channel events are checked against that view — members are no longer held
+ * in process memory (ADR 0011), so a per-event database read is avoided.
  * Reconnects may send `Last-Event-ID` to replay recent events they can read.
  *
  * Across replicas (lib/redisBus.ts installs a transport when REDIS_URL is
@@ -34,7 +38,8 @@
 import type { ServerResponse } from 'node:http';
 import { findSessionByPrefix } from '../../auth/sessions.ts';
 import { HttpError, type Principal } from '../../types.ts';
-import { canReadChannel, currentViewer } from './access.ts';
+import { onMemberWrite } from '../../data/members.ts';
+import { canReadChannel, currentViewer, type Viewer } from './access.ts';
 import { channels } from './store.ts';
 
 export type Audience = { channelId: string } | { memberId: string };
@@ -52,6 +57,8 @@ interface Subscriber {
   sessionId: string;
   res: ServerResponse;
   beat: ReturnType<typeof setInterval>;
+  /** Current role/products of the member; undefined once inactive. */
+  viewer: Viewer | undefined;
 }
 
 const MAX_PER_MEMBER = 5;
@@ -91,7 +98,7 @@ function deliver(e: CollabEvent) {
 
 function visibleTo(sub: Subscriber, e: CollabEvent): boolean {
   if ('memberId' in e.audience) return e.audience.memberId === sub.memberId;
-  const viewer = currentViewer(sub.memberId);
+  const viewer = sub.viewer;
   const channel = channels.get(e.audience.channelId);
   return !!viewer && !!channel && canReadChannel(viewer, channel);
 }
@@ -115,10 +122,20 @@ function frame(e: CollabEvent) {
   return `id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify({ type: e.type, at: e.at, data: e.data })}\n\n`;
 }
 
-function stillValid(sub: Subscriber): boolean {
-  const s = findSessionByPrefix(sub.memberId, sub.sessionId);
-  return !!s && !s.revoked && !!currentViewer(sub.memberId);
+async function refresh(sub: Subscriber) {
+  sub.viewer = await currentViewer(sub.memberId);
 }
+
+async function stillValid(sub: Subscriber): Promise<boolean> {
+  const s = await findSessionByPrefix(sub.memberId, sub.sessionId);
+  await refresh(sub);
+  return !!s && !s.revoked && !!sub.viewer;
+}
+
+onMemberWrite((memberId) => {
+  for (const sub of subscribers)
+    if (sub.memberId === memberId) void refresh(sub).catch(() => undefined);
+});
 
 /** Publishes a collaboration event. Never forwarded to the global /api/_events bus. */
 export function emit(type: string, audience: Audience, data: unknown) {
@@ -153,9 +170,15 @@ export function openStream(p: Principal, res: ServerResponse, lastEventId?: stri
     memberId: p.memberId,
     sessionId: p.sessionId,
     res,
+    viewer: { memberId: p.memberId, role: p.role, products: p.products },
     beat: setInterval(() => {
-      if (!stillValid(sub)) return close(sub, 'session_ended');
-      write(sub, `: ping ${Date.now()}\n\n`);
+      void stillValid(sub).then(
+        (ok) => {
+          if (!ok) return close(sub, 'session_ended');
+          write(sub, `: ping ${Date.now()}\n\n`);
+        },
+        () => undefined,
+      );
     }, HEARTBEAT_MS),
   };
   sub.beat.unref();

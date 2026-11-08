@@ -18,7 +18,7 @@ import { validateSession } from '../auth/sessions.ts';
 import { activeElevations } from '../auth/jit.ts';
 import { setPrincipalAuth } from '../auth/rbac.ts';
 import { looksLikePat, parseScopes, verifyPat } from '../security/pats.ts';
-import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError } from '../types.ts';
 
 export const SESSION_COOKIE = '__Host-devhq_session';
@@ -45,15 +45,15 @@ export function clearSessionCookie(): string {
 }
 
 function authenticateWith(allowPartial: boolean): Middleware {
-  return (ctx, next) => {
+  return async (ctx, next) => {
     const token = readToken(ctx.req.headers.cookie, ctx.req.headers.authorization);
     if (!token) throw new HttpError(401, 'unauthenticated', 'Sign in required');
     if (looksLikePat(token)) {
       // A PAT is a complete credential but never a partial (MFA-pending) session.
       if (allowPartial)
         throw new HttpError(403, 'session_required', 'This action needs an interactive session');
-      const pat = verifyPat(token, ctx.ip);
-      const member = db.members.get(pat.memberId)!;
+      const pat = await verifyPat(token, ctx.ip);
+      const member = (await repos.members.get(pat.memberId))!;
       ctx.principal = {
         memberId: member.id,
         role: member.role,
@@ -71,10 +71,10 @@ function authenticateWith(allowPartial: boolean): Middleware {
       });
       return next();
     }
-    const { session, stepUpRequired } = validateSession(token, ctx.req, ctx.ip);
+    const { session, stepUpRequired } = await validateSession(token, ctx.req, ctx.ip);
     if (session.stage !== 'verified' && !allowPartial)
       throw new HttpError(401, 'mfa_required', 'Complete MFA to continue');
-    const member = db.members.get(session.memberId);
+    const member = await repos.members.get(session.memberId);
     if (!member || member.status !== 'active')
       throw new HttpError(401, 'account_inactive', 'Account is not active');
     ctx.token = token;

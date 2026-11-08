@@ -12,7 +12,7 @@ and `Models/`. What each one means and its defaults are in the
 hand-written [configuration reference](configuration.md); this page is the
 drift check: if code starts reading a new variable, it appears here.
 
-**107 variables.** "`_FILE`" means the container can pass the
+**108 variables.** "`_FILE`" means the container can pass the
 value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 
 | Variable | Backend | Frontend | Models | `_FILE` | In `.env.example` |
@@ -26,7 +26,7 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `ASSISTANT_MAX_TOKENS` |  |  | `devhq_models/config.py` |  |  |
 | `ASSISTANT_MODEL` |  |  | `devhq_models/config.py` |  | yes |
 | `ASSISTANT_TIMEOUT_SECONDS` |  |  | `devhq_models/config.py` |  |  |
-| `AUDIT_LOG_FILE` | `audit/auditLog.ts`<br>`db/smoke-pg.ts`<br>`scripts/smoke.ts` |  |  |  | yes |
+| `AUDIT_LOG_FILE` | `audit/auditLog.ts`<br>`db/smoke-pg.ts`<br>`db/smoke-replicas.ts`<br>`scripts/smoke.ts` |  |  |  | yes |
 | `BACKEND_URL` |  |  | `devhq_models/config.py` |  |  |
 | `BACKUP_DIR` | `config/env.ts` |  |  |  | yes |
 | `BACKUP_RETENTION_DAYS` | `config/env.ts` |  |  |  |  |
@@ -41,12 +41,13 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `BRAND_WEBSITE_URL` | `config/mail.ts` |  |  |  | yes |
 | `CORS_ORIGINS` | `config/env.ts` |  |  |  | yes |
 | `DATABASE_CONNECT_TIMEOUT_MS` | `db/pool.ts` |  |  |  |  |
-| `DATABASE_MIGRATION_URL` | `db/boot.ts`<br>`db/migrate.ts` |  |  |  | yes |
+| `DATABASE_MIGRATION_URL` | `db/backfill.ts`<br>`db/boot.ts`<br>`db/migrate.ts` |  |  |  | yes |
 | `DATABASE_POOL_MAX` | `db/pool.ts` |  |  |  |  |
 | `DATABASE_SSL` | `db/pool.ts` |  |  |  | yes |
 | `DATABASE_SSL_CA` | `db/pool.ts` |  |  |  | yes |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | `db/pool.ts` |  |  |  |  |
-| `DATABASE_URL` | `db/boot.ts`<br>`db/migrate.ts`<br>`db/smoke-pg.ts`<br>`scripts/smoke.ts`<br>`scripts/verify-audit.ts`<br>`worker.ts` |  |  | yes | yes |
+| `DATABASE_URL` | `db/backfill.ts`<br>`db/boot.ts`<br>`db/migrate.ts`<br>`db/smoke-pg.ts`<br>`db/smoke-replicas.ts`<br>`scripts/smoke.ts`<br>`scripts/verify-audit.ts`<br>`worker.ts` |  |  | yes | yes |
+| `DATA_DUAL_WRITE` | `db/boot.ts` |  |  |  | yes |
 | `DATA_ENCRYPTION_KEY` | `config/env.ts`<br>`domain/engineering/secrets.ts`<br>`resilience/encryption.ts` |  |  | yes | yes |
 | `DATA_ENCRYPTION_KEYS_PREVIOUS` | `config/env.ts` |  |  |  | yes |
 | `DEMO_DISABLED` | `store/db.ts` |  |  |  | yes |

@@ -27,6 +27,8 @@ import { canReceiveEvent } from '../security/eventPolicy.ts';
 import { audit } from '../audit/auditLog.ts';
 import { config, publicConfig } from '../config/env.ts';
 import { db, publicMember } from '../store/db.ts';
+import { repos } from '../data/index.ts';
+import { onMemberWrite } from '../data/members.ts';
 import { HttpError, type Principal, type ProductId } from '../types.ts';
 
 // Server-rendered console page, resolved relative to this file (Backend/routes → Backend/backend.html).
@@ -35,7 +37,7 @@ const CONSOLE_FILE = new URL('../backend.html', import.meta.url);
 type Row = Record<string, unknown>;
 interface Collection {
   fields: string[];
-  rows: (p: Principal) => Row[];
+  rows: (p: Principal) => Row[] | Promise<Row[]>;
 }
 
 const scoped = <T extends { product: ProductId }>(list: T[], p: Principal) =>
@@ -58,7 +60,7 @@ export const collections: Record<string, Collection> = {
       'estimate',
       'updatedAt',
     ],
-    rows: (p) => scoped([...db.tasks.values()], p),
+    rows: async (p) => scoped(await repos.tasks.list(), p),
   },
   projects: {
     fields: ['id', 'product', 'name', 'lead', 'status'],
@@ -105,8 +107,8 @@ export const collections: Record<string, Collection> = {
   },
   members: {
     fields: ['id', 'name', 'email', 'role', 'products', 'status', 'mfa', 'passkeys'],
-    rows: (p) =>
-      [...db.members.values()]
+    rows: async (p) =>
+      (await repos.members.list())
         .filter((m) => hasOwnerPowers(p) || m.products.some((x) => p.products.includes(x)))
         .map(publicMember) as unknown as Row[],
   },
@@ -276,6 +278,7 @@ export function registerSystemRoutes(r: Router) {
       const redisOk = cache.status !== 'down' || !cache.required;
       // An empty production database is still "ready" (the deploy gate must pass before the
       // first Owner exists); `bootstrapRequired` tells operators no one can sign in yet.
+      const memberCount = dbOk ? await repos.members.count().catch(() => 0) : 0;
       const ready = dbOk && chain.ok && !persistence.saturated && redisOk;
       if (!ready) ctx.status = 503;
       return {
@@ -287,8 +290,8 @@ export function registerSystemRoutes(r: Router) {
           pending: persistence.pending,
           saturated: persistence.saturated,
         },
-        members: db.members.size,
-        bootstrapRequired: db.members.size === 0,
+        members: memberCount,
+        bootstrapRequired: memberCount === 0,
         auditChain: chain.ok ? 'intact' : 'broken',
       };
     },
@@ -394,22 +397,37 @@ export function registerSystemRoutes(r: Router) {
       );
       // CYBER-001: filter per subscriber at delivery time (security/eventPolicy.ts),
       // and end the stream once the member is no longer active. Fan-out: events
-      // from every replica when Redis is configured (lib/redisBus.ts).
+      // from every replica when Redis is configured (lib/redisBus.ts). Member status is
+      // re-read from the repository on every heartbeat and whenever this process
+      // changes the member, so the per-event check stays synchronous.
       const principal = ctx.principal!;
+      let active = true;
+      const end = () => {
+        off();
+        offMember();
+        clearInterval(beat);
+        if (!res.writableEnded) res.end();
+      };
+      const refresh = async () => {
+        active = (await repos.members.get(principal.memberId))?.status === 'active';
+        if (!active) end();
+      };
       const off = subscribeFanout((e) => {
-        if (db.members.get(principal.memberId)?.status !== 'active') {
-          off();
-          clearInterval(beat);
-          res.end();
-          return;
-        }
+        if (!active) return end();
         if (canReceiveEvent(principal, e))
           res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
       });
-      const beat = setInterval(() => res.write(`: ping ${Date.now()}\n\n`), 15_000);
+      const offMember = onMemberWrite((id) => {
+        if (id === principal.memberId) void refresh().catch(() => undefined);
+      });
+      const beat = setInterval(() => {
+        void refresh().catch(() => undefined);
+        if (active) res.write(`: ping ${Date.now()}\n\n`);
+      }, 15_000);
       ctx.req.on('close', () => {
         clearInterval(beat);
         off();
+        offMember();
       });
       return STREAM;
     },
@@ -420,12 +438,14 @@ export function registerSystemRoutes(r: Router) {
     '/api/_query/collections',
     { summary: 'Queryable collections and their fields', tag: 'query' },
     authenticate,
-    (ctx) =>
+    async (ctx) =>
       Object.fromEntries(
-        Object.entries(collections).map(([k, c]) => [
-          k,
-          { fields: c.fields, count: c.rows(ctx.principal!).length },
-        ]),
+        await Promise.all(
+          Object.entries(collections).map(async ([k, c]) => [
+            k,
+            { fields: c.fields, count: (await c.rows(ctx.principal!)).length },
+          ]),
+        ),
       ),
   );
 
@@ -438,10 +458,10 @@ export function registerSystemRoutes(r: Router) {
       responses: [401, 422],
     },
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       const q = parse(queryBody, ctx.body) as Query;
       const c = collections[q.from];
-      const result = runQuery(q, c.rows(ctx.principal!), c.fields);
+      const result = runQuery(q, await c.rows(ctx.principal!), c.fields);
       audit.append({
         actor: ctx.principal!.memberId,
         action: 'console.query',

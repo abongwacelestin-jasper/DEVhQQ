@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import type { ServerResponse } from 'node:http';
 import { db, seed } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 import {
   canModerate,
   canPost,
@@ -13,7 +14,7 @@ import {
   seesProduct,
   type Viewer,
 } from '../../domain/collab/access.ts';
-import { channels, notifications, sortableId } from '../../domain/collab/store.ts';
+import { channels, sortableId } from '../../domain/collab/store.ts';
 import { defaultPermissions } from '../../domain/collab/seed.ts';
 import { emit, openStream, streamStats } from '../../domain/collab/realtime.ts';
 import {
@@ -22,6 +23,7 @@ import {
   observeDomainEvents,
   parseMentions,
   publicNotification,
+  settleObservers,
 } from '../../domain/collab/notify.ts';
 import { publish } from '../../lib/events.ts';
 import {
@@ -64,8 +66,12 @@ function channel(over: Partial<Channel> = {}): Channel {
   };
 }
 
+/** Seeded members, read once (repository rows are copies). */
+const people = new Map<string, Member>();
+
 before(async () => {
   await seed();
+  for (const m of await repos.members.list()) people.set(m.id, m);
 });
 
 describe('collab/access — reading channels', () => {
@@ -163,14 +169,14 @@ describe('collab/access — moderation and posting (table)', () => {
 });
 
 describe('collab/access — current viewer', () => {
-  it('reflects the member’s live role and products; inactive members have none', () => {
-    assert.deepEqual(currentViewer('m4'), {
+  it('reflects the member’s live role and products; inactive members have none', async () => {
+    assert.deepEqual(await currentViewer('m4'), {
       memberId: 'm4',
       role: 'Developer',
       products: ['renewberry'],
     });
-    assert.equal(currentViewer('m12'), undefined, 'invited');
-    assert.equal(currentViewer('ghost'), undefined);
+    assert.equal(await currentViewer('m12'), undefined, 'invited');
+    assert.equal(await currentViewer('ghost'), undefined);
   });
 });
 
@@ -199,7 +205,7 @@ class FakeRes extends EventEmitter {
 }
 
 function principal(memberId: string) {
-  const m = db.members.get(memberId)!;
+  const m = people.get(memberId)!;
   return {
     memberId,
     role: m.role,
@@ -288,13 +294,13 @@ describe('collab/notify', () => {
     assert.ok(long.endsWith('…'));
   });
 
-  it('parses @mentions of active members only, once each', () => {
-    assert.deepEqual(parseMentions('hi @m4 and @m5, also @m4 again').sort(), ['m4', 'm5']);
-    assert.deepEqual(parseMentions('@m12 is invited, @ghost unknown'), []);
-    assert.deepEqual(parseMentions('mail me@m4.dev or x@m4'), [], 'emails are not mentions');
+  it('parses @mentions of active members only, once each', async () => {
+    assert.deepEqual((await parseMentions('hi @m4 and @m5, also @m4 again')).sort(), ['m4', 'm5']);
+    assert.deepEqual(await parseMentions('@m12 is invited, @ghost unknown'), []);
+    assert.deepEqual(await parseMentions('mail me@m4.dev or x@m4'), [], 'emails are not mentions');
   });
 
-  it('never notifies the actor or inactive members, and collapses unread duplicates', () => {
+  it('never notifies the actor or inactive members, and collapses unread duplicates', async () => {
     const base = {
       kind: 'mention' as const,
       title: 't',
@@ -302,19 +308,19 @@ describe('collab/notify', () => {
       link: '/x',
       refId: `ref-${sortableId('t')}`,
     };
-    assert.equal(notify({ ...base, memberId: 'm4', actor: 'm4' }), undefined, 'self');
-    assert.equal(notify({ ...base, memberId: 'm12', actor: 'm1' }), undefined, 'invited');
-    const first = notify({ ...base, memberId: 'm4', actor: 'm1' })!;
-    const again = notify({ ...base, memberId: 'm4', actor: 'm2' })!;
+    assert.equal(await notify({ ...base, memberId: 'm4', actor: 'm4' }), undefined, 'self');
+    assert.equal(await notify({ ...base, memberId: 'm12', actor: 'm1' }), undefined, 'invited');
+    const first = (await notify({ ...base, memberId: 'm4', actor: 'm1' }))!;
+    const again = (await notify({ ...base, memberId: 'm4', actor: 'm2' }))!;
     assert.equal(again.id, first.id);
-    first.readAt = new Date().toISOString();
-    const fresh = notify({ ...base, memberId: 'm4', actor: 'm2' })!;
+    await repos.notifications.markRead('m4', [first.id], new Date().toISOString());
+    const fresh = (await notify({ ...base, memberId: 'm4', actor: 'm2' }))!;
     assert.notEqual(fresh.id, first.id, 'a read notification does not swallow a new one');
-    assert.ok(notifications.has(fresh.id));
+    assert.ok(await repos.notifications.get(fresh.id));
   });
 
-  it('bodies are short plain excerpts; the public view hides delivery internals', () => {
-    const n = notify({
+  it('bodies are short plain excerpts; the public view hides delivery internals', async () => {
+    const n = (await notify({
       memberId: 'm5',
       actor: 'm1',
       kind: 'doc-comment',
@@ -322,7 +328,7 @@ describe('collab/notify', () => {
       body: 'b '.repeat(300),
       link: '/docs/x',
       refId: `ref-${sortableId('d')}`,
-    })!;
+    }))!;
     assert.ok(n.title.length <= 140 && n.body.length <= 200);
     const view = publicNotification(n);
     assert.equal('memberId' in view, false);
@@ -338,26 +344,26 @@ describe('collab/notify', () => {
 });
 
 describe('collab/notify — domain observers', () => {
-  const unread = (memberId: string, refId: string) =>
-    [...notifications.values()].filter(
-      (n) => n.memberId === memberId && n.refId === refId && !n.readAt,
-    );
+  const unread = async (memberId: string, refId: string) =>
+    (await repos.notifications.list(memberId)).filter((n) => n.refId === refId && !n.readAt);
 
-  it('a task assignment notifies the assignee', () => {
+  it('a task assignment notifies the assignee', async () => {
     observeDomainEvents();
     observeDomainEvents(); // idempotent: one subscription per process
     publish('task', { key: 'RB-226', change: 'assignee' });
-    const t = db.tasks.get('RB-226')!;
-    const got = unread(t.assignee, `task:RB-226:assignee:${t.assignee}`);
+    await settleObservers();
+    const t = (await repos.tasks.get('RB-226'))!;
+    const got = await unread(t.assignee, `task:RB-226:assignee:${t.assignee}`);
     assert.equal(got.length, 1, 'exactly one, even with a second observeDomainEvents()');
     assert.equal(got[0].kind, 'assignment');
     assert.equal(got[0].link, '/tasks/RB-226');
   });
 
-  it('a production deploy awaiting approval notifies every eligible approver but the requester', () => {
+  it('a production deploy awaiting approval notifies every eligible approver but the requester', async () => {
     const d = db.deployments.get('d-1044')!; // blog, requested by m6
     publish('deployment', { id: d.id });
-    const approvers = [...notifications.values()]
+    await settleObservers();
+    const approvers = (await repos.notifications.list())
       .filter((n) => n.refId === `deployment:${d.id}` && !n.readAt)
       .map((n) => n.memberId)
       .sort();
@@ -365,21 +371,23 @@ describe('collab/notify — domain observers', () => {
     // Once decided, the pending approval notifications are closed.
     d.status = 'running';
     publish('deployment', { id: d.id });
-    assert.equal(unread('m11', `deployment:${d.id}`).length, 0);
+    await settleObservers();
+    assert.equal((await unread('m11', `deployment:${d.id}`)).length, 0);
     d.status = 'awaiting-approval';
   });
 
-  it('events for unknown records are ignored', () => {
-    const before = notifications.size;
+  it('events for unknown records are ignored', async () => {
+    const before = (await repos.notifications.list()).length;
     publish('task', { key: 'NOPE-1', change: 'created' });
     publish('deployment', { id: 'd-nope' });
-    assert.equal(notifications.size, before);
+    await settleObservers();
+    assert.equal((await repos.notifications.list()).length, before);
   });
 });
 
 describe('collab/onboarding', () => {
   const member = (role: RoleName, over: Partial<Member> = {}) => ({
-    ...db.members.get('m4')!,
+    ...people.get('m4')!,
     role,
     ...over,
   });

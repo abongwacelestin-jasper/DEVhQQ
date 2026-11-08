@@ -12,8 +12,9 @@
  */
 
 import { db } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 import { distanceKm } from '../../lib/geo.ts';
-import type { Deployment, SignInRecord, Task } from '../../types.ts';
+import type { Deployment, SignInRecord, Task, TaskComment, TaskEvent } from '../../types.ts';
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -68,11 +69,32 @@ const weekday = (t: number) => (new Date(t).getUTCDay() + 6) % 7;
 
 // ── Tasks ──────────────────────────────────────────────────────
 
+/**
+ * Task rows the features are computed from, loaded once per request from the
+ * repositories (tasks, events and comments are no longer held in memory).
+ */
+export interface TaskContext {
+  tasks: Task[];
+  byKey: Map<string, Task>;
+  events: TaskEvent[];
+  comments: TaskComment[];
+}
+
+export async function loadTaskContext(): Promise<TaskContext> {
+  const tasks = await repos.tasks.list();
+  return {
+    tasks,
+    byKey: new Map(tasks.map((t) => [t.key, t])),
+    events: await repos.taskEvents.list(),
+    comments: await repos.taskComments.list(),
+  };
+}
+
 /** When a task reached "done", from its event history (falls back to updatedAt). */
-export function doneAt(t: Task): number | undefined {
+export function doneAt(t: Task, ctx: TaskContext): number | undefined {
   if (t.status !== 'done') return undefined;
   let at: number | undefined;
-  for (const e of db.taskEvents.values())
+  for (const e of ctx.events)
     if (e.taskKey === t.key && e.kind === 'status' && e.to === 'done')
       at = Math.max(at ?? 0, ms(e.at));
   return at ?? ms(t.updatedAt);
@@ -80,18 +102,18 @@ export function doneAt(t: Task): number | undefined {
 
 const dueEnd = (t: Task) => ms(`${t.due}T23:59:59Z`);
 
-function assigneeStats(memberId: string, now: number) {
+function assigneeStats(memberId: string, now: number, ctx: TaskContext) {
   let open = 0;
   let done30 = 0;
   let finished = 0;
   let late = 0;
-  for (const t of db.tasks.values()) {
+  for (const t of ctx.tasks) {
     if (t.assignee !== memberId) continue;
     if (t.status !== 'done') {
       open++;
       continue;
     }
-    const at = doneAt(t);
+    const at = doneAt(t, ctx);
     if (at === undefined || at > now) continue;
     finished++;
     if (at > dueEnd(t)) late++;
@@ -102,16 +124,16 @@ function assigneeStats(memberId: string, now: number) {
   return { open, done30, lateRate: round(lateRate, 3) };
 }
 
-export function taskFeatures(t: Task, now = Date.now()): TaskFeatures {
+export function taskFeatures(t: Task, ctx: TaskContext, now = Date.now()): TaskFeatures {
   let statusAt = ms(t.createdAt);
-  for (const e of db.taskEvents.values())
+  for (const e of ctx.events)
     if (e.taskKey === t.key && e.kind === 'status') statusAt = Math.max(statusAt, ms(e.at));
   const subtasks = [...db.subtasks.values()].filter((s) => s.taskKey === t.key);
   const minutes = [...db.timeLogs.values()]
     .filter((l) => l.taskKey === t.key)
     .reduce((n, l) => n + l.minutes, 0);
-  const blocker = t.blockedBy ? db.tasks.get(t.blockedBy) : undefined;
-  const stats = assigneeStats(t.assignee, now);
+  const blocker = t.blockedBy ? ctx.byKey.get(t.blockedBy) : undefined;
+  const stats = assigneeStats(t.assignee, now, ctx);
   return {
     estimate: t.estimate,
     type: t.type,
@@ -121,7 +143,7 @@ export function taskFeatures(t: Task, now = Date.now()): TaskFeatures {
     ageDays: round(clamp((now - ms(t.createdAt)) / DAY, 0, 3650)),
     daysToDue: round(clamp((dueEnd(t) - now) / DAY, -3650, 3650)),
     blocked: !!blocker && blocker.status !== 'done',
-    comments: [...db.taskComments.values()].filter((c) => c.taskKey === t.key).length,
+    comments: ctx.comments.filter((c) => c.taskKey === t.key).length,
     subtasksTotal: subtasks.length,
     subtasksDone: subtasks.filter((s) => s.done).length,
     loggedHours: round(minutes / 60, 1),
@@ -225,12 +247,13 @@ export function signinFeatures(s: SignInRecord): SigninFeatures {
  * deploys and whether they failed. Sign-ins: every record, with a weak label
  * (blocked or high rule-based risk) used only to evaluate the anomaly model.
  */
-export function buildExport(now = Date.now()) {
-  const tasks = [...db.tasks.values()].flatMap((t) => {
-    const finished = doneAt(t);
+export async function buildExport(now = Date.now()) {
+  const ctx = await loadTaskContext();
+  const tasks = ctx.tasks.flatMap((t) => {
+    const finished = doneAt(t, ctx);
     if (finished === undefined) return [];
     const created = ms(t.createdAt);
-    const f = taskFeatures(t, created);
+    const f = taskFeatures(t, ctx, created);
     return [
       {
         ...f,

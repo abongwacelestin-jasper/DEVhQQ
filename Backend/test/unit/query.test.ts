@@ -139,22 +139,19 @@ describe('lib/query — operator laws (property)', () => {
   // overlap, but `nin` compares the whole array with `includes`, so
   // `{ products: { nin: ['blog'] } }` returns every row — including members of
   // blog. `nin` must be the complement of `in` for array fields too.
-  it(
-    'nin is the complement of in for array-valued fields',
-    () => {
-      for (let i = 0; i < 50; i++) {
-        const data = randomRows(12);
-        const set = [r.pick(['x', 'y', 'z'])];
-        const inIds = new Set(ids({ where: { tags: { in: set } } }, data));
-        const nin = ids({ where: { tags: { nin: set } } }, data);
-        assert.ok(
-          nin.every((id) => !inIds.has(id)),
-          `rows matched by both in and nin ${JSON.stringify(set)}`,
-        );
-        assert.equal(inIds.size + nin.length, data.length);
-      }
-    },
-  );
+  it('nin is the complement of in for array-valued fields', () => {
+    for (let i = 0; i < 50; i++) {
+      const data = randomRows(12);
+      const set = [r.pick(['x', 'y', 'z'])];
+      const inIds = new Set(ids({ where: { tags: { in: set } } }, data));
+      const nin = ids({ where: { tags: { nin: set } } }, data);
+      assert.ok(
+        nin.every((id) => !inIds.has(id)),
+        `rows matched by both in and nin ${JSON.stringify(set)}`,
+      );
+      assert.equal(inIds.size + nin.length, data.length);
+    }
+  });
 
   it('exists:true and exists:false partition the rows', () => {
     for (let i = 0; i < 100; i++) {
@@ -239,7 +236,10 @@ describe('lib/query — paging, ordering and projection', () => {
 describe('lib/query — console collections never expose secrets', () => {
   let collections: Record<
     string,
-    { fields: string[]; rows: (p: Principal) => Record<string, unknown>[] }
+    {
+      fields: string[];
+      rows: (p: Principal) => Record<string, unknown>[] | Promise<Record<string, unknown>[]>;
+    }
   >;
   const owner: Principal = {
     memberId: 'm1',
@@ -262,8 +262,8 @@ describe('lib/query — console collections never expose secrets', () => {
       for (const f of c.fields) assert.ok(!secret.test(f), `${name}.${f} looks secret`);
   });
 
-  it('member rows are the public projection (no hash, no TOTP secret, passkeys as a count)', () => {
-    const members = collections.members.rows(owner);
+  it('member rows are the public projection (no hash, no TOTP secret, passkeys as a count)', async () => {
+    const members = await collections.members.rows(owner);
     assert.ok(members.length > 0);
     for (const m of members) {
       assert.equal('passwordHash' in m, false);
@@ -273,14 +273,11 @@ describe('lib/query — console collections never expose secrets', () => {
     }
   });
 
-  it('selecting passwordHash from members is refused', () => {
+  it('selecting passwordHash from members is refused', async () => {
+    const rows = await collections.members.rows(owner);
     rejectsWith(
       () =>
-        runQuery(
-          { from: 'members', select: ['passwordHash'] },
-          collections.members.rows(owner),
-          collections.members.fields,
-        ),
+        runQuery({ from: 'members', select: ['passwordHash'] }, rows, collections.members.fields),
       'field_not_allowed',
     );
   });

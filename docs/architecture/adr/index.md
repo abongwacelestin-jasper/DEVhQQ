@@ -16,6 +16,7 @@ record that supersedes the old one.
 | [0007](0007-two-person-deploy-rule.md) | Two-person rule for production deploys and JIT access | Accepted, implemented |
 | [0008](0008-hash-chained-audit-log.md) | Hash-chained, append-only audit log | Accepted, implemented |
 | [0009](0009-redis-for-shared-runtime-state.md) | Redis for shared runtime state (rate limits, events, job leases) | Accepted, implemented |
+| [0011](0011-relational-data-layer.md) | Move to relational PostgreSQL tables, queried on demand | Accepted, phase 1 implemented |
 
 Template for a new record:
 

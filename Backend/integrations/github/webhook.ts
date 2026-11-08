@@ -190,12 +190,12 @@ function pruneDeliveries() {
 }
 
 /** Verifies and applies a webhook. Throws HttpError 400/401/409/503 per the contract. */
-export function receiveWebhook(input: {
+export async function receiveWebhook(input: {
   rawBody?: Buffer;
   body: unknown;
   headers: Record<string, string | string[] | undefined>;
   requestId: string;
-}): WebhookResult {
+}): Promise<WebhookResult> {
   const secret = githubEnv().webhookSecret;
   if (!secret)
     throw new HttpError(503, 'integration_unconfigured', 'GITHUB_WEBHOOK_SECRET is not set');
@@ -236,7 +236,7 @@ export function receiveWebhook(input: {
   const actor = `github:${payload.sender?.login ?? 'app'}`;
   let outcome: Outcome;
   try {
-    outcome = apply(event, payload, actor, input.requestId);
+    outcome = await apply(event, payload, actor, input.requestId);
   } catch (e) {
     // A malformed payload must not burn the delivery id: GitHub's "Redeliver" should still work.
     ghDeliveries.delete(delivery);
@@ -270,7 +270,12 @@ export function receiveWebhook(input: {
 
 type Outcome = { handled: boolean; note?: string; linkedTask?: string };
 
-function apply(event: string, p: GhPayload, actor: string, requestId: string): Outcome {
+async function apply(
+  event: string,
+  p: GhPayload,
+  actor: string,
+  requestId: string,
+): Promise<Outcome> {
   switch (event) {
     case 'ping':
       return { handled: false, note: 'pong' };
@@ -309,7 +314,10 @@ export function inferProduct(fullName: string): ProductId | undefined {
   return productAliases.find(([re]) => re.test(fullName))?.[1];
 }
 
-function withRepo(p: GhPayload, fn: (repo: Repo) => Outcome): Outcome {
+function withRepo(
+  p: GhPayload,
+  fn: (repo: Repo) => Outcome | Promise<Outcome>,
+): Outcome | Promise<Outcome> {
   if (!p.repository?.full_name) return { handled: false, note: 'no repository in payload' };
   const repo = ensureRepo(p.repository, p.installation?.id);
   if (!repo)
@@ -448,7 +456,12 @@ export function ciForSha(repoId: string, sha: string): CiStatus {
   return 'passing';
 }
 
-function onPullRequest(repo: Repo, p: GhPayload, actor: string, requestId: string): Outcome {
+async function onPullRequest(
+  repo: Repo,
+  p: GhPayload,
+  actor: string,
+  requestId: string,
+): Promise<Outcome> {
   const gh = p.pull_request;
   if (!gh) return { handled: false, note: 'no pull_request in payload' };
   const id = `${repo.id}#${gh.number}`;
@@ -488,7 +501,7 @@ function onPullRequest(repo: Repo, p: GhPayload, actor: string, requestId: strin
     source: 'github',
   };
   pr.review = deriveReview(pr);
-  const linkedTask = linkPullToTask(pr, memberForLogin(authorLogin) ?? actor, requestId);
+  const linkedTask = await linkPullToTask(pr, memberForLogin(authorLogin) ?? actor, requestId);
   pulls.set(id, pr);
   publish('pull_request', {
     id,

@@ -1,6 +1,8 @@
 # 0003. PostgreSQL through JSONB collections behind the `Collection` seam
 
-- **Status:** Accepted, implemented (Wave 4, B-DATA lane).
+- **Status:** Accepted, implemented (Wave 4, B-DATA lane). Partly superseded by
+  [ADR 0011](0011-relational-data-layer.md): members, sessions, tasks, task
+  events and comments, and notifications are relational tables now.
 - **Date:** 2026-11-07 (owner decision: PostgreSQL)
 
 ## Context

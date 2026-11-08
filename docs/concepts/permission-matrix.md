@@ -156,24 +156,24 @@ changes what is returned rather than refusing the request.
 
 | Area | Level | Location |
 |---|---|---|
-| Deployment | `view` | [Backend/routes/assistant.routes.ts:142](../../Backend/routes/assistant.routes.ts#L142) |
-| Project | `manage` | [Backend/routes/doc-collab.routes.ts:370](../../Backend/routes/doc-collab.routes.ts#L370) |
-| Administration | `manage` | [Backend/routes/files.routes.ts:286](../../Backend/routes/files.routes.ts#L286) |
-| Administration | `manage` | [Backend/routes/files.routes.ts:512](../../Backend/routes/files.routes.ts#L512) |
-| Project | `manage` | [Backend/routes/files.routes.ts:512](../../Backend/routes/files.routes.ts#L512) |
-| Administration | `view` | [Backend/routes/insights.routes.ts:179](../../Backend/routes/insights.routes.ts#L179) |
+| Deployment | `view` | [Backend/routes/assistant.routes.ts:146](../../Backend/routes/assistant.routes.ts#L146) |
+| Project | `manage` | [Backend/routes/doc-collab.routes.ts:372](../../Backend/routes/doc-collab.routes.ts#L372) |
+| Administration | `manage` | [Backend/routes/files.routes.ts:287](../../Backend/routes/files.routes.ts#L287) |
+| Administration | `manage` | [Backend/routes/files.routes.ts:513](../../Backend/routes/files.routes.ts#L513) |
+| Project | `manage` | [Backend/routes/files.routes.ts:513](../../Backend/routes/files.routes.ts#L513) |
+| Administration | `view` | [Backend/routes/insights.routes.ts:181](../../Backend/routes/insights.routes.ts#L181) |
 | Administration | `view` | [Backend/routes/locations.routes.ts:70](../../Backend/routes/locations.routes.ts#L70) |
 | Administration | `view` | [Backend/routes/locations.routes.ts:91](../../Backend/routes/locations.routes.ts#L91) |
 | Administration | `view` | [Backend/routes/locations.routes.ts:136](../../Backend/routes/locations.routes.ts#L136) |
 | Administration | `view` | [Backend/routes/locations.routes.ts:154](../../Backend/routes/locations.routes.ts#L154) |
-| Organization | `admin` | [Backend/routes/messaging.routes.ts:347](../../Backend/routes/messaging.routes.ts#L347) |
-| Project | `contribute` | [Backend/routes/messaging.routes.ts:361](../../Backend/routes/messaging.routes.ts#L361) |
-| Organization | `admin` | [Backend/routes/messaging.routes.ts:456](../../Backend/routes/messaging.routes.ts#L456) |
+| Organization | `admin` | [Backend/routes/messaging.routes.ts:349](../../Backend/routes/messaging.routes.ts#L349) |
+| Project | `contribute` | [Backend/routes/messaging.routes.ts:363](../../Backend/routes/messaging.routes.ts#L363) |
+| Organization | `admin` | [Backend/routes/messaging.routes.ts:458](../../Backend/routes/messaging.routes.ts#L458) |
 | Administration | `manage` | [Backend/routes/offboarding.routes.ts:57](../../Backend/routes/offboarding.routes.ts#L57) |
 | Administration | `view` | [Backend/routes/offboarding.routes.ts:141](../../Backend/routes/offboarding.routes.ts#L141) |
 | Administration | `view` | [Backend/routes/offboarding.routes.ts:161](../../Backend/routes/offboarding.routes.ts#L161) |
-| Administration | `view` | [Backend/routes/system.routes.ts:148](../../Backend/routes/system.routes.ts#L148) |
-| Project | `manage` | [Backend/routes/tasks.routes.ts:257](../../Backend/routes/tasks.routes.ts#L257) |
+| Administration | `view` | [Backend/routes/system.routes.ts:150](../../Backend/routes/system.routes.ts#L150) |
+| Project | `manage` | [Backend/routes/tasks.routes.ts:267](../../Backend/routes/tasks.routes.ts#L267) |
 | Administration | `admin` | [Backend/routes/tokens.routes.ts:110](../../Backend/routes/tokens.routes.ts#L110) |
 | Organization | `admin` | [Backend/routes/workspaces.routes.ts:66](../../Backend/routes/workspaces.routes.ts#L66) |
 | Organization | `admin` | [Backend/routes/workspaces.routes.ts:197](../../Backend/routes/workspaces.routes.ts#L197) |

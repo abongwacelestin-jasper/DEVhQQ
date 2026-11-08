@@ -22,6 +22,7 @@ import { can, canSeeProduct } from '../auth/rbac.ts';
 import { audit } from '../audit/auditLog.ts';
 import { publish } from '../lib/events.ts';
 import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { asPrincipal, excerpt, notify } from '../domain/collab/notify.ts';
 import { sortableId } from '../domain/collab/store.ts';
 import {
@@ -96,8 +97,8 @@ function actionOf(i: Incident, actionId: string): IncidentAction {
 }
 
 /** Owners are active members who can see the incident's product. */
-function assertOwner(i: Incident, owner: string) {
-  const m = db.members.get(owner);
+async function assertOwner(i: Incident, owner: string) {
+  const m = await repos.members.get(owner);
   if (!m || m.status !== 'active' || !canSeeProduct(asPrincipal(m), i.product))
     throw new HttpError(
       422,
@@ -106,7 +107,7 @@ function assertOwner(i: Incident, owner: string) {
     );
 }
 
-const nameOf = (id: string) => db.members.get(id)?.name ?? id;
+const nameOf = async (id: string) => (await repos.members.get(id))?.name ?? id;
 const quoted = (title: string) => `“${excerpt(title, 80)}”`;
 
 /** Timeline entry + audit entry + bus event: the record every write leaves. */
@@ -130,8 +131,8 @@ function record(
   publish('incident', { id: i.id, status: i.status, product: i.product, actionId: a.id });
 }
 
-function notifyOwner(i: Incident, a: IncidentAction, actor: string) {
-  notify({
+async function notifyOwner(i: Incident, a: IncidentAction, actor: string) {
+  await notify({
     memberId: a.owner,
     kind: 'assignment',
     title: `${i.id}: ${a.kind === 'mitigation' ? 'mitigation step' : 'follow-up'} assigned to you`,
@@ -166,19 +167,15 @@ export function registerIncidentActionRoutes(r: Router) {
       responses: [401, 403, 404, 409, 422],
     },
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
       const i = visibleIncident(p, ctx.params.id);
       requireInfra(p, 'contribute');
       const body = parse(createBody, ctx.body);
       const owner = body.owner ?? p.memberId;
-      assertOwner(i, owner);
+      await assertOwner(i, owner);
       if (actionsOf(i.id).length >= MAX_ACTIONS_PER_INCIDENT)
-        throw new HttpError(
-          409,
-          'too_many_actions',
-          'An incident can have at most 100 actions',
-        );
+        throw new HttpError(409, 'too_many_actions', 'An incident can have at most 100 actions');
       const at = new Date().toISOString();
       const a: IncidentAction = {
         id: sortableId('act'),
@@ -201,10 +198,10 @@ export function registerIncidentActionRoutes(r: Router) {
         i,
         a,
         'incident.action_added',
-        `Action added · ${label}: ${quoted(a.title)} → ${nameOf(a.owner)}${a.due ? ` · due ${a.due}` : ''}`,
+        `Action added · ${label}: ${quoted(a.title)} → ${await nameOf(a.owner)}${a.due ? ` · due ${a.due}` : ''}`,
         at,
       );
-      notifyOwner(i, a, p.memberId);
+      await notifyOwner(i, a, p.memberId);
       ctx.status = 201;
       return a;
     },
@@ -219,13 +216,13 @@ export function registerIncidentActionRoutes(r: Router) {
       responses: [401, 403, 404, 422],
     },
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
       const i = visibleIncident(p, ctx.params.id);
       const a = actionOf(i, ctx.params.actionId);
       requireInfra(p, 'contribute');
       const patch = parse(patchBody, ctx.body);
-      if (patch.owner !== undefined && patch.owner !== a.owner) assertOwner(i, patch.owner);
+      if (patch.owner !== undefined && patch.owner !== a.owner) await assertOwner(i, patch.owner);
 
       const at = new Date().toISOString();
       const notes: string[] = [];
@@ -265,7 +262,7 @@ export function registerIncidentActionRoutes(r: Router) {
       const reassigned = patch.owner !== undefined && patch.owner !== a.owner;
       if (reassigned) {
         a.owner = patch.owner!;
-        notes.push(`Action reassigned: ${quoted(a.title)} → ${nameOf(a.owner)}`);
+        notes.push(`Action reassigned: ${quoted(a.title)} → ${await nameOf(a.owner)}`);
       }
       if (edited.length) notes.push(`Action updated: ${quoted(a.title)} (${edited.join(', ')})`);
       if (!notes.length) throw new HttpError(422, 'no_change', 'Nothing to update');
@@ -273,7 +270,7 @@ export function registerIncidentActionRoutes(r: Router) {
       a.updatedAt = at;
       incidentActions.save(a.id);
       record(ctx, i, a, auditAction, notes.join(' · '), at);
-      if (reassigned) notifyOwner(i, a, p.memberId);
+      if (reassigned) await notifyOwner(i, a, p.memberId);
       return a;
     },
   );

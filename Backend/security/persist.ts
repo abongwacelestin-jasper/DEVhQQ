@@ -1,25 +1,14 @@
 /**
- * Persists an in-place mutation of a member row.
+ * Persists a changed member row (credentials included).
  *
- * `db.members` is a plain Map today; the data lane (B-DATA) converts it to a
- * `Collection` from store/collection.ts, whose in-place mutations must be
- * followed by `.save(key)`. Security code calls this one helper after every
- * credential change so it is correct before and after that conversion.
+ * Members live in the relational data layer (data/members.ts, ADR 0011):
+ * a row read from `repos.members` is a copy, so every change must be written
+ * back. Security code calls this one helper after every credential change.
  */
 
-import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
+import type { Member } from '../types.ts';
 
-interface Saveable {
-  save(key: string): void;
-}
-
-function isSaveable(m: unknown): m is Saveable {
-  return (
-    typeof m === 'object' && m !== null && 'save' in m && typeof (m as Saveable).save === 'function'
-  );
-}
-
-export function persistMember(memberId: string) {
-  const members: unknown = db.members;
-  if (isSaveable(members)) members.save(memberId);
+export function persistMember(member: Member): Promise<void> {
+  return repos.members.put(member);
 }

@@ -1,7 +1,8 @@
 import '../setup.ts';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { db, seed } from '../../store/db.ts';
+import { seed } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 import {
   PAT_PREFIX,
   PAT_SCOPES,
@@ -27,13 +28,24 @@ import { HttpError, type RoleName } from '../../types.ts';
 
 const DAY = 86_400_000;
 
-function rejects(fn: () => unknown, status: number, code: string) {
-  assert.throws(fn, (e: unknown) => {
-    assert.ok(e instanceof HttpError, `HttpError expected, got ${String(e)}`);
-    assert.equal(e.status, status);
-    assert.equal(e.code, code);
-    return true;
-  });
+/** Works for sync throws and async rejections alike. */
+async function rejects(fn: () => unknown, status: number, code: string) {
+  await assert.rejects(
+    async () => fn(),
+    (e: unknown) => {
+      assert.ok(e instanceof HttpError, `HttpError expected, got ${String(e)}`);
+      assert.equal(e.status, status);
+      assert.equal(e.code, code);
+      return true;
+    },
+  );
+}
+
+/** Changes a member's status in the repository (rows are copies, so write it back). */
+async function setStatus(id: string, status: 'active' | 'deactivated') {
+  const m = (await repos.members.get(id))!;
+  m.status = status;
+  await repos.members.put(m);
 }
 
 function issue(
@@ -94,23 +106,23 @@ describe('security/pats — format and storage', () => {
 });
 
 describe('security/pats — verification', () => {
-  it('accepts a live token and records last use (throttled to once a minute per IP)', (t) => {
+  it('accepts a live token and records last use (throttled to once a minute per IP)', async (t) => {
     t.mock.timers.enable({ apis: ['Date'], now: 1_810_000_000_000 });
     const { record, token } = issue();
-    assert.equal(verifyPat(token, '10.0.0.1').id, record.id);
+    assert.equal((await verifyPat(token, '10.0.0.1')).id, record.id);
     const first = record.lastUsedAt;
     assert.equal(record.lastUsedIp, '10.0.0.1');
     t.mock.timers.tick(30_000);
-    verifyPat(token, '10.0.0.1');
+    await verifyPat(token, '10.0.0.1');
     assert.equal(record.lastUsedAt, first, 'not rewritten within a minute');
-    verifyPat(token, '10.0.0.2');
+    await verifyPat(token, '10.0.0.2');
     assert.equal(record.lastUsedIp, '10.0.0.2', 'a new IP is always recorded');
     t.mock.timers.tick(61_000);
-    verifyPat(token, '10.0.0.2');
+    await verifyPat(token, '10.0.0.2');
     assert.notEqual(record.lastUsedAt, first);
   });
 
-  it('rejects malformed, unknown and tampered tokens with the same 401', () => {
+  it('rejects malformed, unknown and tampered tokens with the same 401', async () => {
     const { token } = issue();
     const flipped = token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
     const unknownId = token.replace(/^dhq_pat_[0-9a-f]{16}/, 'dhq_pat_0000000000000000');
@@ -123,24 +135,24 @@ describe('security/pats — verification', () => {
       unknownId,
       `Bearer ${token}`,
     ])
-      rejects(() => verifyPat(bad, '1.1.1.1'), 401, 'invalid_token');
+      await rejects(() => verifyPat(bad, '1.1.1.1'), 401, 'invalid_token');
   });
 
-  it('rejects expired tokens at exactly the expiry instant', (t) => {
+  it('rejects expired tokens at exactly the expiry instant', async (t) => {
     t.mock.timers.enable({ apis: ['Date'], now: 1_820_000_000_000 });
     const { token } = issue('m4', { expiresInDays: 1 });
     t.mock.timers.tick(DAY - 1);
-    assert.ok(verifyPat(token, 'ip'));
+    assert.ok(await verifyPat(token, 'ip'));
     t.mock.timers.tick(1);
-    rejects(() => verifyPat(token, 'ip'), 401, 'token_expired');
+    await rejects(() => verifyPat(token, 'ip'), 401, 'token_expired');
   });
 
-  it('rejects revoked tokens; revocation is idempotent and audited as sensitive', () => {
+  it('rejects revoked tokens; revocation is idempotent and audited as sensitive', async () => {
     const { record, token } = issue();
     assert.equal(revokeToken(record, 'm1', 'leaked', 'req-1'), true);
     assert.equal(revokeToken(record, 'm1', 'again'), false);
     assert.equal(record.revokedReason, 'leaked');
-    rejects(() => verifyPat(token, 'ip'), 401, 'token_revoked');
+    await rejects(() => verifyPat(token, 'ip'), 401, 'token_revoked');
     const entry = audit
       .list({ limit: 20 })
       .find((e) => e.action === 'token.revoked' && e.target.includes(record.id));
@@ -148,21 +160,21 @@ describe('security/pats — verification', () => {
     assert.equal(entry?.requestId, 'req-1');
   });
 
-  it('a token of an inactive member is refused and revoked on first use', () => {
+  it('a token of an inactive member is refused and revoked on first use', async () => {
     const { record, token } = issue('m8');
-    db.members.get('m8')!.status = 'deactivated';
+    await setStatus('m8', 'deactivated');
     try {
-      rejects(() => verifyPat(token, 'ip'), 401, 'account_inactive');
+      await rejects(() => verifyPat(token, 'ip'), 401, 'account_inactive');
       assert.equal(record.revokedReason, 'member_inactive');
-      rejects(() => verifyPat(token, 'ip'), 401, 'token_revoked');
+      await rejects(() => verifyPat(token, 'ip'), 401, 'token_revoked');
     } finally {
-      db.members.get('m8')!.status = 'active';
+      await setStatus('m8', 'active');
     }
   });
 
-  it('a token whose owner record is gone is refused', () => {
+  it('a token whose owner record is gone is refused', async () => {
     const { token } = issue('ghost-member');
-    rejects(() => verifyPat(token, 'ip'), 401, 'account_inactive');
+    await rejects(() => verifyPat(token, 'ip'), 401, 'account_inactive');
   });
 });
 
@@ -173,7 +185,7 @@ describe('security/pats — scopes', () => {
     assert.ok(!PAT_SCOPES.some((s) => s.endsWith(':none')));
   });
 
-  it('parses every listed scope and rejects unknown, mis-cased, none and duplicate areas', () => {
+  it('parses every listed scope and rejects unknown, mis-cased, none and duplicate areas', async () => {
     for (const s of PAT_SCOPES) assert.equal(Object.keys(parseScopes([s])).length, 1);
     for (const bad of [
       ['project:none'],
@@ -183,7 +195,7 @@ describe('security/pats — scopes', () => {
       [''],
       ['project:view', 'project:manage'],
     ])
-      rejects(() => parseScopes(bad), 422, 'validation_failed');
+      await rejects(() => parseScopes(bad), 422, 'validation_failed');
     assert.deepEqual(parseScopes(['project:view', 'repository:contribute']), {
       Project: 'view',
       Repository: 'contribute',
@@ -232,26 +244,26 @@ describe('security/pats — bulk revocation', () => {
     assert.equal(activeTokenCount('m7'), before);
   });
 
-  it('revokeTokensFor revokes every live token of one member only', () => {
+  it('revokeTokensFor revokes every live token of one member only', async () => {
     const mine = [issue('m10'), issue('m10')];
     const other = issue('m11');
     assert.ok(revokeTokensFor('m10', 'm1', 'offboarding') >= 2);
-    for (const { token } of mine) rejects(() => verifyPat(token, 'ip'), 401, 'token_revoked');
-    assert.ok(verifyPat(other.token, 'ip'));
+    for (const { token } of mine) await rejects(() => verifyPat(token, 'ip'), 401, 'token_revoked');
+    assert.ok(await verifyPat(other.token, 'ip'));
   });
 
-  it('sweepInactiveMembers revokes tokens of deactivated members without waiting for use', () => {
+  it('sweepInactiveMembers revokes tokens of deactivated members without waiting for use', async () => {
     const { record } = issue('m6');
-    db.members.get('m6')!.status = 'deactivated';
+    await setStatus('m6', 'deactivated');
     try {
-      assert.ok(sweepInactiveMembers() >= 1);
+      assert.ok((await sweepInactiveMembers()) >= 1);
       assert.equal(record.revokedReason, 'member_inactive');
     } finally {
-      db.members.get('m6')!.status = 'active';
+      await setStatus('m6', 'active');
     }
   });
 
-  it('revokeStandingAccess cuts tokens and active/pending JIT grants, with a summary audit', () => {
+  it('revokeStandingAccess cuts tokens and active/pending JIT grants, with a summary audit', async () => {
     const { token } = issue('m5');
     const pendingGrant = requestGrant(
       'm5',
@@ -269,7 +281,7 @@ describe('security/pats — bulk revocation', () => {
     const out = revokeStandingAccess('m5', 'm1', 'offboarded', 'req-9');
     assert.ok(out.tokens >= 1);
     assert.equal(out.grants, 2);
-    rejects(() => verifyPat(token, 'ip'), 401, 'token_revoked');
+    await rejects(() => verifyPat(token, 'ip'), 401, 'token_revoked');
     const g = listGrants().filter((x) => x.id === pendingGrant.id || x.id === active.id);
     assert.deepEqual(g.map((x) => x.status).sort(), ['denied', 'revoked']);
     assert.ok(

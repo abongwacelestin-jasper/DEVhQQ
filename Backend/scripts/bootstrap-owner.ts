@@ -21,7 +21,8 @@
 
 import { parseArgs } from 'node:util';
 import { closePersistence, initPersistence } from '../db/boot.ts';
-import { db, findMemberByEmail } from '../store/db.ts';
+import { findMemberByEmail } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { hashToken, randomToken } from '../security/crypto.ts';
 import { audit } from '../audit/auditLog.ts';
 import { config } from '../config/env.ts';
@@ -46,13 +47,12 @@ if (!name || name.length > 120) fail('--name is required (at most 120 characters
 // No seed: this command only ever adds the first Owner.
 await initPersistence(async () => {});
 
-const owners = [...db.members.values()].filter((m) => m.role === 'Owner' && m.status === 'active');
-if (owners.length > 0)
-  fail(`an active Owner already exists (${owners.length}); invite from the Team page instead`);
-if (findMemberByEmail(email)) fail(`a member with ${email} already exists`);
+const owners = await repos.members.count({ role: 'Owner', status: 'active' });
+if (owners > 0)
+  fail(`an active Owner already exists (${owners}); invite from the Team page instead`);
+if (await findMemberByEmail(email)) fail(`a member with ${email} already exists`);
 
-let n = db.members.size + 1;
-while (db.members.has(`m${n}`)) n++;
+let n = (await repos.members.count()) + 1;
 const inviteToken = randomToken(32);
 const member: Member = {
   id: `m${n}`,
@@ -67,7 +67,13 @@ const member: Member = {
   inviteTokenHash: hashToken(inviteToken),
   inviteExpiresAt: Date.now() + INVITE_TTL_MS,
 };
-db.members.set(member.id, member);
+// Members are rows, not an in-memory copy (ADR 0011): the unique keys decide.
+for (;;) {
+  const result = await repos.members.insert(member);
+  if (result === 'ok') break;
+  if (result === 'email_taken') fail(`a member with ${email} already exists`);
+  member.id = `m${++n}`;
+}
 audit.append({
   actor: 'system',
   action: 'team.owner_bootstrapped',

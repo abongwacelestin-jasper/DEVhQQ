@@ -13,7 +13,7 @@ import { authenticate } from '../middleware/authenticate.ts';
 import { can, requireArea, requireStepUp } from '../auth/rbac.ts';
 import { randomToken } from '../security/crypto.ts';
 import { audit } from '../audit/auditLog.ts';
-import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError, type Principal } from '../types.ts';
 import { workspaces } from '../domain/collab/store.ts';
 import { ensureCollabSeed } from '../domain/collab/seed.ts';
@@ -89,9 +89,9 @@ function view(p: Principal, ws: WorkspaceRecord) {
   };
 }
 
-function activeIds(ids: string[]): string[] {
+async function activeIds(ids: string[]): Promise<string[]> {
   for (const id of ids) {
-    const m = db.members.get(id);
+    const m = await repos.members.get(id);
     if (!m || m.status !== 'active')
       throw new HttpError(422, 'validation_failed', `members: ${id} is not an active member`);
   }
@@ -142,14 +142,14 @@ export function registerWorkspaceRoutes(r: Router) {
     { summary: 'Create a workspace (Organization:admin)', tag, responses: [401, 403, 409, 422] },
     authenticate,
     requireArea('Organization', 'admin'),
-    (ctx) => {
+    async (ctx) => {
       ensureCollabSeed();
       const p = ctx.principal!;
       const body = parse(createBody, ctx.body);
       if ([...workspaces.values()].some((ws) => ws.slug === body.slug))
         throw new HttpError(409, 'slug_taken', 'That workspace address is taken');
       const now = new Date().toISOString();
-      const others = activeIds(body.members ?? []).filter((id) => id !== p.memberId);
+      const others = (await activeIds(body.members ?? [])).filter((id) => id !== p.memberId);
       const ws: WorkspaceRecord = {
         id: `ws-${randomToken(6)}`,
         name: body.name,
@@ -209,7 +209,7 @@ export function registerWorkspaceRoutes(r: Router) {
       if (body.modules !== undefined) ws.modules = withModules(body.modules);
       if (body.mfaRequired !== undefined) ws.mfaRequired = body.mfaRequired;
       if (body.addMembers)
-        for (const id of activeIds(body.addMembers))
+        for (const id of await activeIds(body.addMembers))
           if (!membership(ws, id)) ws.members.push({ memberId: id, role: 'member' });
       if (body.removeMembers) {
         if (body.removeMembers.includes(ws.ownerId))

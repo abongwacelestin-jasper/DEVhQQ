@@ -49,7 +49,8 @@ import { RedisRateLimitStore } from '../../security/rateLimitRedis.ts';
 import { openStream, receiveRemote, streamStats } from '../../domain/collab/realtime.ts';
 import { channels } from '../../domain/collab/store.ts';
 import { defaultPermissions } from '../../domain/collab/seed.ts';
-import { db, seed } from '../../store/db.ts';
+import { seed } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 import type { Ctx } from '../../lib/http.ts';
 import { HttpError, type Principal } from '../../types.ts';
 import { startApp } from '../helpers/server.ts';
@@ -282,15 +283,16 @@ describe('cross-replica transport (no server needed)', () => {
     assert.equal(parseEnvelope(JSON.stringify({ e }), guard, 'me'), undefined);
   });
 
-  it('resolves the product before an event leaves its replica', () => {
-    const task = [...db.tasks.values()][0];
+  it('resolves the product before an event leaves its replica', async () => {
+    const task = (await repos.tasks.list())[0];
     const e: BusEvent = { type: 'task', at: '', data: { key: task.key } };
     assert.equal(withResolvedProduct(e).product, task.product);
     const unknown: BusEvent = { type: 'task', at: '', data: { key: 'NOPE-1' } };
     assert.equal(withResolvedProduct(unknown).product, undefined, 'unresolvable stays unscoped');
   });
 
-  it('a remote realtime event goes through the same per-subscriber checks', () => {
+  it('a remote realtime event goes through the same per-subscriber checks', async () => {
+    const people = new Map((await repos.members.list()).map((m) => [m.id, m]));
     class FakeRes extends EventEmitter {
       frames: string[] = [];
       writableEnded = false;
@@ -314,7 +316,7 @@ describe('cross-replica transport (no server needed)', () => {
       }
     }
     const principal = (memberId: string): Principal => {
-      const m = db.members.get(memberId)!;
+      const m = people.get(memberId)!;
       return {
         memberId,
         role: m.role,

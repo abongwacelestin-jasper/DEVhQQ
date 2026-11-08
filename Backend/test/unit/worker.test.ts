@@ -125,10 +125,16 @@ describe('worker: runOnce', () => {
     assert.deepEqual(results[0].detail.uncovered, []);
   });
 
-  it('loads every module that registers a persisted collection', () => {
+  it('loads every module that registers a persisted collection', async () => {
     const names = registeredCollections();
-    for (const expected of ['files', 'sessions', 'jitGrants', 'members'])
+    for (const expected of ['files', 'jitGrants'])
       assert.ok(names.includes(expected), `${expected} missing from ${names.join(', ')}`);
+    // Sessions and members are relational tables now (ADR 0011); backups reach them
+    // through the data layer under the same names.
+    const { relationalTables } = await import('../../data/index.ts');
+    const tables: string[] = relationalTables().map((t) => t.name);
+    for (const expected of ['sessions', 'members'])
+      assert.ok(tables.includes(expected), `${expected} missing from ${tables.join(', ')}`);
   });
 });
 

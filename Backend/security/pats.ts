@@ -22,7 +22,7 @@ import { hashToken, safeEqual } from './crypto.ts';
 import { audit } from '../audit/auditLog.ts';
 import { subscribe } from '../lib/events.ts';
 import { listGrants, revokeGrant } from '../auth/jit.ts';
-import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import {
   GRANTABLE_LEVELS,
   PERMISSION_AREAS,
@@ -187,7 +187,7 @@ export function revokeTokensFor(memberId: string, by: string, reason: string, re
  * revoked or expired tokens, and revokes tokens whose owner is no longer
  * active.
  */
-export function verifyPat(token: string, ip: string): PersonalAccessToken {
+export async function verifyPat(token: string, ip: string): Promise<PersonalAccessToken> {
   const m = PAT_PATTERN.exec(token);
   const invalid = new HttpError(401, 'invalid_token', 'Invalid access token');
   if (!m) throw invalid;
@@ -198,7 +198,7 @@ export function verifyPat(token: string, ip: string): PersonalAccessToken {
   if (record.revokedAt) throw new HttpError(401, 'token_revoked', 'Access token was revoked');
   if (Date.parse(record.expiresAt) <= Date.now())
     throw new HttpError(401, 'token_expired', 'Access token has expired');
-  const member = db.members.get(record.memberId);
+  const member = await repos.members.get(record.memberId);
   if (!member || member.status !== 'active') {
     revokeToken(record, 'system', 'member_inactive');
     throw new HttpError(401, 'account_inactive', 'Account is not active');
@@ -213,11 +213,14 @@ export function verifyPat(token: string, ip: string): PersonalAccessToken {
 }
 
 /** Sweeps tokens whose owner was deactivated by any route, so revocation does not wait for use. */
-export function sweepInactiveMembers(): number {
+export async function sweepInactiveMembers(): Promise<number> {
   let n = 0;
+  const owners = await repos.members.getMany(
+    [...personalAccessTokens.values()].filter((t) => !t.revokedAt).map((t) => t.memberId),
+  );
   for (const t of personalAccessTokens.values()) {
     if (t.revokedAt) continue;
-    const member = db.members.get(t.memberId);
+    const member = owners.get(t.memberId);
     if (!member || member.status !== 'active') if (revokeToken(t, 'system', 'member_inactive')) n++;
   }
   return n;
@@ -260,4 +263,4 @@ subscribe((e) => {
   revokeStandingAccess(memberId, 'system', `member_deactivated:${reason}`);
 });
 
-setInterval(sweepInactiveMembers, 30_000).unref();
+setInterval(() => void sweepInactiveMembers().catch(() => undefined), 30_000).unref();

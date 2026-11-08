@@ -15,6 +15,7 @@ import { jobEnabled } from '../../lib/jobs.ts';
 import { scheduleEvery } from '../../lib/scheduler.ts';
 import { config } from '../../config/env.ts';
 import { db } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 import type { Member, Principal } from '../../types.ts';
 import { sendMail } from '../../mail/index.ts';
 import { digestEmail } from '../../mail/templates.ts';
@@ -22,7 +23,7 @@ import { appLink } from '../../mail/layout.ts';
 import { emailForNotification, observeMailEvents } from '../../mail/events.ts';
 import { seesProduct } from './access.ts';
 import { emit } from './realtime.ts';
-import { notifications, sortableId } from './store.ts';
+import { sortableId } from './store.ts';
 import type { Notification, NotificationKind } from './types.ts';
 
 export function excerpt(s: string, max = 200): string {
@@ -45,7 +46,7 @@ export function publicNotification(n: Notification) {
   };
 }
 
-export function notify(input: {
+export async function notify(input: {
   memberId: string;
   kind: NotificationKind;
   title: string;
@@ -53,18 +54,13 @@ export function notify(input: {
   link: string;
   refId: string;
   actor: string;
-}): Notification | undefined {
-  const target = db.members.get(input.memberId);
-  if (!target || target.status !== 'active' || input.memberId === input.actor) return undefined;
+}): Promise<Notification | undefined> {
+  if (input.memberId === input.actor) return undefined;
+  const target = await repos.members.get(input.memberId);
+  if (!target || target.status !== 'active') return undefined;
   // Collapse duplicates of the same unread event (e.g. an edit re-mentioning someone).
-  for (const n of notifications.values())
-    if (
-      n.memberId === input.memberId &&
-      n.refId === input.refId &&
-      n.kind === input.kind &&
-      !n.readAt
-    )
-      return n;
+  const dup = await repos.notifications.findUnread(input.memberId, input.kind, input.refId);
+  if (dup) return dup;
   const n: Notification = {
     ...input,
     id: sortableId('ntf'),
@@ -72,20 +68,19 @@ export function notify(input: {
     body: excerpt(input.body),
     at: new Date().toISOString(),
   };
-  notifications.set(n.id, n);
+  await repos.notifications.insert(n);
   emit('notification.created', { memberId: n.memberId }, publicNotification(n));
   void emailForNotification(n);
   return n;
 }
 
 /** `@m4`-style mentions of existing, active members. */
-export function parseMentions(text: string): string[] {
-  const out = new Set<string>();
-  for (const m of text.matchAll(/(?:^|[^\w@])@([A-Za-z0-9][\w-]{0,39})/g)) {
-    const member = db.members.get(m[1]);
-    if (member && member.status === 'active') out.add(member.id);
-  }
-  return [...out];
+export async function parseMentions(text: string): Promise<string[]> {
+  const ids = new Set<string>();
+  for (const m of text.matchAll(/(?:^|[^\w@])@([A-Za-z0-9][\w-]{0,39})/g)) ids.add(m[1]);
+  if (!ids.size) return [];
+  const found = await repos.members.getMany(ids);
+  return [...ids].filter((id) => found.get(id)?.status === 'active');
 }
 
 function viewerOf(m: Member) {
@@ -96,22 +91,21 @@ export function asPrincipal(m: Member): Principal {
   return { ...viewerOf(m), sessionId: '', verifiedAt: 0, elevations: [] };
 }
 
-function latestActor(taskKey: string, kind: string): string | undefined {
-  let best: { at: string; actor: string } | undefined;
-  for (const e of db.taskEvents.values())
-    if (e.taskKey === taskKey && e.kind === kind && (!best || e.at >= best.at)) best = e;
-  return best?.actor;
-}
-
-function onTask(data: Record<string, unknown>) {
+async function onTask(data: Record<string, unknown>) {
   const key = typeof data.key === 'string' ? data.key : '';
   const change = typeof data.change === 'string' ? data.change.split(',') : [];
-  const task = db.tasks.get(key);
-  if (!task) return;
+  if (!key) return;
   const created = change.includes('created');
-  if (created || change.includes('assignee')) {
-    const actor = created ? task.createdBy : (latestActor(key, 'assignee') ?? 'system');
-    notify({
+  const assigned = created || change.includes('assignee');
+  const reviewing = change.includes('reviewer');
+  if (!assigned && !reviewing) return;
+  const task = await repos.tasks.get(key);
+  if (!task) return;
+  if (assigned) {
+    const actor = created
+      ? task.createdBy
+      : ((await repos.taskEvents.latestActor(key, 'assignee')) ?? 'system');
+    await notify({
       memberId: task.assignee,
       kind: 'assignment',
       title: `${key} assigned to you`,
@@ -121,33 +115,35 @@ function onTask(data: Record<string, unknown>) {
       actor,
     });
   }
-  if (change.includes('reviewer') && task.reviewer) {
-    notify({
+  if (reviewing && task.reviewer) {
+    await notify({
       memberId: task.reviewer,
       kind: 'assignment',
       title: `Review requested on ${key}`,
       body: task.title,
       link: `/tasks/${encodeURIComponent(key)}`,
       refId: `task:${key}:reviewer:${task.reviewer}`,
-      actor: latestActor(key, 'reviewer') ?? 'system',
+      actor: (await repos.taskEvents.latestActor(key, 'reviewer')) ?? 'system',
     });
   }
 }
 
-function onDeployment(data: Record<string, unknown>) {
+async function onDeployment(data: Record<string, unknown>) {
   const id = typeof data.id === 'string' ? data.id : '';
   const d = db.deployments.get(id);
   if (!d) return;
   if (d.status === 'awaiting-approval') {
-    for (const m of db.members.values()) {
+    const members = await repos.members.list();
+    const requester = members.find((m) => m.id === d.requestedBy);
+    for (const m of members) {
       if (m.status !== 'active' || m.id === d.requestedBy) continue;
       if (!can(asPrincipal(m), 'Deployment', 'manage') || !seesProduct(viewerOf(m), d.product))
         continue;
-      notify({
+      await notify({
         memberId: m.id,
         kind: 'approval',
         title: `Approval needed: ${d.product} ${d.version} → ${d.env}`,
-        body: `Requested by ${db.members.get(d.requestedBy)?.name ?? d.requestedBy}`,
+        body: `Requested by ${requester?.name ?? d.requestedBy}`,
         link: '/deployments',
         refId: `deployment:${d.id}`,
         actor: d.requestedBy,
@@ -156,12 +152,15 @@ function onDeployment(data: Record<string, unknown>) {
     return;
   }
   // Decided elsewhere: approval requests are no longer actionable.
-  const now = new Date().toISOString();
-  for (const n of notifications.values())
-    if (n.kind === 'approval' && n.refId === `deployment:${d.id}` && !n.readAt) {
-      n.readAt = now;
-      notifications.save(n.id);
-    }
+  await repos.notifications.markRefRead('approval', `deployment:${d.id}`, new Date().toISOString());
+}
+
+/** Domain observers still running (tests and graceful shutdown can await them). */
+const inFlight = new Set<Promise<void>>();
+
+/** Resolves once every domain-event observer started so far has finished. */
+export async function settleObservers(): Promise<void> {
+  while (inFlight.size) await Promise.allSettled([...inFlight]);
 }
 
 let observing = false;
@@ -171,12 +170,14 @@ export function observeDomainEvents() {
   if (observing) return;
   observing = true;
   subscribe((e) => {
-    try {
-      if (e.type === 'task') onTask(e.data);
-      else if (e.type === 'deployment') onDeployment(e.data);
-    } catch (err) {
-      logger.error('notification observer failed', { type: e.type, err: String(err) });
-    }
+    const run =
+      e.type === 'task' ? onTask(e.data) : e.type === 'deployment' ? onDeployment(e.data) : null;
+    if (!run) return;
+    const p = run.catch((err: unknown) =>
+      logger.error('notification observer failed', { type: e.type, err: String(err) }),
+    );
+    inFlight.add(p);
+    void p.finally(() => inFlight.delete(p));
   });
   observeMailEvents();
   startDigest();
@@ -202,16 +203,17 @@ const DAY_MS = 24 * 60 * 60_000;
 export async function runDigest(minAgeMs: number): Promise<number> {
   const cutoff = new Date(Date.now() - minAgeMs).toISOString();
   const byMember = new Map<string, Notification[]>();
-  for (const n of notifications.values()) {
-    if (n.readAt || n.emailedAt || n.at > cutoff) continue;
-    const m = db.members.get(n.memberId);
+  const pending = await repos.notifications.pendingDigest(cutoff);
+  const members = await repos.members.getMany(pending.map((n) => n.memberId));
+  for (const n of pending) {
+    const m = members.get(n.memberId);
     const prefs = m?.profile?.notify;
     if (!m || m.status !== 'active' || (prefs && !prefs.includes(notifyPref[n.kind]))) continue;
     byMember.set(n.memberId, [...(byMember.get(n.memberId) ?? []), n]);
   }
   let sent = 0;
   for (const [memberId, list] of byMember) {
-    const m = db.members.get(memberId)!;
+    const m = members.get(memberId)!;
     const mail = digestEmail(
       m.profile?.displayName ?? m.name,
       list.slice(0, 20).map((n) => ({
@@ -226,11 +228,10 @@ export async function runDigest(minAgeMs: number): Promise<number> {
       },
     );
     if (await sendMail({ to: m.email, ...mail })) {
-      const at = new Date().toISOString();
-      for (const n of list) {
-        n.emailedAt = at;
-        notifications.save(n.id);
-      }
+      await repos.notifications.markEmailed(
+        list.map((n) => n.id),
+        new Date().toISOString(),
+      );
       sent++;
       audit.append({
         actor: 'system',

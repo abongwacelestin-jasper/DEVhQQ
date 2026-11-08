@@ -21,6 +21,8 @@ import { can, canSeeProduct, hasOwnerPowers, requireArea } from '../auth/rbac.ts
 import { audit } from '../audit/auditLog.ts';
 import { subscribe } from '../lib/events.ts';
 import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
+import type { Member } from '../types.ts';
 import { HttpError, type Principal, type ProjectDoc } from '../types.ts';
 import { docComments, docVersions, saveDoc, sortableId } from '../domain/collab/store.ts';
 import { lineDiff } from '../domain/collab/diff.ts';
@@ -138,8 +140,7 @@ function log(ctx: Ctx, action: string, target: string) {
   audit.append({ actor: ctx.principal!.memberId, action, target, requestId: ctx.requestId });
 }
 
-function viewerOf(id: string) {
-  const m = db.members.get(id);
+function viewerOf(m: Member | undefined) {
   return m && m.status === 'active'
     ? {
         memberId: m.id,
@@ -294,7 +295,7 @@ export function registerDocCollabRoutes(r: Router) {
     },
     authenticate,
     requireArea('Project', 'view'),
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
       const body = parse(commentBody, ctx.body);
       const d = readableDoc(p, ctx.params.docId);
@@ -323,16 +324,17 @@ export function registerDocCollabRoutes(r: Router) {
       docComments.set(c.id, c);
       log(ctx, 'doc.commented', `${d.title} · ${c.id}${parent ? ' · reply' : ''}`);
 
-      const author = db.members.get(p.memberId)?.name ?? p.memberId;
       const recipients = new Set([
         ...d.editors,
         ...(parent ? [parent.by] : []),
-        ...parseMentions(body.text),
+        ...(await parseMentions(body.text)),
       ]);
+      const people = await repos.members.getMany([p.memberId, ...recipients]);
+      const author = people.get(p.memberId)?.name ?? p.memberId;
       for (const id of recipients) {
-        const viewer = viewerOf(id);
+        const viewer = viewerOf(people.get(id));
         if (!viewer || !readable(viewer, d)) continue;
-        notify({
+        await notify({
           memberId: id,
           kind: 'doc-comment',
           title: `${author} commented on ${d.title}`,

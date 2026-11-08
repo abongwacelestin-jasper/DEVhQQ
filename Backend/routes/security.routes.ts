@@ -12,7 +12,7 @@ import { audit } from '../audit/auditLog.ts';
 import { limiterStats } from '../security/rateLimit.ts';
 import { backupStatus, createBackup, restoreDrill } from '../resilience/backups.ts';
 import { config } from '../config/env.ts';
-import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 
 export function registerSecurityRoutes(r: Router) {
   r.add(
@@ -50,14 +50,14 @@ export function registerSecurityRoutes(r: Router) {
     authenticate,
     requireArea('Administration', 'view'),
     async () => {
-      const members = [...db.members.values()].filter((m) => m.status === 'active');
+      const members = await repos.members.list({ status: 'active' });
       const passkeys = members.filter((m) => m.passkeys.length > 0).length;
       const grants = listGrants();
       return {
         identity: {
           activeMembers: members.length,
           withPasskey: passkeys,
-          liveSessions: sessionCount(),
+          liveSessions: await sessionCount(),
           lockedAccounts: members.filter((m) => (m.lockedUntil ?? 0) > Date.now()).length,
         },
         waap: {

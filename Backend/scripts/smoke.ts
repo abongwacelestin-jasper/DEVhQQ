@@ -1350,8 +1350,9 @@ expect(
     wrongConfirm.status === 401 && confirm.status === 200,
     [wrongConfirm.json, confirm.json],
   );
-  const stored = snapshot().members.find((m) => m.id === 'm7')?.totpSecret ?? '';
-  const snapJson = JSON.stringify(snapshot());
+  const { repos } = await import('../data/index.ts');
+  const stored = (await repos.members.get('m7'))?.totpSecret ?? '';
+  const snapJson = JSON.stringify([snapshot(), await repos.members.list()]);
   expect(
     'SEC: TOTP secret is AES-GCM sealed at rest — the plaintext never appears in a snapshot',
     stored.startsWith('enc:v1:') &&
@@ -2481,12 +2482,16 @@ if (!process.env.DATABASE_URL) {
     'persistence runs in memory mode without DATABASE_URL',
     persistenceStatus().mode === 'memory',
   );
+  const { relationalTables, repos } = await import('../data/index.ts');
+  const tables = relationalTables().map((t) => t.name as string);
   expect(
-    'core tables, sessions, sign-ins and JIT grants are persisted collections',
-    ['members', 'tasks', 'taskComments', 'sessions', 'signIns', 'jitGrants'].every((n) =>
-      registeredCollections().includes(n),
-    ),
-    registeredCollections(),
+    'core tables and sessions are relational tables; sign-ins and JIT grants are persisted collections',
+    ['members', 'tasks', 'taskComments', 'sessions'].every((n) => tables.includes(n)) &&
+      !['members', 'tasks', 'taskComments', 'sessions'].some((n) =>
+        registeredCollections().includes(n),
+      ) &&
+      ['signIns', 'jitGrants'].every((n) => registeredCollections().includes(n)),
+    { tables, collections: registeredCollections() },
   );
   const writes: string[] = [];
   setDriver({
@@ -2495,19 +2500,23 @@ if (!process.env.DATABASE_URL) {
     load: async () => [],
   });
   const patched = await call('PATCH', `/api/tasks/${newKey}`, { status: 'review' }, dev);
+  const storedTask = await repos.tasks.get(newKey);
   expect(
-    'in-place task update reaches the persistence driver (save after mutation)',
-    patched.status === 200 && writes.includes(`tasks/${newKey}/review`),
-    writes,
+    'task update reaches the tasks repository (rows are copies: written back after mutation)',
+    patched.status === 200 && storedTask?.status === 'review',
+    storedTask,
   );
+  const before = new Set((await repos.sessions.listAll()).map((s) => s.id));
   const fresh = await call('POST', '/api/auth/demo', { role: 'pm' });
   const freshToken = String(fresh.json.token);
   const rawId = freshToken.slice(0, freshToken.lastIndexOf('.'));
-  const sessionRows = writes.filter((w) => w.startsWith('sessions/'));
+  const sessionRows = (await repos.sessions.listAll()).filter((s) => !before.has(s.id));
   expect(
     'session rows are keyed by an opaque handle, never the bearer token',
-    fresh.status === 200 && sessionRows.length > 0 && sessionRows.every((w) => !w.includes(rawId)),
-    sessionRows,
+    fresh.status === 200 &&
+      sessionRows.length === 1 &&
+      sessionRows.every((s) => !JSON.stringify(s).includes(rawId) && s.id !== freshToken),
+    sessionRows.map((s) => s.id),
   );
   setDriver({ write() {}, remove() {}, load: async () => [] });
 }

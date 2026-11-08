@@ -19,12 +19,14 @@
 
 import { canSeeProduct } from '../auth/rbac.ts';
 import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import type { Principal, ProductId } from '../types.ts';
 
 export type RefKind = 'doc' | 'channel' | 'member';
 
 /** `null` → not visible to this principal (respond 404). */
-export type RefResolver = (p: Principal, refId: string) => { product: ProductId | null } | null;
+export type RefResult = { product: ProductId | null } | null;
+export type RefResolver = (p: Principal, refId: string) => RefResult | Promise<RefResult>;
 
 const resolvers = new Map<RefKind, RefResolver>();
 
@@ -32,7 +34,7 @@ export function registerRefResolver(kind: RefKind, resolver: RefResolver) {
   resolvers.set(kind, resolver);
 }
 
-export function resolveRef(kind: RefKind, p: Principal, refId: string) {
+export async function resolveRef(kind: RefKind, p: Principal, refId: string): Promise<RefResult> {
   const r = resolvers.get(kind);
   return r ? r(p, refId) : null;
 }
@@ -45,8 +47,8 @@ registerRefResolver('doc', (p, id) => {
   return { product: d.product };
 });
 
-registerRefResolver('member', (_p, id) => {
+registerRefResolver('member', async (_p, id) => {
   // Avatars are part of the team directory, visible to every signed-in member.
-  const m = db.members.get(id);
+  const m = await repos.members.get(id);
   return m && m.status !== 'deactivated' ? { product: null } : null;
 });

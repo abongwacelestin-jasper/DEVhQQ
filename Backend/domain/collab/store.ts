@@ -1,10 +1,14 @@
 /**
  * B-COLLAB persisted collections (Wave 4 persistence seam, store/collection.ts).
  * Handlers stay synchronous; in-place mutations are followed by `.save(key)`.
+ * Notifications moved to the relational data layer (`repos.notifications`,
+ * data/notifications.ts, ADR 0011).
  */
 
 import { createCollection } from '../../store/collection.ts';
 import { db } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
+import type { Member } from '../../types.ts';
 import type {
   Channel,
   ChannelRead,
@@ -12,7 +16,6 @@ import type {
   DocVersion,
   Message,
   NdaSignature,
-  Notification,
   RecoveryToken,
   Resignation,
   WorkspaceRecord,
@@ -23,7 +26,6 @@ export const messages = createCollection<Message>('collab_messages');
 /** Keyed `${memberId}:${channelId}`. */
 export const channelReads = createCollection<ChannelRead>('collab_channel_reads');
 export const workspaces = createCollection<WorkspaceRecord>('collab_workspaces');
-export const notifications = createCollection<Notification>('collab_notifications');
 export const ndaSignatures = createCollection<NdaSignature>('collab_nda_signatures');
 /** Keyed by token hash. */
 export const recoveryTokens = createCollection<RecoveryToken>('collab_recovery_tokens');
@@ -32,13 +34,9 @@ export const resignations = createCollection<Resignation>('collab_resignations')
 export const docVersions = createCollection<DocVersion>('collab_doc_versions');
 export const docComments = createCollection<DocComment>('collab_doc_comments');
 
-/**
- * Persists an in-place mutation of a member. `db.members` is a plain Map today
- * and becomes a Collection when B-DATA lands; this works with both.
- */
-export function saveMember(id: string) {
-  const members: Map<string, unknown> & { save?: (key: string) => void } = db.members;
-  members.save?.(id);
+/** Writes a changed member back (members are repository rows, ADR 0011). */
+export function saveMember(m: Member): Promise<void> {
+  return repos.members.put(m);
 }
 
 /** Same as saveMember, for in-place doc mutations (restore / explicit save). */

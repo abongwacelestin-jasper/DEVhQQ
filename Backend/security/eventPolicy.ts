@@ -23,6 +23,7 @@
 import type { BusEvent } from '../lib/events.ts';
 import { can, canSeeProduct } from '../auth/rbac.ts';
 import { db } from '../store/db.ts';
+import { productOfTaskKey } from '../data/tasks.ts';
 import type { Principal, ProductId } from '../types.ts';
 
 const SECURITY_TYPES = new Set(['audit', 'signin', 'team']);
@@ -55,8 +56,10 @@ export function eventProduct(e: BusEvent): ProductId | undefined {
   if (direct) return PRODUCTS.has(direct) ? (direct as ProductId) : undefined;
   switch (baseType(e.type)) {
     case 'task': {
+      // The key prefix is derived from the (immutable) product at creation, so no
+      // lookup is needed — the same answer on every replica.
       const key = str(e.data.key) ?? str(e.data.taskKey);
-      return key ? db.tasks.get(key)?.product : undefined;
+      return key ? productOfTaskKey(key) : undefined;
     }
     case 'deployment': {
       const id = str(e.data.id);

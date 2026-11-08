@@ -4,7 +4,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { errorCode, startApp, type TestServer } from '../helpers/server.ts';
 import { fullSignIn, passwordOnly } from '../helpers/auth.ts';
-import { db } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 
 const EMAIL = 'kofi@techorg.io'; // m4, Developer
 
@@ -25,7 +25,7 @@ describe('backup codes', () => {
     assert.equal(codes.length, 10);
     assert.equal(new Set(codes).size, 10);
     for (const code of codes) assert.match(code, /^[a-z2-9]{4}-[a-z2-9]{4}$/);
-    const stored = JSON.stringify(db.members.get('m4')?.backupCodes);
+    const stored = JSON.stringify((await repos.members.get('m4'))?.backupCodes);
     for (const code of codes) assert.ok(!stored.includes(code), 'plaintext never stored');
     assert.equal((await c.get<{ remaining: number }>('/api/auth/backup-codes')).json.remaining, 10);
     const me = await c.get('/api/auth/session');
@@ -64,7 +64,10 @@ describe('backup codes', () => {
     const old = await passwordOnly(app, EMAIL);
     assert.equal((await old.post('/api/auth/mfa/backup', { code: codes[1] })).status, 401);
     const fresh = await passwordOnly(app, EMAIL);
-    assert.equal((await fresh.post('/api/auth/mfa/backup', { code: res.json.codes[1] })).status, 200);
+    assert.equal(
+      (await fresh.post('/api/auth/mfa/backup', { code: res.json.codes[1] })).status,
+      200,
+    );
   });
 
   it('a personal access token cannot generate codes', async () => {

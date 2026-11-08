@@ -74,6 +74,7 @@ import {
 } from '../middleware/authenticate.ts';
 import { requireSession, requireStepUp } from '../auth/rbac.ts';
 import { persistMember } from '../security/persist.ts';
+import { repos } from '../data/index.ts';
 import { passwordProblem } from '../security/passwordPolicy.ts';
 import { looksLikePat } from '../security/pats.ts';
 import { assessRisk, lookupIp, riskDecision } from '../lib/geo.ts';
@@ -166,16 +167,15 @@ const registrationBody = v.object({
  * Resolves the member an invite token belongs to. Invites are few and short
  * lived, so a scan over the member map is cheaper than a second index.
  */
-function findInvite(token: string): Member | undefined {
+async function findInvite(token: string): Promise<Member | undefined> {
   const hash = hashToken(token);
-  for (const m of db.members.values())
-    if (m.inviteTokenHash && safeEqual(m.inviteTokenHash, hash)) return m;
-  return undefined;
+  const m = await repos.members.findByInviteTokenHash(hash);
+  return m?.inviteTokenHash && safeEqual(m.inviteTokenHash, hash) ? m : undefined;
 }
 
 /** Shared by the preview and accept routes: unknown, used and expired tokens all fail closed. */
-function requireInvite(token: string): Member {
-  const member = findInvite(token);
+async function requireInvite(token: string): Promise<Member> {
+  const member = await findInvite(token);
   if (!member || member.status !== 'invited' || !member.inviteExpiresAt)
     throw new HttpError(400, 'invite_invalid', 'This invite link is no longer valid');
   if (member.inviteExpiresAt < Date.now())
@@ -243,27 +243,27 @@ function needsEnrollment(member: Member): boolean {
 }
 
 /** Resolves the session behind the request for handlers that also accept anonymous callers. */
-function currentSession(ctx: Ctx): SessionRecord | undefined {
+async function currentSession(ctx: Ctx): Promise<SessionRecord | undefined> {
   const token = readToken(ctx.req.headers.cookie, ctx.req.headers.authorization);
   if (!token || looksLikePat(token)) return undefined;
-  return validateSession(token, ctx.req, ctx.ip).session;
+  return (await validateSession(token, ctx.req, ctx.ip)).session;
 }
 
 /** Re-reads the caller's session record (authenticate already validated it). */
-function sessionOf(ctx: Ctx): SessionRecord {
-  const s = currentSession(ctx);
+async function sessionOf(ctx: Ctx): Promise<SessionRecord> {
+  const s = await currentSession(ctx);
   if (!s || s.id !== ctx.principal?.sessionId)
     throw new HttpError(403, 'session_required', 'This action needs an interactive session');
   return s;
 }
 
 /** Upgrades legacy plaintext / old-key TOTP secrets to the current data key and persists. */
-function migrateSecrets(member: Member) {
-  if (migrateTotpSecret(member)) persistMember(member.id);
+async function migrateSecrets(member: Member) {
+  if (migrateTotpSecret(member)) await persistMember(member);
 }
 
-function checkTotp(member: Member, session: SessionRecord, code: string) {
-  migrateSecrets(member);
+async function checkTotp(member: Member, session: SessionRecord, code: string) {
+  await migrateSecrets(member);
   const counter = verifyMemberTotp(member, code, session.lastTotpCounter);
   const demoOk = counter === null && demoCodeAllowed(member) && safeEqual(code, DEMO.mfaCode);
   return { counter, demoOk, ok: counter !== null || demoOk };
@@ -329,13 +329,16 @@ function gate(member: Member, ctx: Ctx, method: SignInRecord['method']) {
   return { decision, reasons, location };
 }
 
-export function registerAuthRoutes(r: Router) {
-  // Seal any legacy plaintext TOTP secrets (e.g. DEMO_TOTP_SECRET seeds, or
-  // rows written before encryption at rest) and re-seal rows under retired keys.
+/**
+ * Seals any legacy plaintext TOTP secrets (e.g. DEMO_TOTP_SECRET seeds, or
+ * rows written before encryption at rest) and re-seals rows under retired
+ * keys. Runs once at boot (server.ts → buildApp). Idempotent across replicas.
+ */
+export async function sealLegacyTotpSecrets(): Promise<number> {
   let migrated = 0;
-  for (const m of db.members.values())
+  for (const m of await repos.members.list())
     if (migrateTotpSecret(m)) {
-      persistMember(m.id);
+      await persistMember(m);
       migrated++;
     }
   if (migrated)
@@ -345,6 +348,10 @@ export function registerAuthRoutes(r: Router) {
       target: `${migrated} member(s)`,
       sensitive: true,
     });
+  return migrated;
+}
+
+export function registerAuthRoutes(r: Router) {
 
   /**
    * Invite preview: lets the accept screen greet the invitee by name and say
@@ -360,11 +367,11 @@ export function registerAuthRoutes(r: Router) {
       responses: [400, 410, 429],
     },
     authLimiter,
-    (ctx) => {
+    async (ctx) => {
       const token = ctx.query.get('token') ?? '';
       if (!inviteTokenPattern.test(token))
         throw new HttpError(400, 'invite_invalid', 'This invite link is no longer valid');
-      const member = requireInvite(token);
+      const member = await requireInvite(token);
       return {
         email: member.email,
         name: member.name,
@@ -394,7 +401,7 @@ export function registerAuthRoutes(r: Router) {
     turnstileGuard('accept-invite'),
     async (ctx) => {
       const body = parse(acceptInviteBody, ctx.body);
-      const member = requireInvite(body.token);
+      const member = await requireInvite(body.token);
       const problem = passwordProblem(body.password, member.email);
       if (problem) throw new HttpError(422, 'weak_password', problem);
 
@@ -405,7 +412,7 @@ export function registerAuthRoutes(r: Router) {
       // Burn the link: one invite, one activation.
       member.inviteTokenHash = undefined;
       member.inviteExpiresAt = undefined;
-      persistMember(member.id);
+      await persistMember(member);
 
       audit.append({
         actor: member.id,
@@ -434,14 +441,15 @@ export function registerAuthRoutes(r: Router) {
     'GET',
     '/api/auth/demo-accounts',
     { summary: 'Demo accounts available outside production', tag: 'auth', auth: 'public' },
-    () => {
+    async () => {
       if (!DEMO.enabled) return { enabled: false, accounts: [] };
+      const members = await repos.members.getMany(demoAccounts.map((a) => a.memberId));
       return {
         enabled: true,
         password: DEMO.password,
         mfaCode: DEMO.mfaCode,
         accounts: demoAccounts.map((a) => {
-          const m = db.members.get(a.memberId)!;
+          const m = members.get(a.memberId)!;
           return {
             key: a.key,
             label: a.label,
@@ -466,12 +474,12 @@ export function registerAuthRoutes(r: Router) {
     },
     authLimiter,
     turnstileGuard('sign-in'),
-    (ctx) => {
+    async (ctx) => {
       if (!DEMO.enabled) throw new HttpError(404, 'not_found', 'Route not found');
       const { role } = parse(demoBody, ctx.body);
       const account = demoAccounts.find((a) => a.key === role)!;
-      const member = db.members.get(account.memberId)!;
-      const { token } = createSession(member.id, ctx.req, ctx.ip, 'password', 'verified');
+      const member = (await repos.members.get(account.memberId))!;
+      const { token } = await createSession(member.id, ctx.req, ctx.ip, 'password', 'verified');
       recordSignIn(member, ctx, 'demo', 'success');
       audit.append({
         actor: member.id,
@@ -496,7 +504,7 @@ export function registerAuthRoutes(r: Router) {
     turnstileGuard('sign-in'),
     async (ctx) => {
       const { email, password } = parse(signInBody, ctx.body);
-      const member = findMemberByEmail(email);
+      const member = await findMemberByEmail(email);
       const generic = new HttpError(401, 'invalid_credentials', 'Email or password is incorrect');
 
       if (!member) {
@@ -512,11 +520,19 @@ export function registerAuthRoutes(r: Router) {
 
       const { ok, needsRehash } = await verifyPassword(password, member.passwordHash);
       if (!ok || member.status !== 'active') {
-        member.failedLogins += 1;
+        // Atomic on the row: replicas counting failures in parallel never lose one.
+        let locked = false;
+        const counted = await repos.members.update(member.id, (m) => {
+          m.failedLogins += 1;
+          if (m.failedLogins >= MAX_FAILURES) {
+            m.lockedUntil = Date.now() + LOCK_MS;
+            m.failedLogins = 0;
+            locked = true;
+          }
+        });
+        if (counted) Object.assign(member, counted);
         recordSignIn(member, ctx, 'password', 'failed');
-        if (member.failedLogins >= MAX_FAILURES) {
-          member.lockedUntil = Date.now() + LOCK_MS;
-          member.failedLogins = 0;
+        if (locked && member.lockedUntil) {
           audit.append({
             actor: member.id,
             action: 'auth.locked',
@@ -526,16 +542,15 @@ export function registerAuthRoutes(r: Router) {
           });
           void sendAccountLocked(member, ctx, MAX_FAILURES, member.lockedUntil);
         }
-        persistMember(member.id);
         throw generic;
       }
 
       member.failedLogins = 0;
       if (needsRehash) member.passwordHash = await hashPassword(password);
-      migrateSecrets(member);
-      persistMember(member.id);
+      migrateTotpSecret(member);
+      await persistMember(member);
       const { decision, reasons } = gate(member, ctx, 'password');
-      const { token } = createSession(member.id, ctx.req, ctx.ip, 'password', 'password');
+      const { token } = await createSession(member.id, ctx.req, ctx.ip, 'password', 'password');
       recordSignIn(member, ctx, 'password', 'challenged');
       audit.append({
         actor: member.id,
@@ -568,8 +583,8 @@ export function registerAuthRoutes(r: Router) {
       responses: [401],
     },
     authenticatePartial,
-    (ctx) => {
-      const member = db.members.get(ctx.principal!.memberId)!;
+    async (ctx) => {
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
       const methods = secondFactors(member);
       return { member: publicMember(member), methods, enrollRequired: methods.length === 0 };
     },
@@ -588,9 +603,9 @@ export function registerAuthRoutes(r: Router) {
     authLimiter,
     authenticatePartial,
     accountLimiter,
-    (ctx) => {
-      const member = db.members.get(ctx.principal!.memberId)!;
-      const session = sessionOf(ctx);
+    async (ctx) => {
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
+      const session = await sessionOf(ctx);
       if (!needsEnrollment(member))
         throw new HttpError(
           409,
@@ -627,10 +642,10 @@ export function registerAuthRoutes(r: Router) {
     authLimiter,
     authenticatePartial,
     accountLimiter,
-    (ctx) => {
+    async (ctx) => {
       const { code } = parse(totpBody, ctx.body);
-      const member = db.members.get(ctx.principal!.memberId)!;
-      const session = sessionOf(ctx);
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
+      const session = await sessionOf(ctx);
       if (!needsEnrollment(member))
         throw new HttpError(
           409,
@@ -658,8 +673,8 @@ export function registerAuthRoutes(r: Router) {
         );
       }
       member.totpSecret = result.sealedSecret;
-      persistMember(member.id);
-      const { token } = markVerified(session, result.counter);
+      await persistMember(member);
+      const { token } = await markVerified(session, result.counter);
       recordSignIn(member, ctx, 'password', 'success');
       audit.append({
         actor: member.id,
@@ -685,11 +700,11 @@ export function registerAuthRoutes(r: Router) {
     authLimiter,
     authenticatePartial,
     accountLimiter,
-    (ctx) => {
+    async (ctx) => {
       const { code } = parse(totpBody, ctx.body);
-      const member = db.members.get(ctx.principal!.memberId)!;
-      const session = sessionOf(ctx);
-      const { counter, demoOk, ok } = checkTotp(member, session, code);
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
+      const session = await sessionOf(ctx);
+      const { counter, demoOk, ok } = await checkTotp(member, session, code);
       if (!ok) {
         audit.append({
           actor: member.id,
@@ -700,7 +715,7 @@ export function registerAuthRoutes(r: Router) {
         });
         throw new HttpError(401, 'mfa_invalid', 'Code is incorrect or expired');
       }
-      const { token } = markVerified(session, counter ?? undefined);
+      const { token } = await markVerified(session, counter ?? undefined);
       recordSignIn(member, ctx, 'password', 'success');
       audit.append({
         actor: member.id,
@@ -725,11 +740,11 @@ export function registerAuthRoutes(r: Router) {
     authLimiter,
     authenticatePartial,
     accountLimiter,
-    (ctx) => {
+    async (ctx) => {
       const { code } = parse(backupBody, ctx.body);
-      const member = db.members.get(ctx.principal!.memberId)!;
-      const session = sessionOf(ctx);
-      if (!consumeBackupCode(member, code)) {
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
+      const session = await sessionOf(ctx);
+      if (!(await consumeBackupCode(member, code))) {
         audit.append({
           actor: member.id,
           action: 'auth.mfa_failed',
@@ -739,7 +754,7 @@ export function registerAuthRoutes(r: Router) {
         });
         throw new HttpError(401, 'mfa_invalid', 'Code is incorrect or already used');
       }
-      const { token } = markVerified(session);
+      const { token } = await markVerified(session);
       recordSignIn(member, ctx, 'password', 'success');
       const remaining = remainingBackupCodes(member);
       audit.append({
@@ -769,7 +784,9 @@ export function registerAuthRoutes(r: Router) {
     { summary: 'How many unused backup codes you have', tag: 'auth', responses: [401, 403] },
     authenticate,
     requireSession,
-    (ctx) => ({ remaining: remainingBackupCodes(db.members.get(ctx.principal!.memberId)!) }),
+    async (ctx) => ({
+      remaining: remainingBackupCodes((await repos.members.get(ctx.principal!.memberId))!),
+    }),
   );
 
   r.add(
@@ -785,10 +802,10 @@ export function registerAuthRoutes(r: Router) {
     authenticate,
     requireSession,
     requireStepUp(),
-    (ctx) => {
-      const member = db.members.get(ctx.principal!.memberId)!;
+    async (ctx) => {
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
       const replaced = remainingBackupCodes(member);
-      const codes = generateBackupCodes(member);
+      const codes = await generateBackupCodes(member);
       audit.append({
         actor: member.id,
         action: 'auth.backup_codes_generated',
@@ -814,11 +831,11 @@ export function registerAuthRoutes(r: Router) {
     authenticate,
     requireSession,
     accountLimiter,
-    (ctx) => {
+    async (ctx) => {
       const { code } = parse(totpBody, ctx.body);
-      const member = db.members.get(ctx.principal!.memberId)!;
-      const session = sessionOf(ctx);
-      const { counter, demoOk, ok } = checkTotp(member, session, code);
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
+      const session = await sessionOf(ctx);
+      const { counter, demoOk, ok } = await checkTotp(member, session, code);
       if (!ok) {
         audit.append({
           actor: member.id,
@@ -829,7 +846,7 @@ export function registerAuthRoutes(r: Router) {
         });
         throw new HttpError(401, 'mfa_invalid', 'Code is incorrect or expired');
       }
-      const { token } = markVerified(session, counter ?? undefined);
+      const { token } = await markVerified(session, counter ?? undefined);
       audit.append({
         actor: member.id,
         action: 'auth.step_up',
@@ -857,8 +874,8 @@ export function registerAuthRoutes(r: Router) {
     authenticate,
     requireSession,
     requireStepUp(),
-    (ctx) => {
-      const member = db.members.get(ctx.principal!.memberId)!;
+    async (ctx) => {
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
       const { secret, otpauthUri, expiresAt } = beginEnrollment(member, ctx.principal!.sessionId);
       audit.append({
         actor: member.id,
@@ -890,9 +907,9 @@ export function registerAuthRoutes(r: Router) {
     authenticate,
     requireSession,
     accountLimiter,
-    (ctx) => {
+    async (ctx) => {
       const { code } = parse(totpBody, ctx.body);
-      const member = db.members.get(ctx.principal!.memberId)!;
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
       const result = confirmEnrollment(member, ctx.principal!.sessionId, code);
       if (!result.ok) {
         audit.append({
@@ -913,7 +930,7 @@ export function registerAuthRoutes(r: Router) {
       }
       const replaced = !!member.totpSecret;
       member.totpSecret = result.sealedSecret;
-      persistMember(member.id);
+      await persistMember(member);
       audit.append({
         actor: member.id,
         action: replaced ? 'auth.totp_replaced' : 'auth.totp_enrolled',
@@ -940,16 +957,16 @@ export function registerAuthRoutes(r: Router) {
       responses: [401, 403, 409, 422, 429],
     },
     authLimiter,
-    (ctx) => {
+    async (ctx) => {
       const { purpose = 'sign-in' } = parse(assertionOptionsBody, ctx.body ?? {});
       if (purpose === 'sign-in') return issueAssertionChallenge('sign-in');
-      const session = currentSession(ctx);
+      const session = await currentSession(ctx);
       if (!session) throw new HttpError(401, 'unauthenticated', 'Sign in required');
       if (purpose === 'mfa' && session.stage !== 'password')
         throw new HttpError(409, 'already_verified', 'This session already passed MFA');
       if (purpose === 'step-up' && session.stage !== 'verified')
         throw new HttpError(401, 'mfa_required', 'Complete MFA to continue');
-      const member = db.members.get(session.memberId);
+      const member = await repos.members.get(session.memberId);
       if (!member || member.status !== 'active')
         throw new HttpError(401, 'account_inactive', 'Account is not active');
       if (!usablePasskeys(member).length)
@@ -974,14 +991,14 @@ export function registerAuthRoutes(r: Router) {
       const challenge = takeChallenge(body.challengeId, 'get');
       let session: SessionRecord | undefined;
       if (challenge.purpose !== 'sign-in') {
-        session = currentSession(ctx);
+        session = await currentSession(ctx);
         if (!session || session.id !== challenge.sessionId)
           throw new HttpError(401, 'challenge_invalid', 'Challenge was issued to another session');
       }
-      const candidates = challenge.memberId
-        ? [db.members.get(challenge.memberId)].filter((m): m is Member => !!m)
-        : [...db.members.values()];
-      const member = candidates.find((m) => m.passkeys.some((k) => k.id === body.credentialId));
+      const found = challenge.memberId
+        ? await repos.members.get(challenge.memberId)
+        : await repos.members.findByPasskey(body.credentialId);
+      const member = found?.passkeys.some((k) => k.id === body.credentialId) ? found : undefined;
       if (!member || member.status !== 'active') {
         recordSignIn(undefined, ctx, 'passkey', 'failed');
         throw new HttpError(401, 'invalid_credentials', 'Passkey not recognised');
@@ -1005,7 +1022,7 @@ export function registerAuthRoutes(r: Router) {
       if (!result.ok) {
         const suspended: StoredPasskey = { ...cred, suspendedAt: new Date().toISOString() };
         member.passkeys = member.passkeys.map((k) => (k.id === cred.id ? suspended : k));
-        persistMember(member.id);
+        await persistMember(member);
         recordSignIn(member, ctx, 'passkey', 'blocked');
         audit.append({
           actor: member.id,
@@ -1026,16 +1043,16 @@ export function registerAuthRoutes(r: Router) {
         lastUsedAt: new Date().toISOString(),
       };
       member.passkeys = member.passkeys.map((k) => (k.id === cred.id ? used : k));
-      persistMember(member.id);
+      await persistMember(member);
 
       let token: string;
       if (challenge.purpose === 'sign-in') {
         gate(member, ctx, 'passkey');
-        token = createSession(member.id, ctx.req, ctx.ip, 'passkey', 'verified').token;
+        token = (await createSession(member.id, ctx.req, ctx.ip, 'passkey', 'verified')).token;
         recordSignIn(member, ctx, 'passkey', 'success');
       } else {
         if (challenge.purpose === 'mfa') gate(member, ctx, 'passkey');
-        token = markVerified(session!).token;
+        token = (await markVerified(session!)).token;
         if (challenge.purpose === 'mfa') recordSignIn(member, ctx, 'passkey', 'success');
       }
       audit.append({
@@ -1060,8 +1077,8 @@ export function registerAuthRoutes(r: Router) {
     { summary: 'Your registered passkeys', tag: 'auth', responses: [401, 403] },
     authenticate,
     requireSession,
-    (ctx) => {
-      const m = db.members.get(ctx.principal!.memberId)!;
+    async (ctx) => {
+      const m = (await repos.members.get(ctx.principal!.memberId))!;
       return {
         items: m.passkeys.map((k) => ({
           id: k.id,
@@ -1083,8 +1100,8 @@ export function registerAuthRoutes(r: Router) {
     authenticate,
     requireSession,
     requireStepUp(),
-    (ctx) => {
-      const m = db.members.get(ctx.principal!.memberId)!;
+    async (ctx) => {
+      const m = (await repos.members.get(ctx.principal!.memberId))!;
       return issueRegistrationChallenge(m, ctx.principal!.sessionId);
     },
   );
@@ -1100,16 +1117,15 @@ export function registerAuthRoutes(r: Router) {
     authLimiter,
     authenticate,
     requireSession,
-    (ctx) => {
+    async (ctx) => {
       const body = parse(registrationBody, ctx.body);
-      const m = db.members.get(ctx.principal!.memberId)!;
+      const m = (await repos.members.get(ctx.principal!.memberId))!;
       const cred = verifyRegistration(m.id, ctx.principal!.sessionId, body);
       // Credential ids are globally unique: refuse one already bound to any account.
-      for (const other of db.members.values())
-        if (other.passkeys.some((k) => k.id === cred.id))
-          throw new HttpError(409, 'exists', 'Passkey already registered');
+      if (await repos.members.findByPasskey(cred.id))
+        throw new HttpError(409, 'exists', 'Passkey already registered');
       m.passkeys.push(cred);
-      persistMember(m.id);
+      await persistMember(m);
       audit.append({
         actor: m.id,
         action: 'auth.passkey_registered',
@@ -1134,8 +1150,8 @@ export function registerAuthRoutes(r: Router) {
     authenticate,
     requireSession,
     requireStepUp(),
-    (ctx) => {
-      const m = db.members.get(ctx.principal!.memberId)!;
+    async (ctx) => {
+      const m = (await repos.members.get(ctx.principal!.memberId))!;
       const remaining = m.passkeys.filter((k) => k.id !== ctx.params.credentialId);
       if (remaining.length === m.passkeys.length)
         throw new HttpError(404, 'not_found', 'Passkey not found');
@@ -1146,7 +1162,7 @@ export function registerAuthRoutes(r: Router) {
           'Enroll an authenticator app before removing your last passkey',
         );
       m.passkeys = remaining;
-      persistMember(m.id);
+      await persistMember(m);
       audit.append({
         actor: m.id,
         action: 'auth.passkey_removed',
@@ -1162,14 +1178,14 @@ export function registerAuthRoutes(r: Router) {
     '/api/auth/session',
     { summary: 'Current principal, sessions and elevations', tag: 'auth' },
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
-      const m = db.members.get(p.memberId)!;
+      const m = (await repos.members.get(p.memberId))!;
       return {
         member: publicMember(m),
         stepUpRequired: !p.verifiedAt,
         elevations: p.elevations,
-        sessions: listSessions(m.id, p.sessionId),
+        sessions: await listSessions(m.id, p.sessionId),
         location: lookupIp(ctx.ip),
       };
     },
@@ -1181,10 +1197,10 @@ export function registerAuthRoutes(r: Router) {
     { summary: 'Revoke one of your other sessions', tag: 'auth', responses: [401, 403, 404] },
     authenticate,
     requireSession,
-    (ctx) => {
-      const target = findSessionByPrefix(ctx.principal!.memberId, ctx.params.sessionPrefix);
+    async (ctx) => {
+      const target = await findSessionByPrefix(ctx.principal!.memberId, ctx.params.sessionPrefix);
       if (!target) throw new HttpError(404, 'not_found', 'Session not found');
-      revoke(target.id);
+      await revoke(target.id);
       audit.append({
         actor: ctx.principal!.memberId,
         action: 'auth.session_revoked',
@@ -1200,8 +1216,8 @@ export function registerAuthRoutes(r: Router) {
     '/api/auth/sign-out',
     { summary: 'End this session', tag: 'auth', auth: 'partial' },
     authenticatePartial,
-    (ctx) => {
-      revoke(ctx.principal!.sessionId);
+    async (ctx) => {
+      await revoke(ctx.principal!.sessionId);
       ctx.res.setHeader('Set-Cookie', clearSessionCookie());
       audit.append({
         actor: ctx.principal!.memberId,
@@ -1218,8 +1234,8 @@ export function registerAuthRoutes(r: Router) {
     { summary: 'Revoke all sessions for this account', tag: 'auth' },
     authenticate,
     requireSession,
-    (ctx) => {
-      const n = revokeAllFor(ctx.principal!.memberId);
+    async (ctx) => {
+      const n = await revokeAllFor(ctx.principal!.memberId);
       ctx.res.setHeader('Set-Cookie', clearSessionCookie());
       audit.append({
         actor: ctx.principal!.memberId,
@@ -1242,8 +1258,8 @@ export function registerAuthRoutes(r: Router) {
     },
     authenticate,
     requireSession,
-    (ctx) => {
-      const n = revokeAllExcept(ctx.principal!.memberId, ctx.principal!.sessionId);
+    async (ctx) => {
+      const n = await revokeAllExcept(ctx.principal!.memberId, ctx.principal!.sessionId);
       audit.append({
         actor: ctx.principal!.memberId,
         action: 'auth.revoked_others',
@@ -1277,8 +1293,8 @@ export function registerAuthRoutes(r: Router) {
     accountLimiter,
     async (ctx) => {
       const body = parse(changePasswordBody, ctx.body);
-      const member = db.members.get(ctx.principal!.memberId)!;
-      const session = sessionOf(ctx);
+      const member = (await repos.members.get(ctx.principal!.memberId))!;
+      const session = await sessionOf(ctx);
       const { ok } = await verifyPassword(body.currentPassword, member.passwordHash);
       if (!ok) {
         audit.append({
@@ -1302,10 +1318,10 @@ export function registerAuthRoutes(r: Router) {
       member.passwordHash = await hashPassword(body.newPassword);
       member.failedLogins = 0;
       member.lockedUntil = undefined;
-      persistMember(member.id);
-      const revoked = revokeAllExcept(member.id, session.id);
+      await persistMember(member);
+      const revoked = await revokeAllExcept(member.id, session.id);
       // New credential, new token: the current session continues on a rotated id.
-      const { token } = rotateSession(session);
+      const { token } = await rotateSession(session);
       audit.append({
         actor: member.id,
         action: 'auth.password_changed',

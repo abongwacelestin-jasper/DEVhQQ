@@ -129,12 +129,12 @@ export async function runCheck(id: string): Promise<MonitorCheck | null> {
   }
   // The monitor may have been deleted while the check was in flight.
   if (!monitors.has(id)) return check;
-  applyCheck(m, check);
+  await applyCheck(m, check);
   return check;
 }
 
 /** Records a check, updates the monitor and opens/resolves incidents. Exported for tests. */
-export function applyCheck(m: MonitorRow, check: MonitorCheck) {
+export async function applyCheck(m: MonitorRow, check: MonitorCheck) {
   const hist = monitorHistory.get(m.id) ?? { monitorId: m.id, checks: [] };
   hist.checks.push(check);
   if (hist.checks.length > HISTORY_LIMIT) hist.checks.splice(0, hist.checks.length - HISTORY_LIMIT);
@@ -161,7 +161,7 @@ export function applyCheck(m: MonitorRow, check: MonitorCheck) {
     publish('monitor', { id: m.id, product: m.product, name: m.name, status: 'up' });
 
   if (check.status === 'down' && m.consecutiveFailures >= m.failureThreshold && !openIncidentFor(m))
-    openIncident(m, check);
+    await openIncident(m, check);
   if (check.status !== 'down' && m.openIncidentId) recoverIncident(m);
   monitors.save(m.id);
 }
@@ -171,15 +171,16 @@ function openIncidentFor(m: MonitorRow): Incident | undefined {
   return i && i.status !== 'resolved' ? i : undefined;
 }
 
-function openIncident(m: MonitorRow, check: MonitorCheck) {
+async function openIncident(m: MonitorRow, check: MonitorCheck) {
   const at = new Date().toISOString();
+  const owner = await operationsOwner(m.product);
   const i: Incident = {
     id: nextIncidentId(),
     product: m.product,
     title: `${m.name} is down`,
     severity: 'SEV2',
     status: 'investigating',
-    owner: operationsOwner(m.product),
+    owner,
     service: m.target.split('/')[0] || `${m.product}-app`,
     impact: `Automated check failing: ${check.error ?? 'no response'}`.slice(0, 1000),
     startedAt: at,

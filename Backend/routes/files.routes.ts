@@ -170,12 +170,13 @@ function publicView(f: StoredFile) {
 }
 
 /** The file as the caller may see it, or 404. Re-checks the reference every time. */
-function visibleFile(p: Principal, id: string): StoredFile {
+async function visibleFile(p: Principal, id: string): Promise<StoredFile> {
   const f = files.get(id);
   if (!f) throw new HttpError(404, 'not_found', 'Not found');
   if (f.status !== 'ready' && f.createdBy !== p.memberId)
     throw new HttpError(404, 'not_found', 'Not found');
-  if (!resolveRef(f.refKind, p, f.refId)) throw new HttpError(404, 'not_found', 'Not found');
+  if (!(await resolveRef(f.refKind, p, f.refId)))
+    throw new HttpError(404, 'not_found', 'Not found');
   return f;
 }
 
@@ -286,7 +287,7 @@ export function registerFileRoutes(r: Router) {
         !can(p, 'Administration', 'manage')
       )
         throw new HttpError(404, 'not_found', 'Not found');
-      const ref = resolveRef(policy.ref, p, body.refId);
+      const ref = await resolveRef(policy.ref, p, body.refId);
       if (!ref) throw new HttpError(404, 'not_found', 'Not found');
 
       const pending = [...files.values()].filter(
@@ -355,7 +356,7 @@ export function registerFileRoutes(r: Router) {
       requireStorage();
       const p = ctx.principal!;
       const f = files.get(ctx.params.fileId);
-      if (!f || f.createdBy !== p.memberId || !resolveRef(f.refKind, p, f.refId))
+      if (!f || f.createdBy !== p.memberId || !(await resolveRef(f.refKind, p, f.refId)))
         throw new HttpError(404, 'not_found', 'Not found');
       if (f.status === 'ready') return publicView(f);
       if (f.status === 'rejected')
@@ -447,11 +448,11 @@ export function registerFileRoutes(r: Router) {
       responses: [401, 404, 422],
     },
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
       const purpose = parse(v.enumOf(PURPOSES), ctx.query.get('purpose') ?? 'doc-attachment');
       const refId = parse(v.string({ min: 1, max: 80 }), ctx.query.get('refId') ?? '');
-      if (!resolveRef(POLICIES[purpose].ref, p, refId))
+      if (!(await resolveRef(POLICIES[purpose].ref, p, refId)))
         throw new HttpError(404, 'not_found', 'Not found');
       return {
         items: [...files.values()]
@@ -470,7 +471,7 @@ export function registerFileRoutes(r: Router) {
     async (ctx) => {
       requireStorage();
       const p = ctx.principal!;
-      const f = visibleFile(p, ctx.params.fileId);
+      const f = await visibleFile(p, ctx.params.fileId);
       if (f.status !== 'ready') throw new HttpError(404, 'not_found', 'Not found');
       const disposition = INLINE_TYPES.has(f.contentType) ? 'inline' : 'attachment';
       const signed = await objectStore()
@@ -507,7 +508,7 @@ export function registerFileRoutes(r: Router) {
     async (ctx) => {
       requireStorage();
       const p = ctx.principal!;
-      const f = visibleFile(p, ctx.params.fileId);
+      const f = await visibleFile(p, ctx.params.fileId);
       const mayManage =
         f.purpose === 'avatar' ? can(p, 'Administration', 'manage') : can(p, 'Project', 'manage');
       if (f.createdBy !== p.memberId && !mayManage)

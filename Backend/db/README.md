@@ -1,9 +1,16 @@
 # Backend persistence (PostgreSQL)
 
-The API keeps every table in memory (`store/collection.ts`) so handlers stay
-synchronous. When `DATABASE_URL` is set, a write-behind PostgreSQL driver
-persists every change and the server rebuilds memory from the database at boot.
-Without `DATABASE_URL` nothing is persisted (smoke tests, quick local start).
+Two layers (see [ADR 0011](../../docs/architecture/adr/0011-relational-data-layer.md)):
+
+- **Relational tables** (`Backend/data/`): members, sessions, tasks, task
+  events, task comments and notifications are typed tables, read on demand
+  through async repositories, never held in memory. Replica-safe.
+- **JSONB collections** (`store/collection.ts`): every other table is kept in
+  memory so handlers stay synchronous; a write-behind driver persists every
+  change to `documents` and the server rebuilds memory from it at boot.
+
+Without `DATABASE_URL` nothing is persisted (smoke tests, quick local start):
+in-memory repositories and collections.
 
 | File | Purpose |
 |---|---|
@@ -12,15 +19,20 @@ Without `DATABASE_URL` nothing is persisted (smoke tests, quick local start).
 | `pool.ts` | `pg.Pool` factory, `DATABASE_SSL` handling |
 | `driver.ts` | `CollectionDriver` → generic `documents` table (batched, ordered, retried) |
 | `boot.ts` | `initPersistence()` / `closePersistence()` / `pingDatabase()` |
-| `smoke-pg.ts` | `npm run smoke:pg` — restart-survival test (needs `DATABASE_URL`) |
+| `backfill.ts` | `npm run backfill` (`-- --resync`, `-- --verify-only`): copy `documents` rows into the relational tables, idempotently, and verify counts |
+| `smoke-pg.ts` | `npm run smoke:pg` — restart survival, then `smoke-replicas.ts` (needs `DATABASE_URL`) |
+| `smoke-replicas.ts` | backfill check, then two API processes on one database: write through one, read through the other |
 
 ## Boot sequence (`buildApp()` → `initPersistence`)
 
 1. Run pending migrations (as `DATABASE_MIGRATION_URL` if set, else `DATABASE_URL`).
    If everything is applied the runner issues **no DDL**, so the runtime role can boot.
-2. Install the PostgreSQL driver.
-3. Under an advisory lock: `hydrateAll()`, then seed demo data **only if**
-   `NODE_ENV !== 'production'` **and** `documents` is empty. The seed is
+2. Extend the monthly partitions of `task_events` and `notifications` (DDL
+   role; a harmless warning with a DML-only role).
+3. Install the PostgreSQL driver and the relational repositories.
+4. Under an advisory lock: backfill any relational table that is still empty
+   while `documents` has rows for it, `hydrateAll()`, then seed demo data
+   **only if** `NODE_ENV !== 'production'` **and** the database is empty. The seed is
    flushed before the lock is released, so concurrent replicas never double-seed
    or hydrate a half-seeded database.
 

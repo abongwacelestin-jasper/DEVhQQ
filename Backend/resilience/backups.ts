@@ -74,7 +74,7 @@ export async function createBackup(reason = 'scheduled'): Promise<Manifest> {
   const createdAt = now.toISOString();
   const stamp = createdAt.replace(/[-:]|\.\d{3}/g, '');
   const id = `bk-${stamp}-${randomBytes(3).toString('hex')}`;
-  const snap = takeSnapshot(id, createdAt);
+  const snap = await takeSnapshot(id, createdAt);
   const plain = Buffer.from(JSON.stringify(snap));
   const blob = encryptBlob(gzipSync(plain), id);
   const key = `snapshots/${createdAt.slice(0, 4)}/${createdAt.slice(5, 7)}/${createdAt.slice(8, 10)}/${id}.json.gz.enc`;
@@ -218,7 +218,7 @@ export async function restoreBackup(
   const m = await getManifest(id);
   if (!m) return null;
   const snap = await load(m);
-  const plan = planRestore(snap).filter(
+  const plan = (await planRestore(snap)).filter(
     (p) => !opts.collections || opts.collections.includes(p.name),
   );
   const result: RestoreResult = {
@@ -232,7 +232,7 @@ export async function restoreBackup(
   if (!opts.dryRun) {
     const safety = await createBackup(`pre-restore of ${id}`);
     result.safetyBackupId = safety.id;
-    result.applied = applyRestore(snap, opts.collections);
+    result.applied = await applyRestore(snap, opts.collections);
   }
   result.ms = Date.now() - started;
   const writes = Object.values(result.applied ?? {}).reduce((a, b) => a + b, 0);

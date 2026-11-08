@@ -10,7 +10,7 @@
  */
 
 import { can } from '../../auth/rbac.ts';
-import { db } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 import { HttpError, type Principal } from '../../types.ts';
 import { channels } from './store.ts';
 import type { Channel } from './types.ts';
@@ -48,8 +48,8 @@ export function readableChannel(v: Viewer, id: string): Channel {
 }
 
 /** Current role/products for a member (used by long-lived streams, never a stale snapshot). */
-export function currentViewer(memberId: string): Viewer | undefined {
-  const m = db.members.get(memberId);
+export async function currentViewer(memberId: string): Promise<Viewer | undefined> {
+  const m = await repos.members.get(memberId);
   if (!m || m.status !== 'active') return undefined;
   return { memberId: m.id, role: m.role, products: m.products };
 }

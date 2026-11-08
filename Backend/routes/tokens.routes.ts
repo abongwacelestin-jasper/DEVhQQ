@@ -27,7 +27,7 @@ import {
   revokeToken,
 } from '../security/pats.ts';
 import { audit } from '../audit/auditLog.ts';
-import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError } from '../types.ts';
 
 const createBody = v.object({
@@ -67,12 +67,12 @@ export function registerTokenRoutes(r: Router) {
     authenticate,
     requireSession,
     requireStepUp(),
-    (ctx) => {
+    async (ctx) => {
       const body = parse(createBody, ctx.body);
       if (!body.scopes.length)
         throw new HttpError(422, 'validation_failed', 'scopes must name at least one scope');
       const p = ctx.principal!;
-      const member = db.members.get(p.memberId)!;
+      const member = (await repos.members.get(p.memberId))!;
       assertScopesWithinRole(body.scopes, member.role);
       if (activeTokenCount(member.id) >= PAT_MAX_ACTIVE_PER_MEMBER)
         throw new HttpError(

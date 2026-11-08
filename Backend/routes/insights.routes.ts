@@ -18,6 +18,7 @@ import { authenticate } from '../middleware/authenticate.ts';
 import { can, canSeeProduct, requireArea, requireStepUp } from '../auth/rbac.ts';
 import { audit } from '../audit/auditLog.ts';
 import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError } from '../types.ts';
 import {
   circuitState,
@@ -33,6 +34,7 @@ import {
   deployFeatures,
   signinFeatures,
   taskFeatures,
+  loadTaskContext,
 } from '../integrations/ml/features.ts';
 import { deployHeuristic, signinHeuristic, taskHeuristic } from '../integrations/ml/heuristics.ts';
 import {
@@ -94,10 +96,10 @@ export function registerInsightsRoutes(r: Router) {
     authenticate,
     requireArea('Project', 'view'),
     async (ctx) => {
-      const t = db.tasks.get(ctx.params.key.toUpperCase());
+      const t = await repos.tasks.get(ctx.params.key.toUpperCase());
       if (!t || !canSeeProduct(ctx.principal!, t.product))
         throw new HttpError(404, 'not_found', 'Not found');
-      const f = taskFeatures(t);
+      const f = taskFeatures(t, await loadTaskContext());
       if (t.status !== 'done') {
         try {
           const [eta, overdue] = await Promise.all([
@@ -227,8 +229,8 @@ export function registerInsightsRoutes(r: Router) {
       responses: [401, 403],
     },
     serviceOrAdmin,
-    (ctx) => {
-      const out = buildExport();
+    async (ctx) => {
+      const out = await buildExport();
       audit.append({
         actor: actorOf(ctx),
         action: 'ml.export',
@@ -268,7 +270,7 @@ export function registerInsightsRoutes(r: Router) {
       });
       const payload =
         body.source === 'backend'
-          ? { source: 'inline', dataset: buildExport() }
+          ? { source: 'inline', dataset: await buildExport() }
           : { source: 'synthetic' };
       try {
         const result = parseTrain(

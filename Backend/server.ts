@@ -34,7 +34,7 @@ import { jobEnabled } from './lib/jobs.ts';
 import { scheduleEvery } from './lib/scheduler.ts';
 import { installRedis, shutdownRedis } from './lib/redisBoot.ts';
 import { registerSystemRoutes } from './routes/system.routes.ts';
-import { registerAuthRoutes } from './routes/auth.routes.ts';
+import { registerAuthRoutes, sealLegacyTotpSecrets } from './routes/auth.routes.ts';
 import { registerProjectRoutes } from './routes/projects.routes.ts';
 import { registerTaskRoutes } from './routes/tasks.routes.ts';
 import { registerTeamRoutes } from './routes/team.routes.ts';
@@ -76,6 +76,7 @@ export async function buildApp() {
 
   registerSystemRoutes(router);
   registerAuthRoutes(router);
+  await sealLegacyTotpSecrets();
   registerProjectRoutes(router);
   registerTaskRoutes(router);
   registerTeamRoutes(router);
