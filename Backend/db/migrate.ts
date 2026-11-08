@@ -114,6 +114,23 @@ export async function migrate(pool: Pool, dir = MIGRATIONS_DIR): Promise<Migrati
   }
 }
 
+/**
+ * Keeps a year of monthly partitions ahead for the append-heavy tables. Needs
+ * DDL rights, so it runs on the migration connection; with a DML-only runtime
+ * role it fails harmlessly (rows land in the DEFAULT partition until the next
+ * `npm run migrate`, which calls this as well).
+ */
+export async function ensurePartitions(pool: Pool): Promise<void> {
+  try {
+    await pool.query(
+      `SELECT devhq_ensure_monthly_partitions('task_events', now()::date, 12),
+              devhq_ensure_monthly_partitions('notifications', now()::date, 12)`,
+    );
+  } catch (err) {
+    logger.warn('db.partitions_not_extended', { err: String(err) });
+  }
+}
+
 // CLI entry point: `npm run migrate`.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const { createPool, redactUrl } = await import('./pool.ts');
@@ -125,6 +142,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const pool = createPool(url, 'migrate');
   try {
     const report = await migrate(pool);
+    await ensurePartitions(pool);
     console.log(
       `${redactUrl(url)}: applied ${report.applied.length} migration(s)` +
         (report.applied.length ? ` (${report.applied.join(', ')})` : '') +
