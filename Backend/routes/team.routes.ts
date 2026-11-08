@@ -13,6 +13,7 @@ import { authenticate } from '../middleware/authenticate.ts';
 import { can, canSeeProduct, permissionMatrix, requireArea, requireStepUp } from '../auth/rbac.ts';
 import { asPrincipal, notify } from '../domain/collab/notify.ts';
 import { rateLimit } from '../security/rateLimit.ts';
+import { ownerChanges } from '../lib/mutex.ts';
 import {
   APPROVER_ROLES,
   approveGrant,
@@ -268,27 +269,32 @@ export function registerTeamRoutes(r: Router) {
     requireStepUp(),
     async (ctx) => {
       const patch = parse(updateBody, ctx.body);
-      const target = await repos.members.get(ctx.params.memberId);
-      if (!target) throw new HttpError(404, 'not_found', 'Not found');
-      if (target.id === ctx.principal!.memberId && patch.role && patch.role !== target.role)
-        throw new HttpError(403, 'self_demotion', 'Ask another Owner to change your role');
-      if (target.id === ctx.principal!.memberId && patch.status && patch.status !== target.status)
-        throw new HttpError(403, 'self_demotion', 'Ask another Owner to change your status');
-      // Demoting or deactivating the last active Owner would leave nobody to administer the
-      // workspace (FINDING B-7).
-      if (
-        target.role === 'Owner' &&
-        target.status === 'active' &&
-        ((patch.role && patch.role !== 'Owner') || (patch.status && patch.status !== 'active')) &&
-        (await repos.members.count({ role: 'Owner', status: 'active' })) === 1
-      ) {
-        throw new HttpError(409, 'last_owner', 'The workspace needs at least one Owner');
-      }
-      const before = { role: target.role, products: [...target.products], status: target.status };
-      if (patch.role) target.role = patch.role as RoleName;
-      if (patch.products) target.products = patch.products as ProductId[];
-      if (patch.status) target.status = patch.status;
-      await repos.members.put(target);
+      // Check-then-write on the Owner count must not interleave with another
+      // Owner change (W5-07).
+      const { target, before } = await ownerChanges.run(async () => {
+        const target = await repos.members.get(ctx.params.memberId);
+        if (!target) throw new HttpError(404, 'not_found', 'Not found');
+        if (target.id === ctx.principal!.memberId && patch.role && patch.role !== target.role)
+          throw new HttpError(403, 'self_demotion', 'Ask another Owner to change your role');
+        if (target.id === ctx.principal!.memberId && patch.status && patch.status !== target.status)
+          throw new HttpError(403, 'self_demotion', 'Ask another Owner to change your status');
+        // Demoting or deactivating the last active Owner would leave nobody to administer the
+        // workspace (FINDING B-7).
+        if (
+          target.role === 'Owner' &&
+          target.status === 'active' &&
+          ((patch.role && patch.role !== 'Owner') || (patch.status && patch.status !== 'active')) &&
+          (await repos.members.count({ role: 'Owner', status: 'active' })) === 1
+        ) {
+          throw new HttpError(409, 'last_owner', 'The workspace needs at least one Owner');
+        }
+        const before = { role: target.role, products: [...target.products], status: target.status };
+        if (patch.role) target.role = patch.role as RoleName;
+        if (patch.products) target.products = patch.products as ProductId[];
+        if (patch.status) target.status = patch.status;
+        await repos.members.put(target);
+        return { target, before };
+      });
       const revoked = await revokeAllFor(target.id);
       // CYBER-010: deactivation also cuts PATs and JIT grants immediately, not only on next use.
       if (patch.status === 'deactivated' && before.status !== 'deactivated')

@@ -61,3 +61,25 @@ describe('W5-06 — access requests cannot flood the admins', () => {
     assert.equal(statuses.at(-1), 429, JSON.stringify(statuses));
   });
 });
+
+describe('W5-07 — two Owners demoting each other at once', () => {
+  it('leaves at least one active Owner', async () => {
+    const amara = await signInAs(app, 'admin'); // m1, Owner
+    const promote = await amara.patch('/api/team/m3', { role: 'Owner' });
+    assert.equal(promote.status, 200, promote.text);
+    const priya = await fullSignIn(app, 'priya@techorg.io'); // m3, now Owner
+    const [a, b] = await Promise.all([
+      amara.patch('/api/team/m3', { role: 'Developer' }),
+      priya.patch('/api/team/m1', { role: 'Developer' }),
+    ]);
+    const ok = [a.status, b.status].filter((s) => s === 200).length;
+    assert.ok(ok <= 1, `both demotions succeeded: ${a.status} ${b.status}`);
+    const team = await (await signInAs(app, 'admin')).get<{ role: string; status: string }[]>(
+      '/api/team',
+    );
+    const owners = (Array.isArray(team.json) ? team.json : []).filter(
+      (m) => m.role === 'Owner' && m.status === 'active',
+    );
+    assert.ok(owners.length >= 1, 'the workspace kept an Owner');
+  });
+});

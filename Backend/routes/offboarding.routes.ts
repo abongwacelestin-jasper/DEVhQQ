@@ -10,6 +10,7 @@
  * bus so the token module (SEC lane, PATs) revokes personal access tokens.
  */
 
+import { ownerChanges } from '../lib/mutex.ts';
 import type { Ctx, Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
@@ -269,7 +270,7 @@ export function registerOffboardingRoutes(r: Router) {
         }
       }
       if (body.status === 'completed') {
-        await complete(ctx, target, res);
+        await ownerChanges.run(() => complete(ctx, target, res)); // W5-07
         return res;
       }
       if (body.status) {
