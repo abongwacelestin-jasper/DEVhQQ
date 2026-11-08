@@ -63,11 +63,14 @@
 	# are self-hosted in the build, so style-src and font-src are 'self' only.
 	# No nonce: the Vite build emits only external module scripts.
 	#
+	# 'sha256-SANDBOX' is replaced at image build by stamp-csp.mjs with the code
+	# sandbox's hash from the build's index.html (the <meta> CSP allows it too).
+	#
 	# Third-party origins: Cloudflare Turnstile (https://challenges.cloudflare.com,
 	# script + challenge iframe on sign-in, forgot password, accept invite) is
 	# owned by the Turnstile change; add any other origin next to it.
 	header @spa {
-		Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://js.stripe.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://avatars.githubusercontent.com https://cdn.magicpatterns.com {$S3_PUBLIC_ORIGIN}; connect-src 'self' https://api.github.com {$S3_PUBLIC_ORIGIN}; worker-src 'self' blob:; frame-src https://challenges.cloudflare.com https://js.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-SANDBOX' https://challenges.cloudflare.com https://js.stripe.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://avatars.githubusercontent.com https://cdn.magicpatterns.com {$S3_PUBLIC_ORIGIN}; connect-src 'self' https://api.github.com {$S3_PUBLIC_ORIGIN}; worker-src 'self' blob:; frame-src https://challenges.cloudflare.com https://js.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests"
 		Strict-Transport-Security "{$HSTS_VALUE:max-age=63072000; includeSubDomains; preload}"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"

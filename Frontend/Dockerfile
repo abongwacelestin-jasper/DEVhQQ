@@ -39,9 +39,10 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 # ---------------------------------------------------------------------------
 FROM deps AS build
 COPY Frontend/ Frontend/
-COPY infra/frontend/precompress.mjs infra/frontend/preload-links.mjs /tmp/
+COPY infra/frontend/precompress.mjs infra/frontend/preload-links.mjs infra/frontend/stamp-csp.mjs infra/frontend/Caddyfile /tmp/
 RUN npm run build --workspace=Frontend \
  && node /tmp/preload-links.mjs Frontend/dist > /tmp/preload.caddy \
+ && node /tmp/stamp-csp.mjs Frontend/dist /tmp/Caddyfile > /tmp/Caddyfile.stamped \
  && node /tmp/precompress.mjs Frontend/dist
 
 # ---------------------------------------------------------------------------
@@ -74,7 +75,7 @@ RUN apk add --no-cache --virtual .setcap libcap \
 
 # Files are root-owned and read-only to the runtime user. Caddy's own state
 # (unused: no TLS here) goes to /tmp, a tmpfs under Compose.
-COPY infra/frontend/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /tmp/Caddyfile.stamped /etc/caddy/Caddyfile
 COPY --from=build /tmp/preload.caddy /etc/caddy/preload.caddy
 COPY --from=build /app/Frontend/dist/ /srv/
 
