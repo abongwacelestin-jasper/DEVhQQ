@@ -104,7 +104,7 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/scope` | Products and projects the caller may scope to | session | — | 401 403 429 | [projects.routes.ts:82](../../Backend/routes/projects.routes.ts#L82) |
+| `GET` | `/api/scope` | Products and projects the caller may scope to | session | — | 401 403 429 | [projects.routes.ts:83](../../Backend/routes/projects.routes.ts#L83) |
 
 ## tasks
 
@@ -179,8 +179,8 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 | `PATCH` | `/api/incidents/:id` | Update status/severity or add a timeline note (severity, SEV1 resolve: JIT grant) | session | — | 401 403 404 422 | [operations.routes.ts:308](../../Backend/routes/operations.routes.ts#L308) |
 | `GET` | `/api/incidents/:id/actions` | Recovery steps and follow-ups of an incident, oldest first | session | — | 401 404 | [incident-actions.routes.ts:149](../../Backend/routes/incident-actions.routes.ts#L149) |
 | `POST` | `/api/incidents/:id/actions` | Add a recovery step or follow-up (Infrastructure ≥ contribute) | session | — | 401 403 404 409 422 | [incident-actions.routes.ts:161](../../Backend/routes/incident-actions.routes.ts#L161) |
-| `PATCH` | `/api/incidents/:id/actions/:actionId` | Update, complete, reopen or reassign an action (Infrastructure ≥ contribute) | session | — | 401 403 404 422 | [incident-actions.routes.ts:214](../../Backend/routes/incident-actions.routes.ts#L214) |
-| `DELETE` | `/api/incidents/:id/actions/:actionId` | Remove an action (Infrastructure ≥ manage) | session | — | 401 403 404 | [incident-actions.routes.ts:282](../../Backend/routes/incident-actions.routes.ts#L282) |
+| `PATCH` | `/api/incidents/:id/actions/:actionId` | Update, complete, reopen or reassign an action (Infrastructure ≥ contribute) | session | — | 401 403 404 422 | [incident-actions.routes.ts:210](../../Backend/routes/incident-actions.routes.ts#L210) |
+| `DELETE` | `/api/incidents/:id/actions/:actionId` | Remove an action (Infrastructure ≥ manage) | session | — | 401 403 404 | [incident-actions.routes.ts:278](../../Backend/routes/incident-actions.routes.ts#L278) |
 
 ## locations
 
@@ -234,17 +234,17 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 | `POST` | `/api/channels` | Create a channel or start a DM | session | Project ≥ view | 401 403 404 422 429 | [messaging.routes.ts:306](../../Backend/routes/messaging.routes.ts#L306) |
 | `GET` | `/api/channels/:id` | One channel | session | — | 401 404 | [messaging.routes.ts:403](../../Backend/routes/messaging.routes.ts#L403) |
 | `PATCH` | `/api/channels/:id` | Update channel settings and membership | session | — | 401 403 404 422 | [messaging.routes.ts:414](../../Backend/routes/messaging.routes.ts#L414) |
-| `POST` | `/api/channels/:id/join` | Join a public channel | session | — | 401 403 404 | [messaging.routes.ts:475](../../Backend/routes/messaging.routes.ts#L475) |
-| `POST` | `/api/channels/:id/leave` | Leave a channel | session | — | 401 404 409 | [messaging.routes.ts:497](../../Backend/routes/messaging.routes.ts#L497) |
-| `POST` | `/api/channels/:id/read` | Mark a channel read up to now (or `at`) | session | — | 401 404 422 | [messaging.routes.ts:521](../../Backend/routes/messaging.routes.ts#L521) |
-| `GET` | `/api/channels/:id/messages` | Messages, newest page first (?before=cursor&limit=&thread=messageId) | session | — | 401 404 422 | [messaging.routes.ts:540](../../Backend/routes/messaging.routes.ts#L540) |
-| `GET` | `/api/channels/:id/pins` | Pinned messages in a channel | session | — | 401 404 | [messaging.routes.ts:581](../../Backend/routes/messaging.routes.ts#L581) |
-| `POST` | `/api/channels/:id/messages` | Post a message (text, code, poll, sticker, file) or thread reply | session | — | 401 403 404 422 429 | [messaging.routes.ts:597](../../Backend/routes/messaging.routes.ts#L597) |
-| `PATCH` | `/api/messages/:id` | Edit your message, or close your poll | session | — | 401 403 404 409 422 | [messaging.routes.ts:706](../../Backend/routes/messaging.routes.ts#L706) |
-| `DELETE` | `/api/messages/:id` | Delete a message (author or channel admin) — leaves a tombstone | session | — | 401 403 404 | [messaging.routes.ts:759](../../Backend/routes/messaging.routes.ts#L759) |
-| `POST` | `/api/messages/:id/reactions` | Toggle your reaction on a message | session | — | 401 403 404 409 422 | [messaging.routes.ts:802](../../Backend/routes/messaging.routes.ts#L802) |
-| `POST` | `/api/messages/:id/pin` | Pin or unpin a message (toggles when `pinned` is omitted) | session | — | 401 403 404 409 | [messaging.routes.ts:834](../../Backend/routes/messaging.routes.ts#L834) |
-| `POST` | `/api/messages/:id/vote` | Vote on a poll (toggles; one option per member) | session | — | 401 403 404 409 422 | [messaging.routes.ts:866](../../Backend/routes/messaging.routes.ts#L866) |
+| `POST` | `/api/channels/:id/join` | Join a public channel | session | — | 401 403 404 | [messaging.routes.ts:477](../../Backend/routes/messaging.routes.ts#L477) |
+| `POST` | `/api/channels/:id/leave` | Leave a channel | session | — | 401 404 409 | [messaging.routes.ts:499](../../Backend/routes/messaging.routes.ts#L499) |
+| `POST` | `/api/channels/:id/read` | Mark a channel read up to now (or `at`) | session | — | 401 404 422 | [messaging.routes.ts:523](../../Backend/routes/messaging.routes.ts#L523) |
+| `GET` | `/api/channels/:id/messages` | Messages, newest page first (?before=cursor&limit=&thread=messageId) | session | — | 401 404 422 | [messaging.routes.ts:542](../../Backend/routes/messaging.routes.ts#L542) |
+| `GET` | `/api/channels/:id/pins` | Pinned messages in a channel | session | — | 401 404 | [messaging.routes.ts:583](../../Backend/routes/messaging.routes.ts#L583) |
+| `POST` | `/api/channels/:id/messages` | Post a message (text, code, poll, sticker, file) or thread reply | session | — | 401 403 404 422 429 | [messaging.routes.ts:599](../../Backend/routes/messaging.routes.ts#L599) |
+| `PATCH` | `/api/messages/:id` | Edit your message, or close your poll | session | — | 401 403 404 409 422 | [messaging.routes.ts:708](../../Backend/routes/messaging.routes.ts#L708) |
+| `DELETE` | `/api/messages/:id` | Delete a message (author or channel admin) — leaves a tombstone | session | — | 401 403 404 | [messaging.routes.ts:761](../../Backend/routes/messaging.routes.ts#L761) |
+| `POST` | `/api/messages/:id/reactions` | Toggle your reaction on a message | session | — | 401 403 404 409 422 | [messaging.routes.ts:804](../../Backend/routes/messaging.routes.ts#L804) |
+| `POST` | `/api/messages/:id/pin` | Pin or unpin a message (toggles when `pinned` is omitted) | session | — | 401 403 404 409 | [messaging.routes.ts:836](../../Backend/routes/messaging.routes.ts#L836) |
+| `POST` | `/api/messages/:id/vote` | Vote on a poll (toggles; one option per member) | session | — | 401 403 404 409 422 | [messaging.routes.ts:868](../../Backend/routes/messaging.routes.ts#L868) |
 
 ## workspaces
 
@@ -276,10 +276,10 @@ Tags: [system](#system) · [query](#query) · [auth](#auth) · [products](#produ
 
 | Method | Path | Summary | Auth | Guards | Responses | Source |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/offboarding` | Offboardings: all for Administration:view, otherwise only your own | session | — | 401 403 429 | [offboarding.routes.ts:134](../../Backend/routes/offboarding.routes.ts#L134) |
-| `GET` | `/api/offboarding/:memberId` | A member’s current offboarding (self or Administration:view) | session | — | 401 404 | [offboarding.routes.ts:150](../../Backend/routes/offboarding.routes.ts#L150) |
-| `POST` | `/api/offboarding/:memberId` | Start offboarding (self-resignation, or Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:169](../../Backend/routes/offboarding.routes.ts#L169) |
-| `PATCH` | `/api/offboarding/:memberId` | Update the offboarding checklist or status (Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:228](../../Backend/routes/offboarding.routes.ts#L228) |
+| `GET` | `/api/offboarding` | Offboardings: all for Administration:view, otherwise only your own | session | — | 401 403 429 | [offboarding.routes.ts:131](../../Backend/routes/offboarding.routes.ts#L131) |
+| `GET` | `/api/offboarding/:memberId` | A member’s current offboarding (self or Administration:view) | session | — | 401 404 | [offboarding.routes.ts:147](../../Backend/routes/offboarding.routes.ts#L147) |
+| `POST` | `/api/offboarding/:memberId` | Start offboarding (self-resignation, or Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:166](../../Backend/routes/offboarding.routes.ts#L166) |
+| `PATCH` | `/api/offboarding/:memberId` | Update the offboarding checklist or status (Administration:manage) — step-up | session | step-up | 401 403 404 409 422 | [offboarding.routes.ts:225](../../Backend/routes/offboarding.routes.ts#L225) |
 
 ## github
 
