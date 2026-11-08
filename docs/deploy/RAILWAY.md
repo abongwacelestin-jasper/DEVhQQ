@@ -432,6 +432,10 @@ the password reset request and invite acceptance (and demo sign-in, which
 production never has). Off by default (`TURNSTILE_MODE=off`). How it works
 and what is exempt: [Security controls, C-26](../security/CONTROLS.md).
 
+`setup.sh` does the Railway part for you: run it with `TURNSTILE_SITE_KEY`
+and `TURNSTILE_SECRET_KEY` set (or enter them at its prompts) and it sets
+`TURNSTILE_MODE=on` and both keys on the backend. Create the widget first:
+
 1. **Create the widget.** Cloudflare dashboard → Turnstile → *Add widget*.
    Name it `DevHQ`, choose **Managed** as the widget mode, and leave
    *pre-clearance* off.

@@ -29,6 +29,8 @@
 #   ANTHROPIC_API_KEY (optional)          assistant in the models service
 #   RESEND_API_KEY   (optional)           mail via Resend; with it, MAIL_FROM is required
 #   MAIL_FROM        (with Resend)        e.g. "DevHQ <no-reply@mail.example.com>"
+#   TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY (optional) Cloudflare Turnstile on the
+#                                         public auth forms; both set = TURNSTILE_MODE=on
 #   BRAND_*          (optional, env only; see infra/brand/devhq.brand.env)
 #                                         BRAND_NAME, BRAND_LEGAL_NAME, BRAND_LOGO_URL,
 #                                         BRAND_PRIMARY_COLOR, BRAND_ACCENT_COLOR,
@@ -128,6 +130,10 @@ ask R2_MODELS_ACCESS_KEY_ID "R2 models token: Access Key ID" secret
 ask R2_MODELS_SECRET_ACCESS_KEY "R2 models token: Secret Access Key" secret
 optional ANTHROPIC_API_KEY "Anthropic API key"
 optional RESEND_API_KEY "Resend API key"
+optional TURNSTILE_SITE_KEY "Cloudflare Turnstile site key"
+if [ -n "${TURNSTILE_SITE_KEY:-}" ]; then
+  ask TURNSTILE_SECRET_KEY "Cloudflare Turnstile secret key" secret
+fi
 if [ -n "${RESEND_API_KEY:-}" ]; then
   ask MAIL_FROM "Sender for email (e.g. DevHQ <no-reply@mail.example.com>)"
 fi
@@ -367,6 +373,17 @@ jq -n --arg akid "$R2_MODELS_ACCESS_KEY_ID" --arg sak "$R2_MODELS_SECRET_ACCESS_
   S3_ACCESS_KEY_ID: $akid,
   S3_SECRET_ACCESS_KEY: $sak
 } + (if $anthropic == "" then {} else {ANTHROPIC_API_KEY: $anthropic} end)' | upsert "$(sid models)"
+
+# Cloudflare Turnstile (bot check on sign-in, recovery, accept-invite). Backend only:
+# the SPA reads the site key from GET /api/auth/config. The CLI exemption stays off.
+if [ -n "${TURNSTILE_SITE_KEY:-}" ] && [ -n "${TURNSTILE_SECRET_KEY:-}" ]; then
+  log "Turnstile on (backend)"
+  jq -n --arg site "$TURNSTILE_SITE_KEY" --arg secret "$TURNSTILE_SECRET_KEY" '{
+    TURNSTILE_MODE: "on", TURNSTILE_SITE_KEY: $site, TURNSTILE_SECRET_KEY: $secret
+  }' | upsert "$(sid backend)"
+else
+  log "no Turnstile keys: TURNSTILE_MODE stays off (add them later, see RAILWAY.md)"
+fi
 
 # Mail (Resend) and brand. Without a key, mail stays on the console transport
 # (logged, not sent). With one, production refuses to boot unless MAIL_FROM is set.
