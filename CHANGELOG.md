@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Relational data layer, phase 1** ([ADR 0011](docs/architecture/adr/0011-relational-data-layer.md)).
+  Members (with their sealed credentials), sessions, tasks, task events,
+  task comments and notifications move from in-memory JSONB collections to
+  typed, org-keyed PostgreSQL tables with foreign keys, monthly partitions for
+  task events and notifications, and keyset paging. They are read on demand
+  through async repositories (`Backend/data/`, with in-memory implementations
+  for tests and development), so every replica sees every write. Writes are
+  field-level, failed-sign-in counters and backup-code burns are atomic, and
+  task keys come from an atomic counter. Sessions implement the shared
+  `auth/sessionStore.ts` contract on Postgres. Migration `003`, plus a
+  boot-time and `npm run backfill` copy of existing rows (idempotent, counts
+  verified); a JSONB copy is dual-written (`DATA_DUAL_WRITE`) so rollback is
+  lossless. `npm run smoke:pg` now runs two API replicas on one database and
+  checks every migrated collection across them; `npm run test:pg` runs the
+  repository contract against Postgres. Wire shapes are unchanged. Replicas
+  stay at 1 until the remaining collections move (see Known limits).
+
 - **Cloudflare Turnstile (optional):** `TURNSTILE_MODE=on` puts a bot check on
   password sign-in, demo sign-in, the password reset request and invite
   acceptance. Tokens are verified server-side (hostname, per-form action,

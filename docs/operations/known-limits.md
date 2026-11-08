@@ -5,12 +5,36 @@ limit is, why, and what to do about it.
 
 ## Run exactly one backend replica
 
-Every backend process loads all collections into memory at boot and serves
-reads from there ([ADR 0003](../architecture/adr/0003-postgres-jsonb-collections.md)).
-There is no cross-instance invalidation yet, so two replicas would each see
-only their own writes and diverge, and a session created on one replica is
-unknown to the other. Stay at one replica (the Compose default) and scale
-vertically.
+The data layer is part way through its move to relational tables
+([ADR 0011](../architecture/adr/0011-relational-data-layer.md)). Stay at one
+replica (the Compose default) and scale vertically until phase 3 lands.
+
+**Already replica-safe** (phase 1: typed tables, read from PostgreSQL on every
+request, nothing held in process memory): members and their credentials
+(`members`), sessions (`sessions`), tasks (`tasks`), task events
+(`task_events`), task comments (`task_comments`) and notifications
+(`notifications`). `npm run smoke:pg` proves it with two API processes on one
+database. Without `DATABASE_URL` these live in process memory, as before.
+
+**Still need one replica**, because each process loads them into memory at
+boot and never sees another process's later writes
+([ADR 0003](../architecture/adr/0003-postgres-jsonb-collections.md)):
+
+- work data: `projects`, `docs`, `subtasks`, `timeLogs`, `deployments`,
+  `incidents`, `incident_actions`;
+- collaboration: `collab_channels`, `collab_messages`, `collab_channel_reads`,
+  `collab_workspaces`, `collab_doc_versions`, `collab_doc_comments`,
+  `collab_nda_signatures`, `collab_resignations`, `collab_recovery_tokens`
+  (a reset link issued by one replica is unknown to another);
+- security: `jitGrants`, `auth.personal_access_tokens`,
+  `auth.totp_counters` (TOTP replay protection is per process), `signIns`
+  (the risk history);
+- engineering: every `eng_*` collection (repos, pulls, CI runs, findings,
+  GitHub installations, deliveries and identities, monitors and their
+  history, integrations, outbound webhooks and deliveries), and `files`;
+- state that is not persisted at all: pending WebAuthn challenges
+  (`auth/webauthn.ts`) and pending authenticator enrolments (`auth/totp.ts`),
+  so the options call and the verify call must reach the same process.
 
 With `REDIS_URL` set, the stateless parts are already shared
 ([ADR 0009](../architecture/adr/0009-redis-for-shared-runtime-state.md)):
@@ -23,8 +47,9 @@ Pub/sub is fire-and-forget. A replica that is disconnected from Redis when an
 event is published does not receive it; SSE clients replay recent events by
 `Last-Event-ID` from whichever replica they reconnect to, best effort (each
 replica keeps the last 500 events it saw).
-One-shot commands that write data (`bootstrap-owner`) must run with the
-backend stopped for the same reason. See the
+`bootstrap-owner` writes only members, which are rows now (the unique keys
+decide), so it can run beside a live backend. Other one-shot commands that
+write collections still need the backend stopped. See the
 [runbook scaling notes](../deploy/RUNBOOK.md#5-scaling-notes).
 
 ## Periodic jobs run where `JOBS_IN_PROCESS` says, and the worker waits

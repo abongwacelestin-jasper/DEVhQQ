@@ -584,19 +584,26 @@ the worker's source (or `setup.sh --with-worker`), and deploy both.
 **Keep `backend` at one replica until the data layer is shared.** With
 `REDIS_URL` set, the stateless parts are already replica-safe: rate-limit
 buckets, the `/api/_events` bus, the `/api/stream` realtime hub (messages and
-notifications) and job leases are shared through Redis. What is not: each
-process still serves reads from its own in-memory copy of the collections, so
-users would see different data depending on which replica answers, and writes
-would overwrite each other. Sessions are part of that: one created on replica
-A is unknown to replica B. `numReplicas: 1` is in `backend.railway.json`; do
-not raise it in the dashboard.
+notifications) and job leases are shared through Redis. Phase 1 of the
+relational data layer ([ADR 0011](../architecture/adr/0011-relational-data-layer.md))
+made members, sessions, tasks, task events and comments, and notifications
+replica-safe: they are typed tables read on demand, and sessions use the
+`Backend/auth/sessionStore.ts` contract backed by the `sessions` table. What
+is not yet: every other collection is still served from each process's own
+in-memory copy, so users would see different data depending on which replica
+answers, and writes would overwrite each other (the exact list is in
+[Known limits](../operations/known-limits.md#run-exactly-one-backend-replica)).
+`numReplicas: 1` is in `backend.railway.json`; do not raise it in the
+dashboard.
 
 Raise replicas above 1 only when **all** of these hold:
 
-1. The data layer serves members, sessions, tasks, notifications and every
-   other collection that changes at runtime from Postgres on demand (or
-   invalidates across processes), so no replica serves a stale copy. Sessions
-   use `Backend/auth/sessionStore.ts` (Postgres or the Redis implementation).
+1. The data layer serves every collection that changes at runtime from
+   Postgres on demand (ADR 0011 phases 2 and 3), so no replica serves a stale
+   copy, and the per-process WebAuthn challenges and TOTP enrolments are in a
+   shared store. Phase 1 already covers members, sessions, tasks, task events
+   and comments, and notifications; `npm run smoke:pg` checks them with two
+   replicas on one database.
 2. The backend volume is gone. A Railway volume attaches to one replica only
    and forces stop-then-start deploys. It holds the local audit JSONL copy,
    which is redundant once `audit_entries` and the R2 archive are the record.
@@ -616,8 +623,18 @@ See [Rate limiting](../security/CONTROLS.md#when-redis-is-down).
   passes `/api/ready`) on each deploy. That is deliberate: it guarantees only
   one writer at a time. Deploy outside working hours or accept the blip.
 - **Scale vertically.** Raise the backend's CPU/RAM limit (Settings →
-  Resources). Memory grows with the data set because everything is in RAM;
-  watch the service's memory graph and keep 50 % headroom.
+  Resources). Memory grows with the collections still on the JSONB seam
+  (members, sessions, tasks and their activity, and notifications are no
+  longer held in RAM); watch the service's memory graph and keep 50 %
+  headroom. Each request now makes a few indexed queries for the migrated
+  data: size `DATABASE_POOL_MAX` so that replicas × pool size stays under the
+  Postgres plan's connection limit.
+- **First deploy of the relational tables:** the pre-deploy
+  `node --run migrate` creates them; the first boot copies the existing rows
+  from `documents` (`db.backfill` in the log, with per-table counts). To check
+  by hand: `npm run backfill -- --verify-only`. Rolling back to the previous
+  image is safe while `DATA_DUAL_WRITE` is on (the default); see
+  [ADR 0011, Rollback](../architecture/adr/0011-relational-data-layer.md#rollback).
 - `frontend` is stateless and can run 2+ replicas at any time.
 - `models` can be scaled vertically; it has no shared state besides R2.
 - `cron`: one run at a time (Railway skips a run if the previous one is

@@ -13,10 +13,17 @@ application uses them.
 - **Without `DATABASE_URL`** everything stays in memory and demo data is
   seeded on every start (local quick start, smoke tests).
 - **With `DATABASE_URL`**: run migrations (with `DATABASE_MIGRATION_URL`, the
-  DDL-capable role, when set), install the PostgreSQL collection driver, load
+  DDL-capable role, when set), install the PostgreSQL collection driver and the relational repositories,
+  backfill any relational table that is still empty from `documents`, load
   every registered collection into memory (`hydrateAll()`), then seed demo
-  data **only** when `NODE_ENV` is not `production` **and** the documents
-  table is empty. The emptiness check and the seed run under an advisory lock.
+  data **only** when `NODE_ENV` is not `production` **and** the database is
+  empty. Backfill, the emptiness check and the seed run under an advisory lock.
+- **Relational tables** ([ADR 0011](../architecture/adr/0011-relational-data-layer.md)):
+  `members`, `sessions`, `tasks`, `task_events` and `notifications` (both
+  partitioned by month), `task_comments`. They are read on demand through
+  `Backend/data/` and never hydrated. The repositories also keep a JSONB copy
+  in `documents` (`DATA_DUAL_WRITE`, on by default) so the previous build can
+  be redeployed without losing writes.
 - Rows live in a generic `documents` table keyed by `(collection, key)` with
   a JSONB payload ([ADR 0003](../architecture/adr/0003-postgres-jsonb-collections.md)).
   Handlers read from memory; writes are queued and flushed in order.
@@ -26,9 +33,9 @@ application uses them.
 - The audit chain is mirrored into an append-only `audit_entries` table
   (`Backend/db/auditSink.ts`), one `chain_id` per process boot.
 
-Persisted collections include members, projects, docs, tasks and their
-activity, deployments, incidents, sign-ins, sessions, JIT grants, TOTP replay
-counters, personal access tokens, files, and every collaboration and
+Persisted collections (still on the JSONB seam) include projects, docs,
+subtasks, time logs, deployments, incidents, sign-ins, JIT grants, TOTP
+replay counters, personal access tokens, files, and every collaboration and
 engineering module (`collab_*`, `eng_*`). Rate-limit buckets, logs and metrics
 stay per process.
 
