@@ -9,6 +9,15 @@
  *   APP_URL           base of every link in an email (default APP_ORIGIN)
  *   BRAND_*           name, legal name, logo, colours, support address, postal
  *                     address and website shown in every email
+ *   BRAND_ASSET_BASE_URL  where the email images live (default <app origin>/brand)
+ *
+ * Every brand value is optional. Unset values are derived from the app's
+ * own address (APP_URL, else APP_ORIGIN), so emails look complete with zero
+ * BRAND_* configuration: website = the app origin, logo and images = the
+ * PNG/JPEG files the frontend serves under /brand/, support and reply-to =
+ * support@<registrable domain>, sender = no-reply@<registrable domain>. The
+ * one exception is the postal address: it is a legal statement, so it is
+ * never invented; unset, the footer omits the line.
  *
  * Production fails closed: `MAIL_TRANSPORT=resend` without a key or without
  * MAIL_FROM refuses to boot, an unknown transport refuses to boot, and every
@@ -33,6 +42,12 @@ export interface Brand {
   legalName: string;
   /** Absolute URL of a PNG (recommended) or SVG logo; unset renders a text wordmark. */
   logoUrl?: string;
+  /**
+   * Base URL of the email images (heroes, product marks), no trailing slash.
+   * Files live at `<assetBaseUrl>/email/…`; the frontend serves them from
+   * Frontend/public/brand/, so the default is `<app origin>/brand`.
+   */
+  assetBaseUrl: string;
   /** Rendered logo width in px (height scales). */
   logoWidth: number;
   /** Buttons and the top rule. `#rrggbb`. */
@@ -80,6 +95,7 @@ export function mailEnvFromProcess(): MailEnv {
     BRAND_SUPPORT_EMAIL: process.env.BRAND_SUPPORT_EMAIL,
     BRAND_POSTAL_ADDRESS: process.env.BRAND_POSTAL_ADDRESS,
     BRAND_WEBSITE_URL: process.env.BRAND_WEBSITE_URL,
+    BRAND_ASSET_BASE_URL: process.env.BRAND_ASSET_BASE_URL,
   };
 }
 
@@ -150,6 +166,85 @@ function positiveInt(name: string, raw: string | undefined, def: number, max: nu
   return n;
 }
 
+/**
+ * Two-part public suffixes (and hosting platforms whose subdomains belong to
+ * different customers) that the registrable-domain guess must not stop at.
+ * A short list on purpose: it covers the common cases, and an unusual suffix
+ * only affects defaults that BRAND_SUPPORT_EMAIL / MAIL_FROM override.
+ */
+const MULTI_PART_SUFFIXES = new Set([
+  'co.uk',
+  'org.uk',
+  'ac.uk',
+  'gov.uk',
+  'me.uk',
+  'ltd.uk',
+  'plc.uk',
+  'com.au',
+  'net.au',
+  'org.au',
+  'edu.au',
+  'co.nz',
+  'org.nz',
+  'co.za',
+  'org.za',
+  'com.ng',
+  'org.ng',
+  'com.gh',
+  'org.gh',
+  'co.ke',
+  'or.ke',
+  'co.ug',
+  'co.tz',
+  'com.br',
+  'com.mx',
+  'com.ar',
+  'co.jp',
+  'ne.jp',
+  'co.kr',
+  'co.in',
+  'net.in',
+  'org.in',
+  'com.sg',
+  'com.my',
+  'com.hk',
+  'com.cn',
+  'com.tr',
+  'co.il',
+  'com.eg',
+  'up.railway.app',
+  'vercel.app',
+  'netlify.app',
+  'onrender.com',
+  'herokuapp.com',
+  'pages.dev',
+  'workers.dev',
+  'fly.dev',
+  'github.io',
+]);
+
+/**
+ * Registrable domain of a host: `app.example.com` → `example.com`,
+ * `mail.example.co.uk` → `example.co.uk`. Localhost and IP addresses have
+ * none and map to `devhq.local`, a name that can never receive mail.
+ */
+export function registrableDomain(host: string): string {
+  const h = host
+    .toLowerCase()
+    .replace(/\.$/, '')
+    .replace(/^\[|\]$/g, '');
+  if (!h || h === 'localhost' || h.endsWith('.localhost') || /^[\d.]+$/.test(h) || h.includes(':'))
+    return 'devhq.local';
+  const labels = h.split('.');
+  if (labels.length <= 2) return h;
+  for (let n = 3; n >= 2; n--) {
+    const suffix = labels.slice(-n).join('.');
+    if (MULTI_PART_SUFFIXES.has(suffix))
+      return labels.length > n ? labels.slice(-(n + 1)).join('.') : h;
+  }
+  return labels.slice(-2).join('.');
+}
+
 const LOGO_EXT = /\.(png|svg|jpe?g|gif)$/i;
 
 export function loadMailConfig(
@@ -171,15 +266,16 @@ export function loadMailConfig(
   const appUrl = env.APP_URL?.trim()
     ? absoluteUrl('APP_URL', env.APP_URL, isProd)
     : absoluteUrl('APP_ORIGIN', opts.appOrigin, isProd && transport === 'resend');
-  const appHost = new URL(appUrl).hostname;
-  const mailDomain = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(appHost) ? 'devhq.local' : appHost;
+  const appOrigin = new URL(appUrl).origin;
+  const mailDomain = registrableDomain(new URL(appUrl).hostname);
 
   const name = env.BRAND_NAME?.trim() || 'DevHQ';
   if (name.length > 60 || /[\r\n<>]/.test(name))
     throw new Error('BRAND_NAME must be at most 60 characters with no angle brackets');
   const legalName = env.BRAND_LEGAL_NAME?.trim() || name;
 
-  let logoUrl: string | undefined;
+  // Default: the lockup PNG the frontend serves (Frontend/public/brand/).
+  let logoUrl: string | undefined = `${appOrigin}/brand/devhq-email-logo.png`;
   if (env.BRAND_LOGO_URL?.trim()) {
     logoUrl = absoluteUrl('BRAND_LOGO_URL', env.BRAND_LOGO_URL, isProd);
     const path = new URL(logoUrl).pathname;
@@ -197,7 +293,10 @@ export function loadMailConfig(
 
   const websiteUrl = env.BRAND_WEBSITE_URL?.trim()
     ? absoluteUrl('BRAND_WEBSITE_URL', env.BRAND_WEBSITE_URL, isProd)
-    : appUrl;
+    : appOrigin;
+  const assetBaseUrl = env.BRAND_ASSET_BASE_URL?.trim()
+    ? absoluteUrl('BRAND_ASSET_BASE_URL', env.BRAND_ASSET_BASE_URL, isProd)
+    : `${appOrigin}/brand`;
 
   const postalAddress = (env.BRAND_POSTAL_ADDRESS ?? '').replace(/\s+/g, ' ').trim();
   if (postalAddress.length > 300) throw new Error('BRAND_POSTAL_ADDRESS is too long');
@@ -206,6 +305,7 @@ export function loadMailConfig(
     name,
     legalName,
     logoUrl,
+    assetBaseUrl,
     logoWidth: positiveInt('BRAND_LOGO_WIDTH', env.BRAND_LOGO_WIDTH, 120, 560),
     primaryColor: normalizeColor('BRAND_PRIMARY_COLOR', env.BRAND_PRIMARY_COLOR || '#4f46e5'),
     accentColor: normalizeColor('BRAND_ACCENT_COLOR', env.BRAND_ACCENT_COLOR || '#3730a3'),
@@ -222,7 +322,8 @@ export function loadMailConfig(
   const from = fromRaw || `${name} <no-reply@${mailDomain}>`;
   if (!mailboxAddress(from))
     throw new Error('MAIL_FROM must look like "DevHQ <no-reply@mail.example.com>"');
-  const replyTo = env.MAIL_REPLY_TO?.trim() || undefined;
+  // Replies reach a person: the support mailbox unless another is configured.
+  const replyTo = env.MAIL_REPLY_TO?.trim() || supportEmail;
   if (replyTo && !ADDRESS.test(replyTo))
     throw new Error('MAIL_REPLY_TO must be a single valid email address');
 

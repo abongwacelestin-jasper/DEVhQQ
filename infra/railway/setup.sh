@@ -35,7 +35,7 @@
 #                                         BRAND_NAME, BRAND_LEGAL_NAME, BRAND_LOGO_URL,
 #                                         BRAND_PRIMARY_COLOR, BRAND_ACCENT_COLOR,
 #                                         BRAND_SUPPORT_EMAIL, BRAND_POSTAL_ADDRESS,
-#                                         BRAND_WEBSITE_URL, MAIL_REPLY_TO
+#                                         BRAND_WEBSITE_URL, BRAND_ASSET_BASE_URL, MAIL_REPLY_TO
 # Generated when missing: SESSION_SECRET, DATA_ENCRYPTION_KEY, ML_SERVICE_TOKEN,
 # MODEL_SIGNING_KEY, APP_DB_PASSWORD, MIGRATOR_DB_PASSWORD, JOBS_DB_PASSWORD.
 # GraphQL documents and Railway ${{...}} references are single-quoted on purpose.
@@ -396,7 +396,7 @@ if [ -n "${RESEND_API_KEY:-}" ]; then
   }')"
   for v in MAIL_REPLY_TO BRAND_NAME BRAND_LEGAL_NAME BRAND_LOGO_URL BRAND_LOGO_WIDTH \
            BRAND_PRIMARY_COLOR BRAND_ACCENT_COLOR BRAND_SUPPORT_EMAIL BRAND_POSTAL_ADDRESS \
-           BRAND_WEBSITE_URL; do
+           BRAND_WEBSITE_URL BRAND_ASSET_BASE_URL; do
     if [ -n "${!v:-}" ]; then
       MAIL_JSON="$(jq --arg k "$v" --arg val "${!v}" '. + {($k): $val}' <<<"$MAIL_JSON")"
     fi

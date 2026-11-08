@@ -5,8 +5,13 @@
  * spread into `sendMail({ to, ...mail })`.
  *
  * Copy rules: calm, specific, no exclamation marks; say what happened, when,
- * from where, and what to do if it was not the recipient. Secrets (backup
- * codes, TOTP seeds) are never put in an email.
+ * from where, and what to do if it was not the recipient. Greet by first
+ * name. Show human labels, never raw enum values (mail/labels.ts), and the
+ * product's display name with its mark. Secrets (backup codes, TOTP seeds)
+ * are never put in an email.
+ *
+ * Imagery: every non-security email has one hero illustration; security
+ * notices have none (a shield drawn in HTML instead), see mail/assets.ts.
  *
  * Every interpolated value is escaped by the layout. Links are built only
  * from APP_URL / APP_ORIGIN plus fixed paths — never from request headers
@@ -16,11 +21,33 @@
 
 import { config } from '../config/env.ts';
 import type { Brand } from '../config/mail.ts';
-import { appLink, renderEmail, type Block, type RenderedEmail } from './layout.ts';
+import {
+  environmentLabel,
+  formatDay,
+  formatInstant,
+  formatTime,
+  incidentStatusLabel,
+  priorityLabel,
+  product,
+  relativeDays,
+  severityLabel,
+  taskStatusLabel,
+  type ProductRef,
+} from './labels.ts';
+import {
+  appLink,
+  renderEmail,
+  type Block,
+  type Inline,
+  type RenderedEmail,
+  type Rich,
+  type Tone,
+} from './layout.ts';
 
 export { escapeHtml } from './layout.ts';
 
 type Mail = RenderedEmail;
+type When = string | number | Date;
 
 const brandDefault = (): Brand => config.mail.brand;
 
@@ -28,40 +55,37 @@ const brandDefault = (): Brand => config.mail.brand;
 export const SECURITY_PATH = '/security';
 export const RESET_PATH = '/forgot-password';
 
-/** "Saturday 7 November 2026 at 14:03 UTC" in the member's time zone when known. */
-export function formatWhen(at: string | number | Date, timeZone?: string): string {
-  const d = new Date(at);
-  if (Number.isNaN(d.getTime())) return String(at);
-  const opts: Intl.DateTimeFormatOptions = {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  };
-  try {
-    return new Intl.DateTimeFormat('en-GB', { ...opts, timeZone: timeZone || 'UTC' }).format(d);
-  } catch {
-    return new Intl.DateTimeFormat('en-GB', { ...opts, timeZone: 'UTC' }).format(d);
-  }
+/** "Sat 7 Nov 2026, 15:03 WAT" in the member's time zone when known. */
+export function formatWhen(at: When, timeZone?: string): string {
+  return formatInstant(at, timeZone);
 }
 
-export function formatDate(at: string | number | Date, timeZone?: string): string {
-  const d = new Date(at);
-  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
-  try {
-    return new Intl.DateTimeFormat('en-GB', { ...opts, timeZone: timeZone || 'UTC' }).format(d);
-  } catch {
-    return new Intl.DateTimeFormat('en-GB', { ...opts, timeZone: 'UTC' }).format(d);
-  }
+/** "Sat 14 Nov 2026", with " · in 7 days" when `now` is given. */
+export function formatDate(at: When, timeZone?: string, now?: When): string {
+  return formatDay(at, { timeZone, now });
+}
+
+/** "Today at 10:03", "Yesterday at 18:40", else the full date and time. */
+function formatRecent(at: When, timeZone?: string, now: When = Date.now()): string {
+  const rel = relativeDays(at, now, timeZone);
+  if (rel === 'today') return `Today at ${formatTime(at, timeZone)}`;
+  if (rel === 'yesterday') return `Yesterday at ${formatTime(at, timeZone)}`;
+  return formatInstant(at, timeZone);
 }
 
 function listing(items: string[]): string {
   if (items.length <= 1) return items.join('');
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
+
+/** Products as mark + name, comma separated. */
+function productsInline(ps: ProductRef[]): Inline[] {
+  return ps.flatMap((p, i) => (i ? [', ', { product: p }] : [{ product: p }]));
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// ─── security ────────────────────────────────────────────────────────────
 
 /** Context of the request behind a security notice. */
 export interface SecurityContext {
@@ -76,12 +100,12 @@ export interface SecurityContext {
   timeZone?: string;
 }
 
-function contextRows(ctx: SecurityContext): [string, string][] {
+function contextRows(ctx: SecurityContext): [string, Rich][] {
   return [
-    ['Time', formatWhen(ctx.at, ctx.timeZone)],
-    ...(ctx.device ? ([['Device', ctx.device]] as [string, string][]) : []),
-    ...(ctx.location ? ([['Approximate location', ctx.location]] as [string, string][]) : []),
-    ['IP address', ctx.ip],
+    ['Time', formatInstant(ctx.at, ctx.timeZone)],
+    ...(ctx.device ? ([['Device', ctx.device]] as [string, Rich][]) : []),
+    ...(ctx.location ? ([['Approximate location', ctx.location]] as [string, Rich][]) : []),
+    ['IP address', [{ code: ctx.ip }]],
   ];
 }
 
@@ -102,6 +126,10 @@ function notYou(brand: Brand, text: string): Block {
 const securityReason = (brand: Brand) =>
   `You received this security notice because it concerns your ${brand.name} account.`;
 
+/** The shield above a security heading: `!` for something to check, a tick for a confirmation. */
+const ALERT = { label: 'Security alert', tone: 'warn' as Tone, glyph: '!' };
+const CONFIRM = { label: 'Security notice', tone: 'accent' as Tone, glyph: '✓' };
+
 // ─── account ─────────────────────────────────────────────────────────────
 
 export interface InviteData {
@@ -109,35 +137,53 @@ export interface InviteData {
   inviteeEmail: string;
   inviterName: string;
   role: string;
+  /** Product ids or display names. */
   products: string[];
   expiresAt: string | number;
   /** Absolute accept link including the single-use token. */
   link: string;
+  workspace?: string;
+  now?: When;
 }
 
 export function inviteEmail(d: InviteData, brand: Brand = brandDefault()): Mail {
-  const expires = formatDate(d.expiresAt);
-  const products = listing(d.products);
+  const ps = d.products.map(product);
+  const names = listing(ps.map((p) => p.name));
+  const where = d.workspace ?? `the ${brand.name} workspace`;
   return renderEmail(
     {
       category: 'invite',
       kind: 'account',
-      subject: `${d.inviterName} invited you to join ${brand.name}`,
-      preheader: `Join as ${d.role} on ${products}. The invitation expires on ${expires}.`,
-      heading: `Join your team on ${brand.name}`,
+      noAccess: true,
+      subject: `${d.inviterName} invited you to join ${d.workspace ?? brand.name}`,
+      preheader: `Join as ${d.role}${names ? ` on ${names}` : ''}. The invitation expires on ${formatDay(d.expiresAt)}.`,
+      eyebrow: { label: 'Invitation' },
+      hero: 'invite',
+      workspace: d.workspace,
+      heading: d.workspace
+        ? `Join ${d.workspace} on ${brand.name}`
+        : `Join your team on ${brand.name}`,
       greeting: d.inviteeName,
       blocks: [
         {
           t: 'p',
-          text: [{ strong: d.inviterName }, ` has invited you to the ${brand.name} workspace.`],
+          text: [
+            { strong: d.inviterName },
+            ` has invited you to ${where}, where your team plans work, reviews code, ships releases and handles incidents.`,
+          ],
         },
         {
           t: 'facts',
           rows: [
             ['Role', d.role],
-            [d.products.length === 1 ? 'Product' : 'Products', products],
+            ...(ps.length
+              ? ([[ps.length === 1 ? 'Product' : 'Products', productsInline(ps)]] as [
+                  string,
+                  Rich,
+                ][])
+              : []),
             ['Invited by', d.inviterName],
-            ['Expires', formatWhen(d.expiresAt)],
+            ['Expires', formatDay(d.expiresAt, { now: d.now ?? Date.now() })],
           ],
         },
         { t: 'button', href: d.link, label: 'Accept invitation', showUrl: true },
@@ -169,6 +215,7 @@ export function recoveryEmail(
       kind: 'security',
       subject: `Reset your ${brand.name} password`,
       preheader: `Use this link within ${minutes} minutes to choose a new password.`,
+      eyebrow: { label: 'Password reset', tone: 'accent', glyph: '✱' },
       heading: 'Reset your password',
       greeting: name,
       blocks: [
@@ -214,7 +261,8 @@ export function passwordChangedEmail(
       category: 'password-changed',
       kind: 'security',
       subject: `Your ${brand.name} password was changed`,
-      preheader: `Your password was changed on ${formatWhen(at, extra.timeZone)}.`,
+      preheader: `Your password was changed on ${formatInstant(at, extra.timeZone)}.`,
+      eyebrow: CONFIRM,
       heading: 'Your password was changed',
       greeting: name,
       blocks: [
@@ -250,7 +298,8 @@ export function signInAlertEmail(d: SignInAlertData, brand: Brand = brandDefault
       category: 'sign-in-alert',
       kind: 'security',
       subject: `New sign-in to your ${brand.name} account`,
-      preheader: `${d.device ?? 'A new device'}${where}, ${formatWhen(d.at, d.timeZone)}.`,
+      preheader: `${d.device ?? 'A new device'}${where}, ${formatInstant(d.at, d.timeZone)}.`,
+      eyebrow: ALERT,
       heading: 'New sign-in to your account',
       greeting: d.name,
       blocks: [
@@ -264,7 +313,12 @@ export function signInAlertEmail(d: SignInAlertData, brand: Brand = brandDefault
           brand,
           'Secure your account now: sign out the unfamiliar session, change your password and review your two-step verification methods.',
         ),
-        { t: 'button', href: appLink(brand, SECURITY_PATH), label: 'Secure your account' },
+        {
+          t: 'button',
+          href: appLink(brand, SECURITY_PATH),
+          label: 'Review this sign-in',
+          secondary: { href: appLink(brand, '/sessions'), text: 'See all active sessions' },
+        },
         { t: 'muted', text: 'Location is estimated from the IP address and may not be exact.' },
       ],
       reason: securityReason(brand),
@@ -286,12 +340,14 @@ export function factorChangedEmail(d: FactorChangedData, brand: Brand = brandDef
   const subject = d.replaced
     ? `Your ${brand.name} authenticator app was replaced`
     : `A ${d.factor} was added to your ${brand.name} account`;
+  const method = d.factor === 'passkey' ? 'Passkey' : 'Authenticator app';
   return renderEmail(
     {
       category: 'mfa-enrolled',
       kind: 'security',
       subject,
-      preheader: `Two-step verification changed on ${formatWhen(d.at, d.timeZone)}.`,
+      preheader: `Two-step verification changed on ${formatInstant(d.at, d.timeZone)}.`,
+      eyebrow: d.replaced ? ALERT : CONFIRM,
       heading: d.replaced ? 'Your authenticator app was replaced' : `A ${d.factor} was added`,
       greeting: d.name,
       blocks: [
@@ -303,7 +359,7 @@ export function factorChangedEmail(d: FactorChangedData, brand: Brand = brandDef
         },
         {
           t: 'facts',
-          rows: [['Method', d.label ? `${d.factor} (${d.label})` : d.factor], ...contextRows(d)],
+          rows: [['Method', d.label ? `${method} (${d.label})` : method], ...contextRows(d)],
         },
         notYou(
           brand,
@@ -334,6 +390,7 @@ export function backupCodesGeneratedEmail(
       kind: 'security',
       subject: `New backup codes were generated for your ${brand.name} account`,
       preheader: `${d.count} new one-time codes. Codes from earlier sets no longer work.`,
+      eyebrow: CONFIRM,
       heading: 'New backup codes were generated',
       greeting: d.name,
       blocks: [
@@ -379,7 +436,7 @@ export function backupCodeUsedEmail(d: BackupCodeUsedData, brand: Brand = brandD
             text:
               d.remaining === 0
                 ? 'You have used every backup code. Generate a new set from your security settings so you are not locked out if you lose your authenticator.'
-                : `You have ${d.remaining} backup ${d.remaining === 1 ? 'code' : 'codes'} left. Generate a new set from your security settings before you run out.`,
+                : `You have ${plural(d.remaining, 'backup code')} left. Generate a new set from your security settings before you run out.`,
           },
         ]
       : [];
@@ -389,6 +446,7 @@ export function backupCodeUsedEmail(d: BackupCodeUsedData, brand: Brand = brandD
       kind: 'security',
       subject: `A backup code was used to sign in to ${brand.name}`,
       preheader: `${d.remaining} of ${d.total} backup codes remain.`,
+      eyebrow: ALERT,
       heading: 'A backup code was used to sign in',
       greeting: d.name,
       blocks: [
@@ -398,7 +456,18 @@ export function backupCodeUsedEmail(d: BackupCodeUsedData, brand: Brand = brandD
         },
         {
           t: 'facts',
-          rows: [['Codes remaining', `${d.remaining} of ${d.total}`], ...contextRows(d)],
+          rows: [
+            [
+              'Codes remaining',
+              [
+                {
+                  pill: `${d.remaining} of ${d.total}`,
+                  tone: d.remaining <= 3 ? 'warn' : 'neutral',
+                },
+              ],
+            ],
+            ...contextRows(d),
+          ],
         },
         ...low,
         notYou(
@@ -428,6 +497,7 @@ export function accountLockedEmail(d: AccountLockedData, brand: Brand = brandDef
       kind: 'security',
       subject: `Your ${brand.name} account is temporarily locked`,
       preheader: `${d.attempts} unsuccessful sign-in attempts. You can try again in ${minutes} minutes.`,
+      eyebrow: { label: 'Security alert', tone: 'bad', glyph: '!' },
       heading: 'Your account is temporarily locked',
       greeting: d.name,
       blocks: [
@@ -438,8 +508,8 @@ export function accountLockedEmail(d: AccountLockedData, brand: Brand = brandDef
         {
           t: 'facts',
           rows: [
-            ['Unlocks at', formatWhen(d.until, d.timeZone)],
-            ['Last attempt', formatWhen(d.at, d.timeZone)],
+            ['Unlocks at', formatInstant(d.until, d.timeZone)],
+            ['Last attempt', formatInstant(d.at, d.timeZone)],
             ...contextRows(d).filter(([k]) => k !== 'Time'),
           ],
         },
@@ -472,6 +542,7 @@ export interface AccessRequestData {
   reason?: string;
   at: string;
   timeZone?: string;
+  workspace?: string;
 }
 
 export function accessRequestEmail(d: AccessRequestData, brand: Brand = brandDefault()): Mail {
@@ -483,7 +554,10 @@ export function accessRequestEmail(d: AccessRequestData, brand: Brand = brandDef
       // The reason is the requester's free text: body only (escaped), never the
       // inbox preview, so it cannot dress up as platform copy (W5-06).
       preheader: `${d.requesterName} asked for access to ${d.path}.`,
-      heading: 'Access request',
+      eyebrow: { label: 'Access request' },
+      hero: 'access',
+      workspace: d.workspace,
+      heading: `${d.requesterName} is asking for access`,
       greeting: d.adminName,
       blocks: [
         {
@@ -491,7 +565,7 @@ export function accessRequestEmail(d: AccessRequestData, brand: Brand = brandDef
           text: [
             { strong: d.requesterName },
             ' was refused access to ',
-            { strong: d.path },
+            { code: d.path },
             ' and has asked for it to be granted.',
           ],
         },
@@ -500,15 +574,16 @@ export function accessRequestEmail(d: AccessRequestData, brand: Brand = brandDef
           rows: [
             ['Requested by', `${d.requesterName} (${d.requesterEmail})`],
             ['Current role', d.requesterRole],
-            ['Area', d.path],
+            ['Area', [{ code: d.path }]],
             ['Reason', d.reason || 'No reason given'],
-            ['Time', formatWhen(d.at, d.timeZone)],
+            ['Time', formatInstant(d.at, d.timeZone)],
           ],
         },
         {
           t: 'button',
           href: appLink(brand, `/team/${encodeURIComponent(d.memberId)}`),
           label: 'Review member',
+          secondary: { href: appLink(brand, '/team'), text: 'Open the team list' },
         },
         {
           t: 'muted',
@@ -528,19 +603,30 @@ export interface TaskAssignedData {
   actorName: string;
   /** `assignee` (default) or `reviewer`. */
   as?: 'assignee' | 'reviewer';
+  /** Product id or display name. */
   product?: string;
   priority?: string;
   status?: string;
+  /** Due date, `YYYY-MM-DD`. */
   due?: string;
+  timeZone?: string;
+  workspace?: string;
+  now?: When;
 }
 
 export function taskAssignedEmail(d: TaskAssignedData, brand: Brand = brandDefault()): Mail {
   const review = d.as === 'reviewer';
-  const rows: [string, string][] = [['Task', `${d.taskKey} · ${d.title}`]];
-  if (d.product) rows.push(['Product', d.product]);
-  if (d.priority) rows.push(['Priority', d.priority]);
-  if (d.status) rows.push(['Status', d.status]);
-  if (d.due) rows.push(['Due', formatDate(d.due)]);
+  const p = d.product ? product(d.product) : undefined;
+  const link = appLink(brand, `/tasks/${encodeURIComponent(d.taskKey)}`);
+  const pills: { label: string; tone: Tone }[] = [];
+  if (d.status) pills.push(taskStatusLabel(d.status));
+  if (d.priority) {
+    const pr = priorityLabel(d.priority);
+    pills.push({ label: `${pr.label} priority`, tone: pr.tone });
+  }
+  const rows: [string, Rich][] = [];
+  if (d.due)
+    rows.push(['Due', formatDay(d.due, { timeZone: d.timeZone, now: d.now ?? Date.now() })]);
   rows.push([review ? 'Requested by' : 'Assigned by', d.actorName]);
   return renderEmail(
     {
@@ -552,20 +638,31 @@ export function taskAssignedEmail(d: TaskAssignedData, brand: Brand = brandDefau
       preheader: review
         ? `${d.actorName} asked you to review ${d.taskKey}.`
         : `${d.actorName} assigned ${d.taskKey} to you.`,
+      eyebrow: { label: review ? 'Review request' : 'Task assigned' },
+      hero: review ? 'review' : 'task',
+      workspace: d.workspace,
       heading: review ? `Review requested on ${d.taskKey}` : `${d.taskKey} is assigned to you`,
       greeting: d.name,
       blocks: [
         {
           t: 'p',
           text: review
-            ? [{ strong: d.actorName }, ' asked you to review ', { strong: d.taskKey }, '.']
-            : [{ strong: d.actorName }, ' assigned ', { strong: d.taskKey }, ' to you.'],
+            ? [{ strong: d.actorName }, ' asked you to review this task.']
+            : [{ strong: d.actorName }, ' assigned this task to you.'],
         },
-        { t: 'facts', rows },
+        {
+          t: 'card',
+          meta: [{ code: d.taskKey }, ...(p ? ([' · ', { product: p }] as Inline[]) : [])],
+          title: d.title,
+          href: link,
+          pills,
+          rows,
+        },
         {
           t: 'button',
-          href: appLink(brand, `/tasks/${encodeURIComponent(d.taskKey)}`),
-          label: 'Open task',
+          href: link,
+          label: review ? 'Open task to review' : 'Open task',
+          secondary: { href: appLink(brand, '/my-work'), text: 'See all your work' },
         },
       ],
       reason: review
@@ -582,6 +679,7 @@ export interface IncidentData {
   title: string;
   severity: string;
   status: string;
+  /** Product id or display name. */
   product: string;
   service: string;
   impact: string;
@@ -591,18 +689,30 @@ export interface IncidentData {
   /** True when the recipient is the incident owner. */
   owner: boolean;
   timeZone?: string;
+  workspace?: string;
 }
 
 export function incidentEmail(d: IncidentData, brand: Brand = brandDefault()): Mail {
+  const p = product(d.product);
+  const sev = severityLabel(d.severity);
+  const status = incidentStatusLabel(d.status);
+  const link = appLink(brand, `/incidents/${encodeURIComponent(d.id)}`);
+  const [sevShort, sevWord] = sev.label.split(' · ');
+  const sevPhrase = sevWord ? `${sevWord.toLowerCase()} (${sevShort})` : sevShort;
   return renderEmail(
     {
       category: 'incident',
       kind: 'notification',
       subject: d.owner
-        ? `[${d.severity}] ${d.id} assigned to you: ${d.title}`
-        : `[${d.severity}] ${d.id} declared: ${d.title}`,
-      preheader: `${d.service} · ${d.impact}`,
-      heading: `${d.id}: ${d.title}`,
+        ? `[${sevShort}] ${d.id} assigned to you: ${d.title}`
+        : `[${sevShort}] ${d.id} declared: ${d.title}`,
+      preheader: `${p.name} · ${d.service} · ${d.impact}`,
+      eyebrow: { label: `Incident · ${sevShort}`, tone: sev.tone },
+      hero: 'incident',
+      workspace: d.workspace,
+      heading: d.owner
+        ? `You are the owner of ${d.id}`
+        : `${sevShort} incident declared on ${p.name}`,
       greeting: d.name,
       blocks: [
         {
@@ -610,26 +720,21 @@ export function incidentEmail(d: IncidentData, brand: Brand = brandDefault()): M
           text: d.owner
             ? [
                 { strong: d.declaredBy },
-                ' declared a ',
-                { strong: d.severity },
-                ' incident and made you its owner.',
+                ` declared a ${sevPhrase} incident on ${p.name} and made you its owner.`,
               ]
-            : [
-                { strong: d.declaredBy },
-                ' declared a ',
-                { strong: d.severity },
-                ` incident on ${d.product}.`,
-              ],
+            : [{ strong: d.declaredBy }, ` declared a ${sevPhrase} incident on ${p.name}.`],
         },
         {
-          t: 'facts',
+          t: 'card',
+          meta: [{ code: d.id }, ' · ', { product: p }],
+          title: d.title,
+          href: link,
+          pills: [sev, status],
           rows: [
-            ['Severity', d.severity],
-            ['Status', d.status],
-            ['Product', d.product],
-            ['Service', d.service],
             ['Impact', d.impact],
-            ['Started', formatWhen(d.startedAt, d.timeZone)],
+            ['Service', [{ code: d.service }]],
+            ['Started', formatInstant(d.startedAt, d.timeZone)],
+            ['Declared by', d.declaredBy],
           ],
         },
         ...(d.owner
@@ -642,13 +747,14 @@ export function incidentEmail(d: IncidentData, brand: Brand = brandDefault()): M
           : []),
         {
           t: 'button',
-          href: appLink(brand, `/incidents/${encodeURIComponent(d.id)}`),
+          href: link,
           label: 'Open incident',
+          secondary: { href: appLink(brand, '/incidents'), text: 'See all open incidents' },
         },
       ],
       reason: d.owner
         ? `You received this email because you are the owner of ${d.id} in ${brand.name}.`
-        : `You received this email because you follow incidents on ${d.product} in ${brand.name}.`,
+        : `You received this email because you follow incidents on ${p.name} in ${brand.name}.`,
     },
     brand,
   );
@@ -657,6 +763,7 @@ export function incidentEmail(d: IncidentData, brand: Brand = brandDefault()): M
 export interface DeploymentApprovalData {
   name: string;
   deploymentId: string;
+  /** Product id or display name. */
   product: string;
   version: string;
   env: string;
@@ -664,26 +771,30 @@ export interface DeploymentApprovalData {
   requestedAt: string;
   commit?: string;
   timeZone?: string;
+  workspace?: string;
 }
 
 export function deploymentApprovalEmail(
   d: DeploymentApprovalData,
   brand: Brand = brandDefault(),
 ): Mail {
-  const rows: [string, string][] = [
-    ['Product', d.product],
-    ['Version', d.version],
-    ['Environment', d.env],
+  const p = product(d.product);
+  const env = environmentLabel(d.env);
+  const link = appLink(brand, `/deployments/${encodeURIComponent(d.deploymentId)}`);
+  const rows: [string, Rich][] = [
     ['Requested by', d.requesterName],
-    ['Requested', formatWhen(d.requestedAt, d.timeZone)],
+    ['Requested', formatInstant(d.requestedAt, d.timeZone)],
   ];
-  if (d.commit) rows.push(['Commit', d.commit]);
+  if (d.commit) rows.push(['Commit', [{ code: d.commit }]]);
   return renderEmail(
     {
       category: 'deployment-approval',
       kind: 'notification',
-      subject: `Approval needed: ${d.product} ${d.version} to ${d.env}`,
+      subject: `Approval needed: ${p.name} ${d.version} to ${env.label}`,
       preheader: `${d.requesterName} is waiting for a second approver.`,
+      eyebrow: { label: 'Deployment approval', tone: 'warn' },
+      hero: 'deploy',
+      workspace: d.workspace,
       heading: 'A deployment is waiting for your approval',
       greeting: d.name,
       blocks: [
@@ -691,25 +802,36 @@ export function deploymentApprovalEmail(
           t: 'p',
           text: [
             { strong: d.requesterName },
-            ' requested a deployment of ',
-            { strong: `${d.product} ${d.version}` },
+            ' requested a release of ',
+            { strong: `${p.name} ${d.version}` },
             ' to ',
-            { strong: d.env },
-            ' that needs a second approver.',
+            { strong: env.label },
+            '. It needs a second approver before it can go out.',
           ],
         },
-        { t: 'facts', rows },
+        {
+          t: 'card',
+          meta: [{ product: p }],
+          title: `${p.name} ${d.version}`,
+          href: link,
+          pills: [
+            { label: env.label, tone: env.tone },
+            { label: 'Awaiting approval', tone: 'accent' },
+          ],
+          rows,
+        },
         {
           t: 'button',
-          href: appLink(brand, `/deployments/${encodeURIComponent(d.deploymentId)}`),
+          href: link,
           label: 'Review deployment',
+          secondary: { href: appLink(brand, '/deployments'), text: 'See all deployments' },
         },
         {
           t: 'muted',
           text: 'Deployments follow the two-person rule: the requester cannot approve their own release. Approving requires step-up verification and is recorded in the audit log.',
         },
       ],
-      reason: `You received this email because you can approve deployments of ${d.product} in ${brand.name}.`,
+      reason: `You received this email because you can approve deployments of ${p.name} in ${brand.name}.`,
     },
     brand,
   );
@@ -724,13 +846,17 @@ export interface OffboardingStartedData {
   lastDay: string;
   handoverName: string;
   startedByName: string;
+  workspace?: string;
+  timeZone?: string;
+  now?: When;
 }
 
 export function offboardingStartedEmail(
   d: OffboardingStartedData,
   brand: Brand = brandDefault(),
 ): Mail {
-  const lastDay = formatDate(d.lastDay);
+  const lastDay = formatDay(d.lastDay, { timeZone: d.timeZone });
+  const lastDayRel = formatDay(d.lastDay, { timeZone: d.timeZone, now: d.now ?? Date.now() });
   const link = appLink(brand, `/team/${encodeURIComponent(d.memberId)}`);
   if (d.audience === 'handover')
     return renderEmail(
@@ -739,6 +865,9 @@ export function offboardingStartedEmail(
         kind: 'notification',
         subject: `${d.memberName} is handing work over to you`,
         preheader: `${d.memberName}'s last day is ${lastDay}.`,
+        eyebrow: { label: 'Handover' },
+        hero: 'handover',
+        workspace: d.workspace,
         heading: `${d.memberName} is handing work over to you`,
         greeting: d.name,
         blocks: [
@@ -752,7 +881,8 @@ export function offboardingStartedEmail(
           {
             t: 'facts',
             rows: [
-              ['Last day', lastDay],
+              ['Leaving', d.memberName],
+              ['Last day', lastDayRel],
               ['Started by', d.startedByName],
             ],
           },
@@ -772,17 +902,20 @@ export function offboardingStartedEmail(
       kind: 'account',
       subject: `Your ${brand.name} offboarding has started`,
       preheader: `Your last day is ${lastDay}. Your work hands over to ${d.handoverName}.`,
+      eyebrow: { label: 'Offboarding' },
+      hero: 'handover',
+      workspace: d.workspace,
       heading: 'Your offboarding has started',
       greeting: d.name,
       blocks: [
         {
           t: 'p',
-          text: `Your offboarding from ${brand.name} was started by ${d.startedByName}. Your access stays as it is until offboarding completes.`,
+          text: `Your offboarding from ${d.workspace ?? brand.name} was started by ${d.startedByName}. Your access stays as it is until offboarding completes.`,
         },
         {
           t: 'facts',
           rows: [
-            ['Last day', lastDay],
+            ['Last day', lastDayRel],
             ['Handover to', d.handoverName],
             ['Started by', d.startedByName],
           ],
@@ -799,23 +932,41 @@ export function offboardingStartedEmail(
   );
 }
 
-export function offboardingCompletedEmail(name: string, brand: Brand = brandDefault()): Mail {
+export function offboardingCompletedEmail(
+  name: string,
+  brand: Brand = brandDefault(),
+  opts: { workspace?: string } = {},
+): Mail {
   return renderEmail(
     {
       category: 'offboarding-completed',
       kind: 'account',
+      noAccess: true,
       subject: `Your ${brand.name} access has ended`,
       preheader: 'Your offboarding is complete and your access has been removed.',
+      eyebrow: { label: 'Offboarding complete' },
+      hero: 'farewell',
+      workspace: opts.workspace,
       heading: 'Your access has ended',
       greeting: name,
       blocks: [
         {
           t: 'p',
-          text: `Your offboarding is complete and your ${brand.name} access has been removed. Thank you for your contributions.`,
+          text: `Your offboarding is complete and your ${brand.name} access has been removed. Your sessions, access grants and tokens no longer work. Thank you for your contributions.`,
         },
         {
-          t: 'p',
+          t: 'notice',
+          tone: 'info',
+          title: 'One last step',
           text: 'Please delete any remaining local copies of confidential information, as agreed in the NDA.',
+        },
+        {
+          t: 'muted',
+          text: [
+            'Questions about your offboarding? Reply to this email or contact ',
+            { href: `mailto:${brand.supportEmail}`, text: brand.supportEmail },
+            '.',
+          ],
         },
       ],
       reason: `You received this email because your ${brand.name} account was closed.`,
@@ -824,40 +975,134 @@ export function offboardingCompletedEmail(name: string, brand: Brand = brandDefa
   );
 }
 
+// ─── digest ──────────────────────────────────────────────────────────────
+
+export interface DigestItem {
+  title: string;
+  body: string;
+  link: string;
+  at?: string;
+  /** Notification kind (`assignment`, `mention`, `doc-comment`, `approval`, `offboarding`, `security`). */
+  kind?: string;
+}
+
+/** Digest groups in display order: title, HTML icon glyph, tone, the kinds it collects. */
+const DIGEST_GROUPS: {
+  key: string;
+  title: string;
+  one: string;
+  glyph: string;
+  tone: Tone;
+  kinds: string[];
+}[] = [
+  {
+    key: 'approval',
+    title: 'Waiting for your approval',
+    one: 'approval',
+    glyph: '↑',
+    tone: 'warn',
+    kinds: ['approval'],
+  },
+  {
+    key: 'assignment',
+    title: 'Assigned to you',
+    one: 'assignment',
+    glyph: '✓',
+    tone: 'accent',
+    kinds: ['assignment'],
+  },
+  {
+    key: 'mention',
+    title: 'Mentions and comments',
+    one: 'mention',
+    glyph: '@',
+    tone: 'info',
+    kinds: ['mention', 'doc-comment'],
+  },
+  {
+    key: 'offboarding',
+    title: 'Handovers',
+    one: 'handover',
+    glyph: '→',
+    tone: 'neutral',
+    kinds: ['offboarding'],
+  },
+  {
+    key: 'security',
+    title: 'Security',
+    one: 'security update',
+    glyph: '!',
+    tone: 'bad',
+    kinds: ['security'],
+  },
+  { key: 'other', title: 'Other updates', one: 'update', glyph: '•', tone: 'neutral', kinds: [] },
+];
+
 export function digestEmail(
   name: string,
-  items: { title: string; body: string; link: string; at?: string }[],
-  opts: { period?: 'daily' | 'weekly'; timeZone?: string } = {},
+  items: DigestItem[],
+  opts: {
+    period?: 'daily' | 'weekly';
+    timeZone?: string;
+    workspace?: string;
+    now?: When;
+  } = {},
   brand: Brand = brandDefault(),
 ): Mail {
   const n = items.length;
   const label = opts.period === 'weekly' ? 'weekly' : opts.period === 'daily' ? 'daily' : '';
+  const groups = DIGEST_GROUPS.map((g) => ({
+    ...g,
+    items: items.filter((i) =>
+      g.key === 'other'
+        ? !DIGEST_GROUPS.some((o) => o.kinds.includes(i.kind ?? ''))
+        : g.kinds.includes(i.kind ?? ''),
+    ),
+  })).filter((g) => g.items.length);
+  const summary = listing(groups.map((g) => plural(g.items.length, g.one)));
+  const now = opts.now ?? Date.now();
   return renderEmail(
     {
       category: 'digest',
       kind: 'notification',
       subject: `You have ${n} unread ${brand.name} notification${n === 1 ? '' : 's'}`,
-      preheader: items
-        .slice(0, 2)
-        .map((i) => i.title)
-        .join(' · '),
+      preheader: summary
+        ? `${summary.charAt(0).toUpperCase()}${summary.slice(1)}.`
+        : `${n} unread notifications.`,
+      eyebrow: {
+        label: label
+          ? `${label.charAt(0).toUpperCase()}${label.slice(1)} summary`
+          : 'Unread notifications',
+      },
+      hero: 'digest',
+      workspace: opts.workspace,
       heading: label ? `Your ${label} summary` : 'Your unread notifications',
       greeting: name,
       blocks: [
         {
           t: 'p',
-          text: `You have ${n} unread notification${n === 1 ? '' : 's'} in ${brand.name}.`,
+          text: [
+            `Here is what is waiting for you in ${opts.workspace ?? brand.name}: `,
+            { strong: summary || plural(n, 'notification') },
+            '.',
+          ],
         },
-        {
+        ...groups.map((g): Block => ({
           t: 'list',
-          items: items.map((i) => ({
+          heading: { title: g.title, glyph: g.glyph, tone: g.tone, count: g.items.length },
+          items: g.items.map((i) => ({
             title: i.title,
             body: i.body,
             href: i.link,
-            meta: i.at ? formatWhen(i.at, opts.timeZone) : undefined,
+            meta: i.at ? formatRecent(i.at, opts.timeZone, now) : undefined,
           })),
+        })),
+        {
+          t: 'button',
+          href: appLink(brand, '/inbox'),
+          label: 'Open your inbox',
+          secondary: { href: appLink(brand, '/my-work'), text: 'See all your work' },
         },
-        { t: 'button', href: appLink(brand, '/inbox'), label: 'Open your inbox' },
       ],
       reason: `You received this summary because you have unread notifications in ${brand.name}.`,
     },

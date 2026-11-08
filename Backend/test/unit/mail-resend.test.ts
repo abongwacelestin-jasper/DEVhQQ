@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { resendTransport, retryAfterMs, type ResendPayload } from '../../mail/resend.ts';
 import { maskEmail, type MailMessage } from '../../mail/transport.ts';
 import { sendMail, setMailTransport } from '../../mail/index.ts';
-import { loadMailConfig, type MailEnv } from '../../config/mail.ts';
+import { loadMailConfig, registrableDomain, type MailEnv } from '../../config/mail.ts';
 
 const KEY = 're_test_0123456789abcdef';
 const MSG: MailMessage = {
@@ -325,5 +325,64 @@ describe('config/mail — fail closed', () => {
     // The platform's own palette (docs/operations/brand.md).
     assert.equal(c.brand.primaryColor, '#4f46e5');
     assert.equal(c.brand.accentColor, '#3730a3');
+  });
+
+  it('derives every brand default from the app address', () => {
+    const c = loadMailConfig({ APP_URL: 'https://app.example.com' }, { ...prod });
+    assert.equal(c.brand.name, 'DevHQ');
+    assert.equal(c.brand.legalName, 'DevHQ');
+    assert.equal(c.brand.websiteUrl, 'https://app.example.com');
+    assert.equal(c.brand.supportEmail, 'support@example.com');
+    assert.equal(c.brand.logoUrl, 'https://app.example.com/brand/devhq-email-logo.png');
+    assert.equal(c.brand.assetBaseUrl, 'https://app.example.com/brand');
+    assert.equal(c.replyTo, 'support@example.com');
+    assert.equal(c.from, 'DevHQ <no-reply@example.com>');
+    assert.equal(c.brand.postalAddress, '', 'a postal address is never invented');
+  });
+
+  it('finds the registrable domain behind two-part suffixes and localhost', () => {
+    assert.equal(registrableDomain('app.example.com'), 'example.com');
+    assert.equal(registrableDomain('example.co.uk'), 'example.co.uk');
+    assert.equal(registrableDomain('app.mail.example.co.uk'), 'example.co.uk');
+    assert.equal(registrableDomain('localhost'), 'devhq.local');
+    assert.equal(registrableDomain('127.0.0.1'), 'devhq.local');
+    assert.equal(
+      registrableDomain('devhq-production.up.railway.app'),
+      'devhq-production.up.railway.app',
+    );
+    const uk = loadMailConfig({ APP_URL: 'https://example.co.uk' }, prod);
+    assert.equal(uk.brand.supportEmail, 'support@example.co.uk');
+    assert.equal(uk.from, 'DevHQ <no-reply@example.co.uk>');
+    const local = loadMailConfig({}, dev);
+    assert.equal(local.brand.supportEmail, 'support@devhq.local');
+    assert.equal(local.replyTo, 'support@devhq.local');
+    assert.equal(local.brand.logoUrl, 'http://localhost:5173/brand/devhq-email-logo.png');
+  });
+
+  it('keeps explicit brand values and still requires MAIL_FROM for resend in production', () => {
+    const c = loadMailConfig(
+      {
+        ...resendProd,
+        APP_URL: 'https://app.example.com',
+        BRAND_SUPPORT_EMAIL: 'help@example.org',
+        BRAND_ASSET_BASE_URL: 'https://cdn.example.org/devhq/',
+      },
+      prod,
+    );
+    assert.equal(c.brand.supportEmail, 'help@example.org');
+    assert.equal(c.replyTo, 'help@example.org');
+    assert.equal(c.brand.assetBaseUrl, 'https://cdn.example.org/devhq');
+    assert.throws(
+      () => loadMailConfig({ ...resendProd, BRAND_ASSET_BASE_URL: 'http://cdn.example.org' }, prod),
+      /BRAND_ASSET_BASE_URL must use https/,
+    );
+    assert.throws(
+      () =>
+        loadMailConfig(
+          { ...resendProd, MAIL_FROM: undefined, APP_URL: 'https://app.example.com' },
+          prod,
+        ),
+      /MAIL_FROM is required/,
+    );
   });
 });

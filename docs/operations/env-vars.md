@@ -12,7 +12,7 @@ and `Models/`. What each one means and its defaults are in the
 hand-written [configuration reference](configuration.md); this page is the
 drift check: if code starts reading a new variable, it appears here.
 
-**109 variables.** "`_FILE`" means the container can pass the
+**110 variables.** "`_FILE`" means the container can pass the
 value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 
 | Variable | Backend | Frontend | Models | `_FILE` | In `.env.example` |
@@ -31,6 +31,7 @@ value as a file path in `NAME_FILE` (compose secrets) instead of `NAME`.
 | `BACKUP_DIR` | `config/env.ts` |  |  |  | yes |
 | `BACKUP_RETENTION_DAYS` | `config/env.ts` |  |  |  |  |
 | `BRAND_ACCENT_COLOR` | `config/mail.ts` |  |  |  | yes |
+| `BRAND_ASSET_BASE_URL` | `config/mail.ts` |  |  |  |  |
 | `BRAND_LEGAL_NAME` | `config/mail.ts` |  |  |  | yes |
 | `BRAND_LOGO_URL` | `config/mail.ts` |  |  |  | yes |
 | `BRAND_LOGO_WIDTH` | `config/mail.ts` |  |  |  | yes |
