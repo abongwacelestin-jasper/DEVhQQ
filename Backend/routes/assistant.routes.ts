@@ -18,6 +18,7 @@ import { authenticate } from '../middleware/authenticate.ts';
 import { can, canSeeProduct, hasOwnerPowers, requireArea } from '../auth/rbac.ts';
 import { audit } from '../audit/auditLog.ts';
 import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError, type Principal, type ProjectDoc } from '../types.ts';
 import { ASSISTANT_TIMEOUT_MS, mlCall, mlConfig, MlError } from '../integrations/ml/client.ts';
 import { parseAssistant } from '../integrations/ml/responses.ts';
@@ -73,14 +74,17 @@ interface ContextItem {
   at: string;
 }
 
-const memberName = (id: string | undefined) =>
-  id ? (db.members.get(id)?.name ?? id) : 'unassigned';
-
 /** Everything this caller may read, newest first, before capping. */
-export function gatherContext(
+export async function gatherContext(
   p: Principal,
   scope: { product?: string; projectId?: string } = {},
-): ContextItem[] {
+): Promise<ContextItem[]> {
+  const names = new Map((await repos.members.list()).map((m) => [m.id, m.name]));
+  const memberName = (id: string | undefined) => (id ? (names.get(id) ?? id) : 'unassigned');
+  const tasks = (await repos.tasks.list()).filter(
+    (t) => canSeeProduct(p, t.product) && (!scope.product || t.product === scope.product),
+  );
+  const allComments = await repos.taskComments.list(tasks.map((t) => t.key));
   const inScope = (product: string, projectId?: string) =>
     (!scope.product || product === scope.product) &&
     (!scope.projectId || !projectId || projectId === scope.projectId);
@@ -97,9 +101,9 @@ export function gatherContext(
         at: d.updatedAt,
       });
 
-  for (const t of db.tasks.values()) {
+  for (const t of tasks) {
     if (!canSeeProduct(p, t.product) || !inScope(t.product, t.projectId)) continue;
-    const comments = [...db.taskComments.values()]
+    const comments = allComments
       .filter((c) => c.taskKey === t.key)
       .sort((a, b) => b.at.localeCompare(a.at))
       .slice(0, 3)
@@ -208,7 +212,7 @@ export function registerAssistantRoutes(r: Router) {
           'The assistant is not configured on this server',
         );
       }
-      const context = capContext(gatherContext(p, body.scope ?? {}));
+      const context = capContext(await gatherContext(p, body.scope ?? {}));
       const allowed = new Set(context.map((c) => c.id));
       try {
         const res = parseAssistant(

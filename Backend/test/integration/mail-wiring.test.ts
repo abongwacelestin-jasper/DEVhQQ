@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { startApp, type TestServer } from '../helpers/server.ts';
 import { DEMO_MFA_CODE, fullSignIn, passwordOnly, signInAs } from '../helpers/auth.ts';
 import { memoryTransport, setMailTransport, type MailMessage } from '../../mail/index.ts';
-import { db } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 import { notify } from '../../domain/collab/notify.ts';
 import { config } from '../../config/env.ts';
 
@@ -89,7 +89,7 @@ describe('mail wiring — sign-in alerts', () => {
   });
 
   it('security alerts ignore notification preferences', async () => {
-    const m = db.members.get('m4')!;
+    const m = (await repos.members.get('m4'))!;
     const saved = m.profile;
     m.profile = {
       displayName: 'Kofi',
@@ -100,6 +100,7 @@ describe('mail wiring — sign-in alerts', () => {
       notify: [],
       completedAt: new Date().toISOString(),
     };
+    await repos.members.put(m);
     try {
       await fullSignIn(app, KOFI); // a brand-new client IP
       const [alert] = await sent((x) => x.category === 'sign-in-alert');
@@ -107,6 +108,7 @@ describe('mail wiring — sign-in alerts', () => {
       assert.ok(alert.text.includes('Hello Kofi,'), 'uses the display name');
     } finally {
       m.profile = saved;
+      await repos.members.put(m);
     }
   });
 });
@@ -160,9 +162,7 @@ describe('mail wiring — access requests', () => {
       assert.ok(absolute(e));
     }
     // The notification is marked emailed, so the digest will not repeat it.
-    const n = [...(await import('../../domain/collab/store.ts')).notifications.values()].find(
-      (x) => x.refId === 'access:m4:/audit' && x.memberId === 'm1',
-    );
+    const n = (await repos.notifications.list('m1')).find((x) => x.refId === 'access:m4:/audit');
     assert.ok(n?.emailedAt);
 
     // A repeat while the first is unread collapses: no second email.
@@ -183,7 +183,9 @@ describe('mail wiring — lock-out, invite, incident, preferences', () => {
     assert.ok(m, 'lock-out email sent');
     assert.equal(m.to, email);
     assert.ok(m.text.includes('5 unsuccessful sign-in attempts'));
-    db.members.get('m10')!.lockedUntil = undefined;
+    const ravi = (await repos.members.get('m10'))!;
+    ravi.lockedUntil = undefined;
+    await repos.members.put(ravi);
   });
 
   it('emails an invitation with an absolute single-use link', async () => {
@@ -217,14 +219,14 @@ describe('mail wiring — lock-out, invite, incident, preferences', () => {
     assert.equal(res.status, 201, res.text);
     const [m] = await sent((x) => x.category === 'incident');
     assert.ok(m, 'incident email sent');
-    assert.equal(m.to, db.members.get('m2')!.email);
+    assert.equal(m.to, (await repos.members.get('m2'))!.email);
     assert.ok(m.subject.includes(`${res.json.id} assigned to you`));
     assert.ok(m.text.includes(`/incidents/${res.json.id}`));
   });
 
   it('task emails respect the member notification preferences', async () => {
-    const task = [...db.tasks.values()].find((t) => t.assignee === 'm4')!;
-    const m = db.members.get('m4')!;
+    const task = (await repos.tasks.list({ assignee: 'm4' }))[0];
+    const m = (await repos.members.get('m4'))!;
     const saved = m.profile;
     const profile = {
       displayName: 'Kofi',
@@ -236,7 +238,8 @@ describe('mail wiring — lock-out, invite, incident, preferences', () => {
     };
     try {
       m.profile = { ...profile, notify: ['mentions'] };
-      notify({
+      await repos.members.put(m);
+      await notify({
         memberId: 'm4',
         kind: 'assignment',
         title: `${task.key} assigned to you`,
@@ -249,7 +252,8 @@ describe('mail wiring — lock-out, invite, incident, preferences', () => {
       assert.equal(mail.outbox.length, 0, 'opted out of "assigned"');
 
       m.profile = { ...profile, notify: ['assigned'] };
-      notify({
+      await repos.members.put(m);
+      await notify({
         memberId: 'm4',
         kind: 'assignment',
         title: `${task.key} assigned to you`,
@@ -264,6 +268,7 @@ describe('mail wiring — lock-out, invite, incident, preferences', () => {
       assert.ok(t.text.includes(`${config.mail.brand.appUrl}/tasks/${task.key}`));
     } finally {
       m.profile = saved;
+      await repos.members.put(m);
     }
   });
 });

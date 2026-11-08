@@ -9,12 +9,15 @@
  * idle timeout keeps the session but clears `verifiedAt`, so the next
  * sensitive action demands step-up verification.
  *
- * Storage: sessions live in the persisted `sessions` collection so they survive
- * a restart. The bearer token is `sign(rawId)`; the stored record is keyed by
- * SHA-256(rawId) and never contains the raw id or the token, so a database
+ * Storage: sessions live in the session store (data/sessions.ts) — the
+ * `sessions` table with DATABASE_URL, so every replica validates every
+ * session and a revocation on one replica is effective on all of them on the
+ * next request. The bearer token is `sign(rawId)`; the stored record is keyed
+ * by SHA-256(rawId) and never contains the raw id or the token, so a database
  * dump cannot be replayed as a session even with the signing key. Activity
  * (`lastSeenAt`) is persisted at most once per LAST_SEEN_PERSIST_MS to avoid a
  * write per request; security-relevant changes are persisted immediately.
+ * Revoking deletes the record.
  */
 
 import { createHash } from 'node:crypto';
@@ -22,55 +25,36 @@ import type { IncomingMessage } from 'node:http';
 import { config } from '../config/env.ts';
 import { randomToken, signToken, verifySignedToken } from '../security/crypto.ts';
 import { lookupIp } from '../lib/geo.ts';
-import { createCollection } from '../store/collection.ts';
-import { HttpError, type GeoLocation } from '../types.ts';
+import { repos } from '../data/index.ts';
+import type { SessionRecord, SessionStage } from '../data/sessions.ts';
+import { HttpError } from '../types.ts';
 
-export type SessionStage = 'password' | 'verified';
+export type { SessionRecord, SessionStage } from '../data/sessions.ts';
 
-export interface SessionRecord {
-  /** Opaque handle: SHA-256 (base64url) of the random id inside the token. Never the token itself. */
-  id: string;
-  memberId: string;
-  stage: SessionStage;
-  createdAt: number;
-  lastSeenAt: number;
-  /** Last strong verification (TOTP or passkey). 0 = step-up required. */
-  verifiedAt: number;
-  uaHash: string;
-  /** Short, human-readable client label, e.g. "Chrome · macOS". Never the raw UA. */
-  client: string;
-  ip: string;
-  location: GeoLocation;
-  revoked: boolean;
-  method: 'password' | 'passkey';
-  /** Replay guard for TOTP. */
-  lastTotpCounter: number;
-}
-
-const sessions = createCollection<SessionRecord>('sessions');
 
 /** How stale a persisted `lastSeenAt` may get before it is written again. */
 const LAST_SEEN_PERSIST_MS = 60_000;
-/** Last persisted `lastSeenAt` per session (memory only). */
+/** Last persisted `lastSeenAt` per session handled by this process (memory only, best effort). */
 const persistedSeen = new Map<string, number>();
+const MAX_TRACKED = 50_000;
 
 /** Storage key for a token's random id. */
 function handleFor(rawId: string): string {
   return createHash('sha256').update(rawId).digest('base64url');
 }
 
-function persist(s: SessionRecord) {
-  sessions.save(s.id);
+function track(s: SessionRecord) {
+  if (persistedSeen.size >= MAX_TRACKED) persistedSeen.clear();
   persistedSeen.set(s.id, s.lastSeenAt);
 }
 
-function store(s: SessionRecord) {
-  sessions.set(s.id, s);
-  persistedSeen.set(s.id, s.lastSeenAt);
+async function store(s: SessionRecord) {
+  await repos.sessions.put(s);
+  track(s);
 }
 
-function drop(id: string) {
-  sessions.delete(id);
+async function drop(id: string) {
+  await repos.sessions.delete(id);
   persistedSeen.delete(id);
 }
 
@@ -108,7 +92,7 @@ function clientLabel(req: IncomingMessage): string {
   return `${browser} · ${os}`;
 }
 
-export function createSession(
+export async function createSession(
   memberId: string,
   req: IncomingMessage,
   ip: string,
@@ -132,14 +116,14 @@ export function createSession(
     method,
     lastTotpCounter: -1,
   };
-  store(rec);
+  await store(rec);
   return { token: signToken(rawId), session: rec };
 }
 
 /** Issues a fresh token for the same session state and kills the old one (prevents session fixation). */
-export function rotateSession(old: SessionRecord, patch: Partial<SessionRecord> = {}) {
+export async function rotateSession(old: SessionRecord, patch: Partial<SessionRecord> = {}) {
   old.revoked = true;
-  drop(old.id);
+  await drop(old.id);
   const rawId = randomToken(32);
   const rec: SessionRecord = {
     ...old,
@@ -148,21 +132,25 @@ export function rotateSession(old: SessionRecord, patch: Partial<SessionRecord> 
     revoked: false,
     lastSeenAt: Date.now(),
   };
-  store(rec);
+  await store(rec);
   return { token: signToken(rawId), session: rec };
 }
 
 export type ValidationResult = { session: SessionRecord; stepUpRequired: boolean };
 
-export function validateSession(token: string, req: IncomingMessage, ip: string): ValidationResult {
+export async function validateSession(
+  token: string,
+  req: IncomingMessage,
+  ip: string,
+): Promise<ValidationResult> {
   const rawId = verifySignedToken(token);
   if (!rawId) throw new HttpError(401, 'invalid_token', 'Invalid session');
-  const s = sessions.get(handleFor(rawId));
+  const s = await repos.sessions.get(handleFor(rawId));
   if (!s || s.revoked) throw new HttpError(401, 'session_revoked', 'Session ended');
 
   const now = Date.now();
   if (now - s.createdAt > config.sessionAbsoluteMs) {
-    revoke(s.id);
+    await revoke(s.id);
     throw new HttpError(401, 'session_expired', 'Session expired — sign in again');
   }
   let changed = false;
@@ -172,7 +160,7 @@ export function validateSession(token: string, req: IncomingMessage, ip: string)
     changed = true;
   }
   if (s.uaHash !== uaHash(req)) {
-    revoke(s.id);
+    await revoke(s.id);
     throw new HttpError(
       401,
       'session_context_changed',
@@ -186,7 +174,7 @@ export function validateSession(token: string, req: IncomingMessage, ip: string)
     changed = true;
   }
   s.lastSeenAt = now;
-  if (changed || now - (persistedSeen.get(s.id) ?? 0) >= LAST_SEEN_PERSIST_MS) persist(s);
+  if (changed || now - (persistedSeen.get(s.id) ?? 0) >= LAST_SEEN_PERSIST_MS) await store(s);
   return { session: s, stepUpRequired: s.verifiedAt === 0 };
 }
 
@@ -198,37 +186,25 @@ export function markVerified(s: SessionRecord, totpCounter?: number) {
   });
 }
 
-export function revoke(id: string) {
-  const s = sessions.get(id);
-  if (s) s.revoked = true;
-  drop(id);
+export async function revoke(id: string) {
+  await drop(id);
 }
 
 /** Used on password reset, deactivation, role change, or suspected compromise. */
-export function revokeAllFor(memberId: string): number {
-  let n = 0;
-  for (const s of [...sessions.values()]) {
-    if (s.memberId === memberId) {
-      revoke(s.id);
-      n++;
-    }
-  }
-  return n;
+export async function revokeAllFor(memberId: string): Promise<number> {
+  const ids = await repos.sessions.deleteForMember(memberId);
+  for (const id of ids) persistedSeen.delete(id);
+  return ids.length;
 }
 
 /**
  * Revokes every session of a member except `keepId` (the caller's own).
  * Used after a password change and for "sign out everywhere else".
  */
-export function revokeAllExcept(memberId: string, keepId: string): number {
-  let n = 0;
-  for (const s of [...sessions.values()]) {
-    if (s.memberId === memberId && s.id !== keepId) {
-      revoke(s.id);
-      n++;
-    }
-  }
-  return n;
+export async function revokeAllExcept(memberId: string, keepId: string): Promise<number> {
+  const ids = await repos.sessions.deleteForMember(memberId, keepId);
+  for (const id of ids) persistedSeen.delete(id);
+  return ids.length;
 }
 
 /** Public projection — the id is truncated to an 8-char handle and is useless as a credential. */
@@ -248,29 +224,31 @@ function publicView(s: SessionRecord, currentId?: string) {
   };
 }
 
-export function listSessions(memberId: string, currentId?: string) {
-  return [...sessions.values()]
-    .filter((s) => s.memberId === memberId)
-    .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
-    .map((s) => publicView(s, currentId));
+export async function listSessions(memberId: string, currentId?: string) {
+  return (await repos.sessions.listForMember(memberId)).map((s) => publicView(s, currentId));
 }
 
-export function listAllSessions(currentId?: string) {
-  return [...sessions.values()]
-    .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
-    .map((s) => publicView(s, currentId));
+export async function listAllSessions(currentId?: string) {
+  return (await repos.sessions.listAll()).map((s) => publicView(s, currentId));
 }
 
-export function findSessionByPrefix(memberId: string, prefix: string): SessionRecord | undefined {
+export async function findSessionByPrefix(
+  memberId: string,
+  prefix: string,
+): Promise<SessionRecord | undefined> {
   if (prefix.length < 8) return undefined;
-  return [...sessions.values()].find((s) => s.memberId === memberId && s.id.startsWith(prefix));
+  return (await repos.sessions.listForMember(memberId)).find((s) => s.id.startsWith(prefix));
 }
 
-export function sessionCount() {
-  return sessions.size;
+export function sessionCount(): Promise<number> {
+  return repos.sessions.count();
 }
 
-setInterval(() => {
-  const cutoff = Date.now() - config.sessionAbsoluteMs;
-  for (const s of [...sessions.values()]) if (s.createdAt < cutoff) revoke(s.id);
-}, 5 * 60_000).unref();
+/** Deletes sessions past their absolute lifetime. Idempotent on every replica. */
+export async function pruneExpiredSessions(): Promise<number> {
+  const n = await repos.sessions.deleteCreatedBefore(Date.now() - config.sessionAbsoluteMs);
+  if (n) persistedSeen.clear();
+  return n;
+}
+
+setInterval(() => void pruneExpiredSessions().catch(() => undefined), 5 * 60_000).unref();

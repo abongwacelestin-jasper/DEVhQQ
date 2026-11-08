@@ -18,7 +18,7 @@ import { revokeAllFor } from '../auth/sessions.ts';
 import { listGrants, revokeGrant } from '../auth/jit.ts';
 import { publish } from '../lib/events.ts';
 import { audit } from '../audit/auditLog.ts';
-import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError, type Member, type Principal } from '../types.ts';
 import { sendMail } from '../mail/index.ts';
 import { offboardingCompletedEmail } from '../mail/templates.ts';
@@ -64,21 +64,21 @@ function current(memberId: string): Resignation | undefined {
   return best;
 }
 
-function active(id: string, field: string): Member {
-  const m = db.members.get(id);
+async function active(id: string, field: string): Promise<Member> {
+  const m = await repos.members.get(id);
   if (!m || m.status !== 'active')
     throw new HttpError(422, 'validation_failed', `${field}: ${id} is not an active member`);
   return m;
 }
 
-function sync(m: Member, r: Resignation) {
+async function sync(m: Member, r: Resignation) {
   m.offboarding = {
     id: r.id,
     status: r.status,
     startedAt: r.submittedAt,
     ...(r.status === 'completed' && r.decidedAt ? { completedAt: r.decidedAt } : {}),
   };
-  saveMember(m.id);
+  await saveMember(m);
   resignations.save(r.id);
 }
 
@@ -92,13 +92,13 @@ function log(ctx: Ctx, action: string, target: string) {
   });
 }
 
-function complete(ctx: Ctx, m: Member, r: Resignation) {
+async function complete(ctx: Ctx, m: Member, r: Resignation) {
   const by = ctx.principal!.memberId;
   if (m.id === by)
     throw new HttpError(403, 'self_offboard', 'Another admin must complete your offboarding');
   if (
     m.role === 'Owner' &&
-    [...db.members.values()].filter((x) => x.role === 'Owner' && x.status === 'active').length === 1
+    (await repos.members.count({ role: 'Owner', status: 'active' })) === 1
   )
     throw new HttpError(409, 'last_owner', 'The workspace needs at least one Owner');
   const now = new Date().toISOString();
@@ -109,7 +109,7 @@ function complete(ctx: Ctx, m: Member, r: Resignation) {
   r.decidedBy = by;
   r.decidedAt = now;
   m.status = 'deactivated';
-  const sessions = revokeAllFor(m.id);
+  const sessions = await revokeAllFor(m.id);
   let grants = 0;
   for (const g of listGrants())
     if (g.memberId === m.id && (g.status === 'active' || g.status === 'pending')) {
@@ -119,7 +119,7 @@ function complete(ctx: Ctx, m: Member, r: Resignation) {
   // Personal access tokens belong to the SEC lane's module, which listens for this event.
   publish('member.deactivated', { memberId: m.id, reason: 'offboarding' });
   r.revoked = { sessions, grants, tokens: 'event-emitted' };
-  sync(m, r);
+  await sync(m, r);
   log(
     ctx,
     'offboarding.completed',
@@ -176,15 +176,15 @@ export function registerOffboardingRoutes(r: Router) {
     },
     authenticate,
     requireStepUp(),
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
       const self = p.memberId === ctx.params.memberId;
       if (!self && !isAdmin(p))
         throw new HttpError(403, 'forbidden', 'Requires manage on Administration');
-      const target = db.members.get(ctx.params.memberId);
+      const target = await repos.members.get(ctx.params.memberId);
       if (!target || target.status !== 'active') throw new HttpError(404, 'not_found', 'Not found');
       const body = parse(startBody, ctx.body);
-      const heir = active(body.handoverTo, 'handoverTo');
+      const heir = await active(body.handoverTo, 'handoverTo');
       if (heir.id === target.id)
         throw new HttpError(422, 'validation_failed', 'handoverTo must be someone else');
       const open = current(target.id);
@@ -204,14 +204,14 @@ export function registerOffboardingRoutes(r: Router) {
         checklist: baseChecklist(),
       };
       resignations.set(res.id, res);
-      sync(target, res);
+      await sync(target, res);
       log(
         ctx,
         'offboarding.started',
         `${target.name} (${target.id}) · last day ${res.lastDay} · handover ${heir.id}`,
       );
       void sendOffboardingStarted(target, res);
-      notify({
+      await notify({
         memberId: heir.id,
         kind: 'offboarding',
         title: `${target.name} is handing work over to you`,
@@ -235,7 +235,7 @@ export function registerOffboardingRoutes(r: Router) {
     },
     authenticate,
     requireStepUp(),
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
       const body = parse(patchBody, ctx.body);
       const self = p.memberId === ctx.params.memberId;
@@ -246,7 +246,7 @@ export function registerOffboardingRoutes(r: Router) {
         if (!self) throw new HttpError(403, 'forbidden', 'Requires manage on Administration');
         throw new HttpError(403, 'forbidden', 'You can only withdraw your own resignation');
       }
-      const target = db.members.get(ctx.params.memberId);
+      const target = await repos.members.get(ctx.params.memberId);
       const res = current(ctx.params.memberId);
       if (!target || !res) throw new HttpError(404, 'not_found', 'Not found');
       if (res.status === 'completed' || res.status === 'withdrawn')
@@ -254,7 +254,7 @@ export function registerOffboardingRoutes(r: Router) {
 
       if (body.lastDay) res.lastDay = body.lastDay;
       if (body.handoverTo) {
-        const heir = active(body.handoverTo, 'handoverTo');
+        const heir = await active(body.handoverTo, 'handoverTo');
         if (heir.id === target.id)
           throw new HttpError(422, 'validation_failed', 'handoverTo must be someone else');
         res.handoverTo = heir.id;
@@ -272,7 +272,7 @@ export function registerOffboardingRoutes(r: Router) {
         }
       }
       if (body.status === 'completed') {
-        complete(ctx, target, res);
+        await complete(ctx, target, res);
         return res;
       }
       if (body.status) {
@@ -286,7 +286,7 @@ export function registerOffboardingRoutes(r: Router) {
         res.decidedBy = p.memberId;
         res.decidedAt = new Date().toISOString();
       }
-      sync(target, res);
+      await sync(target, res);
       log(
         ctx,
         body.status ? `offboarding.${body.status}` : 'offboarding.updated',

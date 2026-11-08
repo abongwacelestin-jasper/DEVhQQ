@@ -3,7 +3,7 @@
  * Rows are filtered so live GitHub data and the labelled demo set never mix.
  */
 
-import { db } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 import { assertGithubAvailable, githubLive } from '../../integrations/github/config.ts';
 import { ciForSha } from '../../integrations/github/webhook.ts';
 import { ensureGithubDemo } from './demo.ts';
@@ -101,8 +101,8 @@ export function pullView(p: PullRequestRow) {
   };
 }
 
-export function pullDetail(p: PullRequestRow) {
-  const task = p.taskKey ? db.tasks.get(p.taskKey) : undefined;
+export async function pullDetail(p: PullRequestRow) {
+  const task = p.taskKey ? await repos.tasks.get(p.taskKey) : undefined;
   return {
     ...pullView(p),
     reviews: p.reviews,

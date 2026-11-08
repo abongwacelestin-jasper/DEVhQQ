@@ -202,7 +202,11 @@ if (phase === 'verify') {
     task.json.status === 'review' && task.json.priority === 'high',
     task.json,
   );
-  await expect('comment survived', db.taskComments.has(h.commentId) && task.json.comments === 1);
+  const { repos } = await import('../data/index.ts');
+  await expect(
+    'comment survived (task_comments table)',
+    !!(await repos.taskComments.get(h.commentId)) && task.json.comments === 1,
+  );
   await expect('subtask completion survived', db.subtasks.get(h.subtaskId)?.done === true);
   await expect(
     'sign-in history survived (bounded window rebuilt newest-first)',

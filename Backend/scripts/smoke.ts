@@ -1333,8 +1333,9 @@ expect(
     wrongConfirm.status === 401 && confirm.status === 200,
     [wrongConfirm.json, confirm.json],
   );
-  const stored = snapshot().members.find((m) => m.id === 'm7')?.totpSecret ?? '';
-  const snapJson = JSON.stringify(snapshot());
+  const { repos } = await import('../data/index.ts');
+  const stored = (await repos.members.get('m7'))?.totpSecret ?? '';
+  const snapJson = JSON.stringify([snapshot(), await repos.members.list()]);
   expect(
     'SEC: TOTP secret is AES-GCM sealed at rest — the plaintext never appears in a snapshot',
     stored.startsWith('enc:v1:') &&

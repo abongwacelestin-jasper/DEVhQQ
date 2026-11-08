@@ -18,6 +18,7 @@ import { can, requireArea } from '../auth/rbac.ts';
 import { randomToken } from '../security/crypto.ts';
 import { audit } from '../audit/auditLog.ts';
 import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError, type Principal } from '../types.ts';
 import {
   canModerate,
@@ -120,8 +121,8 @@ const readBody = v.object({ at: v.optional(v.string({ max: 40 })) });
 
 const nowIso = () => new Date().toISOString();
 
-function activeMember(id: string) {
-  const m = db.members.get(id);
+async function activeMember(id: string) {
+  const m = await repos.members.get(id);
   return m && m.status === 'active' ? m : undefined;
 }
 
@@ -211,16 +212,16 @@ function findMessage(p: Principal, id: string): { m: Message; c: Channel } {
   return { m, c };
 }
 
-function notifyMentions(p: Principal, c: Channel, m: Message, ids: string[]) {
-  const author = db.members.get(p.memberId)?.name ?? p.memberId;
+async function notifyMentions(p: Principal, c: Channel, m: Message, ids: string[]) {
+  const author = (await repos.members.get(p.memberId))?.name ?? p.memberId;
   for (const id of ids) {
-    const viewer = activeMember(id);
+    const viewer = await activeMember(id);
     if (
       !viewer ||
       !canReadChannel({ memberId: id, role: viewer.role, products: viewer.products }, c)
     )
       continue;
-    notify({
+    await notify({
       memberId: id,
       kind: 'mention',
       title: c.kind === 'dm' ? `${author} mentioned you` : `${author} mentioned you in #${c.name}`,
@@ -252,10 +253,10 @@ function auditChange(ctx: Ctx, action: string, target: string, sensitive = false
   });
 }
 
-function validMembers(ids: string[], product?: string): string[] {
+async function validMembers(ids: string[], product?: string): Promise<string[]> {
   const out: string[] = [];
   for (const id of new Set(ids)) {
-    const m = activeMember(id);
+    const m = await activeMember(id);
     if (!m) throw new HttpError(422, 'validation_failed', `members: ${id} is not an active member`);
     if (!seesProduct({ memberId: m.id, role: m.role, products: m.products }, product))
       throw new HttpError(422, 'validation_failed', `members: ${id} is not on ${product}`);
@@ -308,13 +309,13 @@ export function registerMessagingRoutes(r: Router) {
     { summary: 'Create a channel or start a DM', tag, responses: [401, 403, 404, 422, 429] },
     authenticate,
     requireArea('Project', 'view'),
-    (ctx) => {
+    async (ctx) => {
       ensureCollabSeed();
       const p = ctx.principal!;
       const body = parse(createChannelBody, ctx.body);
 
       if (body.kind === 'dm') {
-        const others = validMembers(body.members ?? []).filter((id) => id !== p.memberId);
+        const others = (await validMembers(body.members ?? [])).filter((id) => id !== p.memberId);
         if (others.length < 1 || others.length > 8)
           throw new HttpError(422, 'validation_failed', 'members: a DM needs 1–8 other people');
         const everyone = [p.memberId, ...others].sort();
@@ -322,9 +323,10 @@ export function registerMessagingRoutes(r: Router) {
           (c) => c.kind === 'dm' && [...c.members].sort().join(',') === everyone.join(','),
         );
         if (existing) return channelView(p, existing);
+        const names = await repos.members.getMany(others);
         const c: Channel = {
           id: `dm-${randomToken(8)}`,
-          name: others.map((id) => db.members.get(id)?.name ?? id).join(', '),
+          name: others.map((id) => names.get(id)?.name ?? id).join(', '),
           kind: 'dm',
           topic: '',
           members: everyone,
@@ -367,7 +369,7 @@ export function registerMessagingRoutes(r: Router) {
       )
         throw new HttpError(409, 'name_taken', 'A channel with that name already exists');
 
-      const members = validMembers([p.memberId, ...(body.members ?? [])], product);
+      const members = await validMembers([p.memberId, ...(body.members ?? [])], product);
       const admins = [p.memberId, ...(body.admins ?? []).filter((id) => members.includes(id))];
       const c: Channel = {
         id: `ch-${randomToken(8)}`,
@@ -414,7 +416,7 @@ export function registerMessagingRoutes(r: Router) {
     '/api/channels/:id',
     { summary: 'Update channel settings and membership', tag, responses: [401, 403, 404, 422] },
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       ensureCollabSeed();
       const p = ctx.principal!;
       const body = parse(patchChannelBody, ctx.body);
@@ -445,7 +447,7 @@ export function registerMessagingRoutes(r: Router) {
         };
       const removed = new Set(body.removeMembers ?? []);
       if (body.addMembers)
-        c.members = [...new Set([...c.members, ...validMembers(body.addMembers, c.product)])];
+        c.members = [...new Set([...c.members, ...(await validMembers(body.addMembers, c.product))])];
       if (removed.size) c.members = c.members.filter((id) => !removed.has(id));
       if (body.addAdmins)
         c.admins = [
@@ -659,7 +661,7 @@ export function registerMessagingRoutes(r: Router) {
       if (!c.permissions.externalLinks && /\bhttps?:\/\//i.test(text))
         throw new HttpError(422, 'links_disabled', 'External links are off in this channel');
 
-      const mentions = parseMentions(text);
+      const mentions = await parseMentions(text);
       const msg: Message = {
         id: sortableId('msg'),
         channelId: c.id,
@@ -695,7 +697,7 @@ export function registerMessagingRoutes(r: Router) {
         `${c.id} · ${msg.id} · ${kind}${threadOf ? ' · reply' : ''}`,
       );
       emit('message.created', { channelId: c.id }, messageView(msg));
-      notifyMentions(p, c, msg, mentions);
+      await notifyMentions(p, c, msg, mentions);
       ctx.status = 201;
       return messageView(msg);
     },
@@ -706,7 +708,7 @@ export function registerMessagingRoutes(r: Router) {
     '/api/messages/:id',
     { summary: 'Edit your message, or close your poll', tag, responses: [401, 403, 404, 409, 422] },
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       ensureCollabSeed();
       const p = ctx.principal!;
       const body = parse(editBody, ctx.body);
@@ -727,10 +729,10 @@ export function registerMessagingRoutes(r: Router) {
         m.text = body.text;
         m.edited = true;
         m.editedAt = nowIso();
-        const mentions = parseMentions(body.text);
+        const mentions = await parseMentions(body.text);
         if (mentions.length) m.mentions = mentions;
         else delete m.mentions;
-        notifyMentions(
+        await notifyMentions(
           p,
           c,
           m,

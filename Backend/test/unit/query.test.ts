@@ -239,7 +239,10 @@ describe('lib/query — paging, ordering and projection', () => {
 describe('lib/query — console collections never expose secrets', () => {
   let collections: Record<
     string,
-    { fields: string[]; rows: (p: Principal) => Record<string, unknown>[] }
+    {
+      fields: string[];
+      rows: (p: Principal) => Record<string, unknown>[] | Promise<Record<string, unknown>[]>;
+    }
   >;
   const owner: Principal = {
     memberId: 'm1',
@@ -262,8 +265,8 @@ describe('lib/query — console collections never expose secrets', () => {
       for (const f of c.fields) assert.ok(!secret.test(f), `${name}.${f} looks secret`);
   });
 
-  it('member rows are the public projection (no hash, no TOTP secret, passkeys as a count)', () => {
-    const members = collections.members.rows(owner);
+  it('member rows are the public projection (no hash, no TOTP secret, passkeys as a count)', async () => {
+    const members = await collections.members.rows(owner);
     assert.ok(members.length > 0);
     for (const m of members) {
       assert.equal('passwordHash' in m, false);
@@ -273,12 +276,13 @@ describe('lib/query — console collections never expose secrets', () => {
     }
   });
 
-  it('selecting passwordHash from members is refused', () => {
+  it('selecting passwordHash from members is refused', async () => {
+    const rows = await collections.members.rows(owner);
     rejectsWith(
       () =>
         runQuery(
           { from: 'members', select: ['passwordHash'] },
-          collections.members.rows(owner),
+          rows,
           collections.members.fields,
         ),
       'field_not_allowed',

@@ -21,7 +21,8 @@ import { config } from '../config/env.ts';
 import { hashPassword, hashToken, randomToken } from '../security/crypto.ts';
 import { revokeAllFor } from '../auth/sessions.ts';
 import { audit } from '../audit/auditLog.ts';
-import { db, findMemberByEmail } from '../store/db.ts';
+import { findMemberByEmail } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError } from '../types.ts';
 import { sendPasswordChanged, sendPasswordReset } from '../mail/events.ts';
 import { recoveryTokens, saveMember } from '../domain/collab/store.ts';
@@ -67,7 +68,7 @@ export function registerRecoveryRoutes(r: Router) {
       const started = Date.now();
       const { email } = parse(requestBody, ctx.body);
       const allowed = await recoveryEmailAllowed(ctx, email);
-      const member = findMemberByEmail(email);
+      const member = await findMemberByEmail(email);
       const raw = randomToken(32);
       const hash = hashToken(raw); // computed on every path so the work is identical
 
@@ -124,7 +125,7 @@ export function registerRecoveryRoutes(r: Router) {
       const body = parse(resetBody, ctx.body);
       const hash = hashToken(body.token);
       const rec = recoveryTokens.get(hash);
-      const member = rec && db.members.get(rec.memberId);
+      const member = rec && (await repos.members.get(rec.memberId));
       if (!rec || rec.usedAt || !member || member.status !== 'active')
         throw new HttpError(400, 'reset_invalid', 'This reset link is no longer valid');
       if (rec.expiresAt < Date.now())
@@ -144,8 +145,8 @@ export function registerRecoveryRoutes(r: Router) {
       member.passwordHash = await hashPassword(body.password);
       member.failedLogins = 0;
       member.lockedUntil = undefined;
-      saveMember(member.id);
-      const revoked = revokeAllFor(member.id);
+      await saveMember(member);
+      const revoked = await revokeAllFor(member.id);
       audit.append({
         actor: member.id,
         action: 'auth.password_reset',

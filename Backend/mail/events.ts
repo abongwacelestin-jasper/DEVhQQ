@@ -24,7 +24,8 @@ import { lookupIp } from '../lib/geo.ts';
 import { logger } from '../lib/logger.ts';
 import { subscribe } from '../lib/events.ts';
 import { db } from '../store/db.ts';
-import { notifications, resignations } from '../domain/collab/store.ts';
+import { resignations } from '../domain/collab/store.ts';
+import { repos } from '../data/index.ts';
 import type { Notification } from '../domain/collab/types.ts';
 import type { GeoLocation, Member, SignInRecord } from '../types.ts';
 import { sendMail } from './index.ts';
@@ -62,8 +63,8 @@ export function wants(member: Member, pref: NotifyPref): boolean {
 }
 
 const displayName = (m: Member) => m.profile?.displayName || m.name;
-const nameOf = (id: string) => {
-  const m = db.members.get(id);
+const nameOf = async (id: string) => {
+  const m = await repos.members.get(id);
   return m ? displayName(m) : id === 'system' ? 'Automated monitoring' : id;
 };
 const productName = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
@@ -289,7 +290,7 @@ export const sendInvite = guard(
     const mail = inviteEmail({
       inviteeName: member.name,
       inviteeEmail: member.email,
-      inviterName: nameOf(inviterId),
+      inviterName: await nameOf(inviterId),
       role: member.role,
       products: member.products.map(productName),
       expiresAt: member.inviteExpiresAt ?? Date.now(),
@@ -312,8 +313,8 @@ export const sendOffboardingStarted = guard(
       memberId: member.id,
       memberName: displayName(member),
       lastDay: r.lastDay,
-      handoverName: nameOf(r.handoverTo),
-      startedByName: r.startedBy === member.id ? 'you' : nameOf(r.startedBy),
+      handoverName: await nameOf(r.handoverTo),
+      startedByName: r.startedBy === member.id ? 'you' : await nameOf(r.startedBy),
     });
     return deliver(member.email, mail, `offboarding-started/${r.id}`);
   },
@@ -321,13 +322,13 @@ export const sendOffboardingStarted = guard(
 
 // ─── notifications (preferences apply) ───────────────────────────────────
 
-function forNotification(n: Notification, to: Member): RenderedEmail | undefined {
+async function forNotification(n: Notification, to: Member): Promise<RenderedEmail | undefined> {
   const [kind, ...rest] = n.refId.split(':');
   const name = displayName(to);
   if (kind === 'task') {
     // task:<key>:assignee|reviewer:<memberId>
     const [key, role] = rest;
-    const task = db.tasks.get(key);
+    const task = await repos.tasks.get(key);
     if (!task) return undefined;
     const as = role === 'reviewer' ? 'reviewer' : 'assignee';
     if (!wants(to, as === 'reviewer' ? 'review' : 'assigned')) return undefined;
@@ -335,7 +336,7 @@ function forNotification(n: Notification, to: Member): RenderedEmail | undefined
       name,
       taskKey: task.key,
       title: task.title,
-      actorName: nameOf(n.actor),
+      actorName: await nameOf(n.actor),
       as,
       product: productName(task.product),
       priority: task.priority,
@@ -352,7 +353,7 @@ function forNotification(n: Notification, to: Member): RenderedEmail | undefined
       product: productName(d.product),
       version: d.version,
       env: d.env,
-      requesterName: nameOf(d.requestedBy),
+      requesterName: await nameOf(d.requestedBy),
       requestedAt: d.createdAt,
       commit: d.sha ? d.sha.slice(0, 12) : undefined,
       timeZone: to.profile?.timezone,
@@ -361,7 +362,7 @@ function forNotification(n: Notification, to: Member): RenderedEmail | undefined
   if (kind === 'access') {
     // access:<memberId>:<path>; an approval request for admins — no preference covers it.
     const [memberId, ...path] = rest;
-    const requester = db.members.get(memberId);
+    const requester = await repos.members.get(memberId);
     if (!requester) return undefined;
     return accessRequestEmail({
       adminName: name,
@@ -378,7 +379,7 @@ function forNotification(n: Notification, to: Member): RenderedEmail | undefined
   if (kind === 'offboarding') {
     if (!wants(to, 'assigned')) return undefined;
     const r = resignations.get(rest[0]);
-    const leaving = r && db.members.get(r.memberId);
+    const leaving = r && (await repos.members.get(r.memberId));
     if (!r || !leaving) return undefined;
     return offboardingStartedEmail({
       audience: 'handover',
@@ -387,7 +388,7 @@ function forNotification(n: Notification, to: Member): RenderedEmail | undefined
       memberName: displayName(leaving),
       lastDay: r.lastDay,
       handoverName: name,
-      startedByName: nameOf(r.startedBy),
+      startedByName: await nameOf(r.startedBy),
     });
   }
   // Mentions and doc comments go out in the digest only.
@@ -396,14 +397,14 @@ function forNotification(n: Notification, to: Member): RenderedEmail | undefined
 
 /** Called by `notify()` for every newly created notification. */
 export const emailForNotification = guard('notification', async (n: Notification) => {
-  const to = db.members.get(n.memberId);
+  const to = await repos.members.get(n.memberId);
   if (!to || to.status !== 'active') return false;
-  const mail = forNotification(n, to);
+  const mail = await forNotification(n, to);
   if (!mail) return false;
   const ok = await deliver(to.email, mail, `notification/${n.id}`);
   if (ok) {
     n.emailedAt = new Date().toISOString();
-    notifications.save(n.id);
+    await repos.notifications.markEmailed([n.id], n.emailedAt);
   }
   return ok;
 });
@@ -433,10 +434,10 @@ export const sendIncidentDeclared = guard('incident', async (incidentId: string)
     service: i.service,
     impact: i.impact,
     startedAt: i.startedAt,
-    declaredBy: nameOf(declaredBy),
+    declaredBy: await nameOf(declaredBy),
   };
   const sends: Promise<boolean>[] = [];
-  const owner = db.members.get(i.owner);
+  const owner = await repos.members.get(i.owner);
   if (owner && owner.status === 'active' && owner.id !== declaredBy && wants(owner, 'incidents'))
     sends.push(
       deliver(
@@ -451,8 +452,8 @@ export const sendIncidentDeclared = guard('incident', async (incidentId: string)
       ),
     );
   if (i.severity === 'SEV1')
-    for (const m of db.members.values()) {
-      if (m.status !== 'active' || m.id === i.owner || m.id === declaredBy) continue;
+    for (const m of await repos.members.list({ status: 'active' })) {
+      if (m.id === i.owner || m.id === declaredBy) continue;
       if (!m.profile?.notify.includes('incidents')) continue;
       if (m.role !== 'Owner' && !m.products.includes(i.product)) continue;
       sends.push(

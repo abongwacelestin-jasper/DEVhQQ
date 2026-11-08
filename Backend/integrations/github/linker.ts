@@ -11,9 +11,8 @@
 import { audit } from '../../audit/auditLog.ts';
 import { publish } from '../../lib/events.ts';
 import { randomToken } from '../../security/crypto.ts';
-import { db } from '../../store/db.ts';
+import { repos } from '../../data/index.ts';
 import type { Task } from '../../types.ts';
-import { saveTask } from '../../domain/engineering/store.ts';
 import type { PullRequestRow } from '../../domain/engineering/types.ts';
 
 const KEY = /(?:^|[^A-Za-z0-9])([A-Za-z]{2,5})-(\d{1,6})(?=$|[^0-9])/;
@@ -24,31 +23,31 @@ export function taskKeyFrom(text: string | undefined): string | undefined {
 }
 
 /** Finds the task a PR refers to (branch first, then title), scoped to the PR's product. */
-export function findTaskFor(
+export async function findTaskFor(
   pr: Pick<PullRequestRow, 'branch' | 'title' | 'product'>,
-): Task | undefined {
+): Promise<Task | undefined> {
   for (const source of [pr.branch, pr.title]) {
     const key = taskKeyFrom(source);
-    const task = key ? db.tasks.get(key) : undefined;
+    const task = key ? await repos.tasks.get(key) : undefined;
     if (task && task.product === pr.product) return task;
   }
   return undefined;
 }
 
 /** Links the PR to its task if one matches. Returns the task key when a new link was made. */
-export function linkPullToTask(
+export async function linkPullToTask(
   pr: PullRequestRow,
   actor: string,
   requestId?: string,
-): string | undefined {
-  const task = findTaskFor(pr);
+): Promise<string | undefined> {
+  const task = await findTaskFor(pr);
   if (!task) return undefined;
   pr.taskKey = task.key;
   if (task.pr === pr.number) return undefined;
   const from = task.pr ? `PR #${task.pr}` : undefined;
   task.pr = pr.number;
   task.updatedAt = new Date().toISOString();
-  saveTask(task);
+  await repos.tasks.put(task);
   const event = {
     id: `ev-gh-${randomToken(6)}`,
     taskKey: task.key,
@@ -59,7 +58,7 @@ export function linkPullToTask(
     to: `PR #${pr.number}`,
     note: `PR #${pr.number} · ${pr.repo}`,
   };
-  db.taskEvents.set(event.id, event);
+  await repos.taskEvents.append(event);
   audit.append({
     actor,
     action: 'task.linked',

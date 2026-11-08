@@ -30,8 +30,8 @@ export function registerGithubRoutes(r: Router) {
       auth: 'public',
       responses: [400, 401, 409, 413, 415, 429, 503],
     },
-    (ctx) => {
-      const result = receiveWebhook({
+    async (ctx) => {
+      const result = await receiveWebhook({
         rawBody: ctx.rawBody,
         body: ctx.body,
         headers: ctx.req.headers,

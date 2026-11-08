@@ -2,10 +2,14 @@
  * Data store seeded to match the frontend demo data exactly (same IDs, emails,
  * roles and products), so the web app and the API agree.
  *
- * Every table is a persisted Collection (store/collection.ts): reads stay
- * synchronous and in memory; writes go through the installed driver —
- * in-memory by default, PostgreSQL when DATABASE_URL is set (see db/README.md).
- * In-place mutations must be followed by `db.<table>.save(key)`.
+ * Members, tasks, task events and task comments live in the relational data
+ * layer (`repos` from data/index.ts, ADR 0011): queried on demand, never held
+ * in memory. Every other table here is a persisted Collection
+ * (store/collection.ts): reads stay synchronous and in memory; writes go
+ * through the installed driver — in-memory by default, PostgreSQL when
+ * DATABASE_URL is set (see db/README.md). In-place mutations of a Collection
+ * row must be followed by `db.<table>.save(key)`; a repository row must be
+ * written back with `repos.<x>.put(row)`.
  *
  * Seeding: the demo data loads in memory mode, or with PostgreSQL only when
  * NODE_ENV !== 'production' and the database is empty (see db/boot.ts).
@@ -15,6 +19,7 @@ import { config } from '../config/env.ts';
 import { hashPassword } from '../security/crypto.ts';
 import { lookupIp } from '../lib/geo.ts';
 import { createCollection } from './collection.ts';
+import { repos } from '../data/index.ts';
 import { signInLog } from './signInLog.ts';
 import {
   seedComments,
@@ -35,18 +40,12 @@ import type {
   SignInRecord,
   Subtask,
   Task,
-  TaskComment,
-  TaskEvent,
   TimeLog,
 } from '../types.ts';
 
 export const db = {
-  members: createCollection<Member>('members'),
   projects: createCollection<Project>('projects'),
   docs: createCollection<ProjectDoc>('docs'),
-  tasks: createCollection<Task>('tasks'),
-  taskEvents: createCollection<TaskEvent>('taskEvents'),
-  taskComments: createCollection<TaskComment>('taskComments'),
   subtasks: createCollection<Subtask>('subtasks'),
   timeLogs: createCollection<TimeLog>('timeLogs'),
   deployments: createCollection<Deployment>('deployments'),
@@ -517,6 +516,17 @@ let seeded = false;
 export async function seed() {
   if (seeded) return;
   seeded = true;
+  // Members first: tasks, sessions and notifications reference them.
+  // Production has no demo accounts: members are provisioned through invites only.
+  const hash = DEMO.enabled ? await hashPassword(DEMO.password) : '!disabled';
+  for (const m of seedMembers)
+    await repos.members.put({
+      ...m,
+      passwordHash: hash,
+      passkeys: [],
+      failedLogins: 0,
+      totpSecret: process.env.DEMO_TOTP_SECRET,
+    });
   for (const p of seedProjects) db.projects.set(p.id, p);
   for (const s of seedTasks) {
     const creation = taskCreation[s.key];
@@ -528,8 +538,8 @@ export async function seed() {
       createdAt: creation?.at ?? hoursAgo(72),
       updatedAt: hoursAgo(Math.random() * 72),
     };
-    db.tasks.set(task.key, task);
-    db.taskEvents.set(`created-${task.key}`, {
+    await repos.tasks.put(task);
+    await repos.taskEvents.append({
       id: `created-${task.key}`,
       taskKey: task.key,
       actor: task.createdBy,
@@ -537,8 +547,8 @@ export async function seed() {
       kind: 'created',
     });
   }
-  for (const e of seedEvents) db.taskEvents.set(e.id, e);
-  for (const c of seedComments) db.taskComments.set(c.id, c);
+  for (const e of seedEvents) await repos.taskEvents.append(e);
+  for (const c of seedComments) await repos.taskComments.insert(c);
   for (const s of seedSubtasks) db.subtasks.set(s.id, s);
   for (const l of seedTimeLogs) db.timeLogs.set(l.id, l);
   for (const d of seedDeployments) db.deployments.set(d.id, d);
@@ -612,23 +622,10 @@ export async function seed() {
       }))
       .sort((a, b) => b.at.localeCompare(a.at)),
   );
-
-  // Production has no demo accounts: members are provisioned through invites only.
-  const hash = DEMO.enabled ? await hashPassword(DEMO.password) : '!disabled';
-  for (const m of seedMembers)
-    db.members.set(m.id, {
-      ...m,
-      passwordHash: hash,
-      passkeys: [],
-      failedLogins: 0,
-      totpSecret: process.env.DEMO_TOTP_SECRET,
-    });
 }
 
-export function findMemberByEmail(email: string): Member | undefined {
-  const e = email.trim().toLowerCase();
-  for (const m of db.members.values()) if (m.email === e) return m;
-  return undefined;
+export function findMemberByEmail(email: string): Promise<Member | undefined> {
+  return repos.members.findByEmail(email);
 }
 
 export function touch<T extends { updatedAt: string }>(row: T): T {
@@ -650,15 +647,15 @@ export function publicMember(m: Member) {
   };
 }
 
-/** Serializable snapshot for backups. */
+/**
+ * Serializable snapshot of the db.* tables for backups. Migrated data
+ * (members, tasks, task events and comments) is backed up through
+ * data/index.ts → relationalTables() instead.
+ */
 export function snapshot() {
   return {
-    members: [...db.members.values()],
     projects: [...db.projects.values()],
     docs: [...db.docs.values()],
-    tasks: [...db.tasks.values()],
-    taskEvents: [...db.taskEvents.values()],
-    taskComments: [...db.taskComments.values()],
     subtasks: [...db.subtasks.values()],
     timeLogs: [...db.timeLogs.values()],
     deployments: [...db.deployments.values()],

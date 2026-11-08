@@ -25,6 +25,7 @@ import { revokeStandingAccess } from '../security/pats.ts';
 import { audit } from '../audit/auditLog.ts';
 import { hashToken, randomToken } from '../security/crypto.ts';
 import { db, findMemberByEmail, publicMember } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { sendInvite } from '../mail/events.ts';
 import {
   HttpError,
@@ -73,11 +74,22 @@ const grantBody = v.object({
   durationMinutes: v.int({ min: 15, max: 480 }),
 });
 
-/** Next free `mN` id, so seeded and invited members share one numbering scheme. */
-function nextMemberId(): string {
-  let n = db.members.size + 1;
-  while (db.members.has(`m${n}`)) n += 1;
-  return `m${n}`;
+/**
+ * Creates an invited member under the next free `mN` id, so seeded and invited
+ * members share one numbering scheme. The unique keys decide, not a prior
+ * read: two replicas inviting at once get different ids, and a duplicate
+ * email is refused (409) even when both pass the pre-check.
+ */
+async function insertWithNextId(member: Member): Promise<Member> {
+  let n = (await repos.members.count()) + 1;
+  for (;;) {
+    const candidate = { ...member, id: `m${n}` };
+    const result = await repos.members.insert(candidate);
+    if (result === 'ok') return candidate;
+    if (result === 'email_taken')
+      throw new HttpError(409, 'member_exists', 'A member with that email already exists');
+    n += 1;
+  }
 }
 
 /** "ada.lovelace@corp.dev" → "Ada Lovelace" when no display name is supplied. */
@@ -97,11 +109,11 @@ export function registerTeamRoutes(r: Router) {
     'Members who share a product with the caller',
     authenticate,
     requireArea('Organization', 'view'),
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
       const project = ctx.query.get('projectId');
       const scopedProduct = project ? db.projects.get(project)?.product : undefined;
-      return [...db.members.values()]
+      return (await repos.members.list())
         .filter(
           (m) =>
             m.products.some((x) => canSeeProduct(p, x)) &&
@@ -178,7 +190,7 @@ export function registerTeamRoutes(r: Router) {
     authenticate,
     requireArea('Organization', 'admin'),
     requireStepUp(),
-    (ctx) => {
+    async (ctx) => {
       const body = parse(inviteBody, ctx.body);
       if (body.products.length === 0)
         throw new HttpError(422, 'validation_failed', 'products must have at least one item');
@@ -187,13 +199,12 @@ export function registerTeamRoutes(r: Router) {
         if (!canSeeProduct(principal, product))
           throw new HttpError(403, 'forbidden', 'You are not assigned to that product');
       }
-      if (findMemberByEmail(body.email))
+      if (await findMemberByEmail(body.email))
         throw new HttpError(409, 'member_exists', 'A member with that email already exists');
 
-      const id = nextMemberId();
       const inviteToken = randomToken(32);
-      const member: Member = {
-        id,
+      const member = await insertWithNextId({
+        id: '',
         name: body.name?.trim() || nameFromEmail(body.email),
         email: body.email,
         role: body.role,
@@ -205,8 +216,7 @@ export function registerTeamRoutes(r: Router) {
         failedLogins: 0,
         inviteTokenHash: hashToken(inviteToken),
         inviteExpiresAt: Date.now() + INVITE_TTL_MS,
-      };
-      db.members.set(member.id, member);
+      });
       audit.append({
         actor: principal.memberId,
         action: 'team.invited',
@@ -231,9 +241,9 @@ export function registerTeamRoutes(r: Router) {
     authenticate,
     requireArea('Organization', 'admin'),
     requireStepUp(),
-    (ctx) => {
+    async (ctx) => {
       const patch = parse(updateBody, ctx.body);
-      const target = db.members.get(ctx.params.memberId);
+      const target = await repos.members.get(ctx.params.memberId);
       if (!target) throw new HttpError(404, 'not_found', 'Not found');
       if (target.id === ctx.principal!.memberId && patch.role && patch.role !== target.role)
         throw new HttpError(403, 'self_demotion', 'Ask another Owner to change your role');
@@ -245,8 +255,7 @@ export function registerTeamRoutes(r: Router) {
         target.role === 'Owner' &&
         target.status === 'active' &&
         ((patch.role && patch.role !== 'Owner') || (patch.status && patch.status !== 'active')) &&
-        [...db.members.values()].filter((m) => m.role === 'Owner' && m.status === 'active')
-          .length === 1
+        (await repos.members.count({ role: 'Owner', status: 'active' })) === 1
       ) {
         throw new HttpError(409, 'last_owner', 'The workspace needs at least one Owner');
       }
@@ -254,8 +263,8 @@ export function registerTeamRoutes(r: Router) {
       if (patch.role) target.role = patch.role as RoleName;
       if (patch.products) target.products = patch.products as ProductId[];
       if (patch.status) target.status = patch.status;
-      db.members.save(target.id);
-      const revoked = revokeAllFor(target.id);
+      await repos.members.put(target);
+      const revoked = await revokeAllFor(target.id);
       // CYBER-010: deactivation also cuts PATs and JIT grants immediately, not only on next use.
       if (patch.status === 'deactivated' && before.status !== 'deactivated')
         revokeStandingAccess(target.id, ctx.principal!.memberId, 'member_inactive', ctx.requestId);
@@ -282,12 +291,13 @@ export function registerTeamRoutes(r: Router) {
       responses: [401, 422],
     },
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
       const body = parse(accessRequestBody, ctx.body);
       if (!body.path.startsWith('/'))
         throw new HttpError(422, 'validation_failed', 'path must be an in-app path');
-      const me = db.members.get(p.memberId);
+      const members = await repos.members.list();
+      const me = members.find((m) => m.id === p.memberId);
       const reason = body.reason?.trim();
       audit.append({
         actor: p.memberId,
@@ -296,10 +306,10 @@ export function registerTeamRoutes(r: Router) {
         requestId: ctx.requestId,
       });
       let notified = 0;
-      for (const m of db.members.values()) {
+      for (const m of members) {
         if (m.status !== 'active' || m.id === p.memberId) continue;
         if (!can(asPrincipal(m), 'Administration', 'manage')) continue;
-        const n = notify({
+        const n = await notify({
           memberId: m.id,
           kind: 'approval',
           title: `${me?.name ?? p.memberId} requested access to ${body.path}`,
@@ -340,7 +350,7 @@ export function registerTeamRoutes(r: Router) {
     'Request time-boxed production access',
     authenticate,
     requireStepUp(),
-    (ctx) => {
+    async (ctx) => {
       const body = parse(grantBody, ctx.body);
       const product = body.scope.split(':')[1] as ProductId;
       const p = ctx.principal!;
@@ -354,12 +364,13 @@ export function registerTeamRoutes(r: Router) {
         ctx.requestId,
       );
       // Tell every approver in scope; they decide on the Security page (two-person rule).
-      const me = db.members.get(p.memberId);
-      for (const m of db.members.values()) {
+      const members = await repos.members.list();
+      const me = members.find((m) => m.id === p.memberId);
+      for (const m of members) {
         if (m.status !== 'active' || m.id === p.memberId || !APPROVER_ROLES.includes(m.role))
           continue;
         if (!canSeeProduct(asPrincipal(m), product)) continue;
-        notify({
+        await notify({
           memberId: m.id,
           kind: 'approval',
           title: `${me?.name ?? p.memberId} requested ${grant.scope} access`,

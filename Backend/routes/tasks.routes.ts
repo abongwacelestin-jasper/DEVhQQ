@@ -9,6 +9,10 @@
  * Every change also writes an immutable task event, so the activity feed and
  * the task timeline are derived from the same record instead of being kept in
  * sync by hand.
+ *
+ * Tasks, events and comments are read on demand from the relational data
+ * layer (`repos`, ADR 0011), so every replica serves the same state. Subtasks
+ * and time logs are still JSONB collections (phase 2).
  */
 
 import type { Router } from '../lib/http.ts';
@@ -18,6 +22,8 @@ import { assertProduct, can, canSeeProduct, requireArea } from '../auth/rbac.ts'
 import { audit } from '../audit/auditLog.ts';
 import { publish } from '../lib/events.ts';
 import { db, touch } from '../store/db.ts';
+import { repos } from '../data/index.ts';
+import { TASK_KEY_PREFIX } from '../data/tasks.ts';
 import { HttpError, type Principal, type Task, type TaskEventKind } from '../types.ts';
 
 const statuses = ['backlog', 'in-progress', 'review', 'done'] as const;
@@ -58,20 +64,11 @@ const timeBody = v.object({
 });
 
 function prefixFor(product: Task['product']) {
-  return product === 'renewberry' ? 'RB' : product === 'blog' ? 'BL' : 'MA';
+  return TASK_KEY_PREFIX[product];
 }
 
-function nextKey(product: Task['product']) {
-  const prefix = prefixFor(product);
-  const max = [...db.tasks.keys()]
-    .filter((k) => k.startsWith(`${prefix}-`))
-    .map((k) => Number(k.split('-')[1]))
-    .reduce((a, b) => Math.max(a, b), 0);
-  return `${prefix}-${max + 1}`;
-}
-
-function assertAssignable(memberId: string, product: Task['product']) {
-  const m = db.members.get(memberId);
+async function assertAssignable(memberId: string, product: Task['product']) {
+  const m = await repos.members.get(memberId);
   if (!m || m.status !== 'active' || !m.products.includes(product))
     throw new HttpError(
       422,
@@ -85,7 +82,7 @@ const nextId = (prefix: string) =>
   `${prefix}${Date.now().toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 4)}`;
 
 /** Records who changed what, so the timeline never has to be reconstructed. */
-function record(
+async function record(
   task: Task,
   actor: string,
   kind: TaskEventKind,
@@ -103,23 +100,33 @@ function record(
     to,
     note,
   };
-  db.taskEvents.set(event.id, event);
+  await repos.taskEvents.append(event);
   return event;
 }
 
-/** A task plus the derived fields every list view needs. */
-function withDerived(t: Task) {
+/** Tasks plus the derived fields every list view needs (one comment-count query for all). */
+async function withDerivedAll(tasks: Task[]) {
   const today = new Date().toISOString().slice(0, 10);
-  return {
+  const counts = await repos.taskComments.countByTask(tasks.map((t) => t.key));
+  return tasks.map((t) => ({
     ...t,
-    comments: [...db.taskComments.values()].filter((c) => c.taskKey === t.key).length,
+    comments: counts.get(t.key) ?? 0,
     overdue: t.status !== 'done' && t.due < today,
-  };
+  }));
+}
+
+async function withDerived(t: Task) {
+  return (await withDerivedAll([t]))[0];
+}
+
+/** The products a principal may see, as a repository filter. */
+function scopeOf(p: Principal): Task['product'][] {
+  return (['renewberry', 'blog', 'mirror'] as const).filter((x) => canSeeProduct(p, x));
 }
 
 /** The task if the caller may see it; 404 (never 403) otherwise. */
-function visibleTask(p: Principal, key: string) {
-  const t = db.tasks.get(key.toUpperCase());
+async function visibleTask(p: Principal, key: string) {
+  const t = await repos.tasks.get(key.toUpperCase());
   if (!t || !canSeeProduct(p, t.product)) throw new HttpError(404, 'not_found', 'Not found');
   return t;
 }
@@ -135,33 +142,34 @@ export function registerTaskRoutes(r: Router) {
     },
     authenticate,
     requireArea('Project', 'view'),
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
       const q = ctx.query;
       const needle = q.get('q')?.toLowerCase().slice(0, 100);
-      const rows = [...db.tasks.values()].filter(
-        (t) =>
-          canSeeProduct(p, t.product) &&
-          (!q.get('product') || t.product === q.get('product')) &&
-          (!q.get('projectId') || t.projectId === q.get('projectId')) &&
-          (!q.get('status') || q.get('status')!.split(',').includes(t.status)) &&
-          (!q.get('priority') || q.get('priority')!.split(',').includes(t.priority)) &&
-          (!q.get('assignee') ||
-            t.assignee === (q.get('assignee') === 'me' ? p.memberId : q.get('assignee'))) &&
-          (!needle || `${t.key} ${t.title} ${t.description ?? ''}`.toLowerCase().includes(needle)),
-      );
       const limit = Math.min(200, Math.max(1, Number(q.get('limit') ?? 50)));
       const offset = Math.max(0, Number(q.get('offset') ?? 0));
-      ctx.res.setHeader('X-Total-Count', String(rows.length));
-      return {
-        total: rows.length,
-        limit,
-        offset,
-        items: rows
-          .sort((a, b) => a.due.localeCompare(b.due))
-          .slice(offset, offset + limit)
-          .map(withDerived),
-      };
+      // Same window as Array#slice(offset, offset + limit): non-finite bounds select nothing.
+      const start = Math.trunc(offset);
+      const end = Math.trunc(offset + limit);
+      const window =
+        Number.isFinite(start) && Number.isFinite(end)
+          ? { offset: start, limit: Math.max(0, end - start) }
+          : { offset: 0, limit: 0 };
+      const assignee = q.get('assignee');
+      const { total, items } = await repos.tasks.search(
+        {
+          products: scopeOf(p),
+          product: q.get('product') || undefined,
+          projectId: q.get('projectId') || undefined,
+          statuses: q.get('status') ? q.get('status')!.split(',') : undefined,
+          priorities: q.get('priority') ? q.get('priority')!.split(',') : undefined,
+          assignee: assignee ? (assignee === 'me' ? p.memberId : assignee) : undefined,
+          q: needle || undefined,
+        },
+        window,
+      );
+      ctx.res.setHeader('X-Total-Count', String(total));
+      return { total, limit, offset, items: await withDerivedAll(items) };
     },
   );
 
@@ -176,16 +184,15 @@ export function registerTaskRoutes(r: Router) {
     { summary: 'Events, comments, subtasks and time logs for visible tasks', tag: 'tasks' },
     authenticate,
     requireArea('Project', 'view'),
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
-      const visible = new Set(
-        [...db.tasks.values()].filter((t) => canSeeProduct(p, t.product)).map((t) => t.key),
-      );
+      const keys = (await repos.tasks.list({ products: scopeOf(p) })).map((t) => t.key);
+      const visible = new Set(keys);
       const byTask = <T extends { taskKey: string; at: string }>(rows: T[]) =>
         rows.filter((x) => visible.has(x.taskKey)).sort((a, b) => a.at.localeCompare(b.at));
       return {
-        events: byTask([...db.taskEvents.values()]),
-        comments: byTask([...db.taskComments.values()]),
+        events: await repos.taskEvents.list(keys),
+        comments: await repos.taskComments.list(keys),
         subtasks: [...db.subtasks.values()].filter((s) => visible.has(s.taskKey)),
         timeLogs: byTask([...db.timeLogs.values()]),
       };
@@ -197,7 +204,7 @@ export function registerTaskRoutes(r: Router) {
     '/api/tasks/:key',
     { summary: 'One task', tag: 'tasks', responses: [401, 404] },
     authenticate,
-    (ctx) => withDerived(visibleTask(ctx.principal!, ctx.params.key)),
+    async (ctx) => withDerived(await visibleTask(ctx.principal!, ctx.params.key)),
   );
 
   r.add(
@@ -206,27 +213,30 @@ export function registerTaskRoutes(r: Router) {
     { summary: 'Create a task', tag: 'tasks', responses: [401, 403, 404, 422] },
     authenticate,
     requireArea('Project', 'contribute'),
-    (ctx) => {
+    async (ctx) => {
       const body = parse(createBody, ctx.body);
       const project = db.projects.get(body.projectId);
       if (!project) throw new HttpError(404, 'not_found', 'Project not found');
       assertProduct(ctx.principal!, project.product);
-      assertAssignable(body.assignee, project.product);
-      if (body.reviewer) assertAssignable(body.reviewer, project.product);
+      await assertAssignable(body.assignee, project.product);
+      if (body.reviewer) await assertAssignable(body.reviewer, project.product);
       const now = new Date().toISOString();
-      const task: Task = {
-        key: nextKey(project.product),
-        product: project.product,
-        createdBy: ctx.principal!.memberId,
-        createdAt: now,
-        updatedAt: now,
-        ...body,
-        status: body.status ?? 'backlog',
-      };
-      db.tasks.set(task.key, task);
-      record(task, ctx.principal!.memberId, 'created');
+      let task: Task;
+      // The key counter is atomic; a collision only happens with rows that predate it.
+      do {
+        task = {
+          key: await repos.tasks.allocateKey(prefixFor(project.product)),
+          product: project.product,
+          createdBy: ctx.principal!.memberId,
+          createdAt: now,
+          updatedAt: now,
+          ...body,
+          status: body.status ?? 'backlog',
+        };
+      } while (!(await repos.tasks.insert(task)));
+      await record(task, ctx.principal!.memberId, 'created');
       if (body.reviewer)
-        record(task, ctx.principal!.memberId, 'reviewer', undefined, body.reviewer);
+        await record(task, ctx.principal!.memberId, 'reviewer', undefined, body.reviewer);
       audit.append({
         actor: ctx.principal!.memberId,
         action: 'task.created',
@@ -250,10 +260,10 @@ export function registerTaskRoutes(r: Router) {
     },
     authenticate,
     requireArea('Project', 'contribute'),
-    (ctx) => {
+    async (ctx) => {
       const patch = parse(updateBody, ctx.body);
       const p = ctx.principal!;
-      const t = visibleTask(p, ctx.params.key);
+      const t = await visibleTask(p, ctx.params.key);
       if (patch.status === 'done' && t.assignee === p.memberId && !can(p, 'Project', 'manage')) {
         throw new HttpError(
           403,
@@ -261,15 +271,15 @@ export function registerTaskRoutes(r: Router) {
           'A reviewer or manager must move your own task to done',
         );
       }
-      if (patch.assignee) assertAssignable(patch.assignee, t.product);
-      if (patch.reviewer) assertAssignable(patch.reviewer, t.product);
+      if (patch.assignee) await assertAssignable(patch.assignee, t.product);
+      if (patch.reviewer) await assertAssignable(patch.reviewer, t.product);
       const changed = (Object.keys(patch) as (keyof typeof patch)[]).filter(
         (k) => patch[k] !== undefined && patch[k] !== t[k],
       );
       for (const field of changed) {
         const from = t[field];
         const to = patch[field];
-        record(
+        await record(
           t,
           p.memberId,
           field as TaskEventKind,
@@ -279,7 +289,7 @@ export function registerTaskRoutes(r: Router) {
       }
       Object.assign(t, Object.fromEntries(changed.map((k) => [k, patch[k]])));
       touch(t);
-      db.tasks.save(t.key);
+      await repos.tasks.put(t);
       audit.append({
         actor: p.memberId,
         action: 'task.updated',
@@ -297,11 +307,10 @@ export function registerTaskRoutes(r: Router) {
     { summary: 'Delete a task', tag: 'tasks', responses: [401, 403, 404] },
     authenticate,
     requireArea('Project', 'manage'),
-    (ctx) => {
-      const t = visibleTask(ctx.principal!, ctx.params.key);
-      db.tasks.delete(t.key);
-      for (const [id, e] of db.taskEvents) if (e.taskKey === t.key) db.taskEvents.delete(id);
-      for (const [id, c] of db.taskComments) if (c.taskKey === t.key) db.taskComments.delete(id);
+    async (ctx) => {
+      const t = await visibleTask(ctx.principal!, ctx.params.key);
+      // Events and comments go with the task (ON DELETE CASCADE).
+      await repos.tasks.delete(t.key);
       for (const [id, s] of db.subtasks) if (s.taskKey === t.key) db.subtasks.delete(id);
       for (const [id, l] of db.timeLogs) if (l.taskKey === t.key) db.timeLogs.delete(id);
       audit.append({
@@ -320,9 +329,9 @@ export function registerTaskRoutes(r: Router) {
     { summary: 'Comment on a task', tag: 'tasks', responses: [401, 403, 404, 422] },
     authenticate,
     requireArea('Project', 'contribute'),
-    (ctx) => {
+    async (ctx) => {
       const body = parse(commentBody, ctx.body);
-      const t = visibleTask(ctx.principal!, ctx.params.key);
+      const t = await visibleTask(ctx.principal!, ctx.params.key);
       const comment = {
         id: nextId('tc'),
         taskKey: t.key,
@@ -330,8 +339,8 @@ export function registerTaskRoutes(r: Router) {
         text: body.text,
         at: new Date().toISOString(),
       };
-      db.taskComments.set(comment.id, comment);
-      record(
+      await repos.taskComments.insert(comment);
+      await record(
         t,
         ctx.principal!.memberId,
         'comment',
@@ -351,12 +360,12 @@ export function registerTaskRoutes(r: Router) {
     { summary: 'Add a subtask', tag: 'tasks', responses: [401, 403, 404, 422] },
     authenticate,
     requireArea('Project', 'contribute'),
-    (ctx) => {
+    async (ctx) => {
       const body = parse(subtaskBody, ctx.body);
-      const t = visibleTask(ctx.principal!, ctx.params.key);
+      const t = await visibleTask(ctx.principal!, ctx.params.key);
       const subtask = { id: nextId('st'), taskKey: t.key, title: body.title, done: false };
       db.subtasks.set(subtask.id, subtask);
-      record(t, ctx.principal!.memberId, 'subtask', undefined, 'added', body.title);
+      await record(t, ctx.principal!.memberId, 'subtask', undefined, 'added', body.title);
       ctx.status = 201;
       return subtask;
     },
@@ -368,16 +377,16 @@ export function registerTaskRoutes(r: Router) {
     { summary: 'Complete or reopen a subtask', tag: 'tasks', responses: [401, 403, 404, 422] },
     authenticate,
     requireArea('Project', 'contribute'),
-    (ctx) => {
+    async (ctx) => {
       const body = parse(subtaskPatch, ctx.body);
-      const t = visibleTask(ctx.principal!, ctx.params.key);
+      const t = await visibleTask(ctx.principal!, ctx.params.key);
       const s = db.subtasks.get(ctx.params.subtaskId);
       if (!s || s.taskKey !== t.key) throw new HttpError(404, 'not_found', 'Subtask not found');
       s.done = body.done;
       s.doneBy = body.done ? ctx.principal!.memberId : undefined;
       s.doneAt = body.done ? new Date().toISOString() : undefined;
       db.subtasks.save(s.id);
-      record(
+      await record(
         t,
         ctx.principal!.memberId,
         'subtask',
@@ -395,9 +404,9 @@ export function registerTaskRoutes(r: Router) {
     { summary: 'Log time against a task', tag: 'tasks', responses: [401, 403, 404, 422] },
     authenticate,
     requireArea('Project', 'contribute'),
-    (ctx) => {
+    async (ctx) => {
       const body = parse(timeBody, ctx.body);
-      const t = visibleTask(ctx.principal!, ctx.params.key);
+      const t = await visibleTask(ctx.principal!, ctx.params.key);
       const log = {
         id: nextId('tl'),
         taskKey: t.key,
@@ -407,7 +416,7 @@ export function registerTaskRoutes(r: Router) {
         note: body.note,
       };
       db.timeLogs.set(log.id, log);
-      record(t, ctx.principal!.memberId, 'time', undefined, String(body.minutes), body.note);
+      await record(t, ctx.principal!.memberId, 'time', undefined, String(body.minutes), body.note);
       ctx.status = 201;
       return log;
     },

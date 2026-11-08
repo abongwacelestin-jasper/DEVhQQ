@@ -98,7 +98,7 @@ export function registerPullRoutes(r: Router) {
     },
     authenticate,
     requireArea('Repository', 'view'),
-    (ctx) => {
+    async (ctx) => {
       prepareGithubRead();
       const repo = visibleRepo(ctx.principal!, ctx.params.repoId, included);
       const pr = pulls.get(`${repo.id}#${Number(ctx.params.number)}`);
@@ -169,7 +169,7 @@ export function registerPullRoutes(r: Router) {
         requestId: ctx.requestId,
       });
       publish('pull_request', { id: pr.id, review: pr.review, product: pr.product });
-      return { ...pullDetail(pr), proxied };
+      return { ...(await pullDetail(pr)), proxied };
     },
   );
 }

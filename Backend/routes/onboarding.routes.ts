@@ -13,7 +13,7 @@ import type { Router } from '../lib/http.ts';
 import { parse, v } from '../lib/validate.ts';
 import { authenticate } from '../middleware/authenticate.ts';
 import { audit } from '../audit/auditLog.ts';
-import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError, type Member } from '../types.ts';
 import { ndaSignatures, saveMember, sortableId } from '../domain/collab/store.ts';
 import { NDA_TEXT_HASH, NDA_VERSION, ndaText } from '../domain/collab/nda.ts';
@@ -95,8 +95,8 @@ function clean<T extends Record<string, unknown>>(p: T): Defined<T> {
   return out as Defined<T>;
 }
 
-function me(memberId: string): Member {
-  const m = db.members.get(memberId);
+async function me(memberId: string): Promise<Member> {
+  const m = await repos.members.get(memberId);
   if (!m) throw new HttpError(404, 'not_found', 'Not found');
   return m;
 }
@@ -109,7 +109,7 @@ export function registerOnboardingRoutes(r: Router) {
     '/api/onboarding',
     { summary: 'Your onboarding stage (server-authoritative)', tag },
     authenticate,
-    (ctx) => onboardingView(me(ctx.principal!.memberId)),
+    async (ctx) => onboardingView(await me(ctx.principal!.memberId)),
   );
 
   r.add(
@@ -133,8 +133,8 @@ export function registerOnboardingRoutes(r: Router) {
       responses: [401, 409, 422],
     },
     authenticate,
-    (ctx) => {
-      const m = me(ctx.principal!.memberId);
+    async (ctx) => {
+      const m = await me(ctx.principal!.memberId);
       const body = parse(ndaBody, ctx.body);
       const version = body.version.replace(/^v/, '');
       if (version !== NDA_VERSION)
@@ -167,7 +167,7 @@ export function registerOnboardingRoutes(r: Router) {
       ndaSignatures.set(sig.id, sig);
       m.ndaSignedAt = sig.signedAt;
       m.ndaVersion = sig.version;
-      saveMember(m.id);
+      await saveMember(m);
       audit.append({
         actor: m.id,
         action: 'onboarding.nda_signed',
@@ -188,14 +188,14 @@ export function registerOnboardingRoutes(r: Router) {
     '/api/onboarding/profile',
     { summary: 'Complete your profile (after the NDA)', tag, responses: [401, 409, 422] },
     authenticate,
-    (ctx) => {
-      const m = me(ctx.principal!.memberId);
+    async (ctx) => {
+      const m = await me(ctx.principal!.memberId);
       const body = parse(profileBody, ctx.body);
       checkProfile(body);
       if (needsOnboarding(m) && !ndaCurrent(m))
         throw new HttpError(409, 'nda_required', 'Sign the NDA before completing your profile');
       m.profile = { ...body, ...clean(body), completedAt: new Date().toISOString() };
-      saveMember(m.id);
+      await saveMember(m);
       audit.append({
         actor: m.id,
         action: 'onboarding.profile_completed',
@@ -211,14 +211,14 @@ export function registerOnboardingRoutes(r: Router) {
     '/api/onboarding/profile',
     { summary: 'Update your profile', tag, responses: [401, 409, 422] },
     authenticate,
-    (ctx) => {
-      const m = me(ctx.principal!.memberId);
+    async (ctx) => {
+      const m = await me(ctx.principal!.memberId);
       const patch = parse(profilePatch, ctx.body);
       if (!m.profile) throw new HttpError(409, 'profile_required', 'Complete your profile first');
       const next = { ...m.profile, ...clean(patch) };
       checkProfile(next);
       m.profile = next;
-      saveMember(m.id);
+      await saveMember(m);
       audit.append({
         actor: m.id,
         action: 'onboarding.profile_updated',

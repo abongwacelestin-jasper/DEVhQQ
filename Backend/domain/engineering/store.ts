@@ -7,8 +7,9 @@
 
 import { createCollection } from '../../store/collection.ts';
 import { db } from '../../store/db.ts';
+import { repos as data } from '../../data/index.ts';
 import { canSeeProduct } from '../../auth/rbac.ts';
-import { HttpError, type Principal, type ProductId, type Task } from '../../types.ts';
+import { HttpError, type Principal, type ProductId } from '../../types.ts';
 import type {
   CiRun,
   CodeFinding,
@@ -89,20 +90,13 @@ export function memberForLogin(login: string | undefined): string | undefined {
 }
 
 /** The Operations member responsible for a product (incident owner for automated incidents). */
-export function operationsOwner(product: ProductId): string {
-  const active = [...db.members.values()].filter((m) => m.status === 'active');
+export async function operationsOwner(product: ProductId): Promise<string> {
+  const active = await data.members.list({ status: 'active' });
   return (
     active.find((m) => m.role === 'Operations' && m.products.includes(product))?.id ??
     active.find((m) => m.role === 'Owner')?.id ??
     'system'
   );
-}
-
-/** Persists a task after an in-place mutation, whether `db.tasks` is a Map or a Collection. */
-export function saveTask(task: Task) {
-  const tasks: Map<string, Task> & { save?: (key: string) => void } = db.tasks;
-  if (typeof tasks.save === 'function') tasks.save(task.key);
-  else tasks.set(task.key, task);
 }
 
 /** Next `INC-n` id, computed the same way as routes/operations.routes.ts. */

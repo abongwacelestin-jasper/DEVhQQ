@@ -10,6 +10,7 @@ import type { Router } from '../lib/http.ts';
 import { authenticate } from '../middleware/authenticate.ts';
 import { assertProduct, canSeeProduct, requireArea } from '../auth/rbac.ts';
 import { db } from '../store/db.ts';
+import { repos } from '../data/index.ts';
 import { HttpError, type ProductId } from '../types.ts';
 
 /** Display names live with the API so the browser doesn't keep a second catalogue. */
@@ -25,20 +26,21 @@ export function registerProjectRoutes(r: Router) {
     '/api/products',
     'Products the caller is assigned to, with live counts',
     authenticate,
-    (ctx) => {
+    async (ctx) => {
       const p = ctx.principal!;
-      return PRODUCTS.filter((x) => canSeeProduct(p, x.id)).map((product) => {
+      const visible = PRODUCTS.filter((x) => canSeeProduct(p, x.id));
+      const allTasks = await repos.tasks.list({ products: visible.map((x) => x.id) });
+      const active = await repos.members.list({ status: 'active' });
+      return visible.map((product) => {
         const projects = [...db.projects.values()].filter((x) => x.product === product.id);
-        const tasks = [...db.tasks.values()].filter((t) => t.product === product.id);
+        const tasks = allTasks.filter((t) => t.product === product.id);
         const today = new Date().toISOString().slice(0, 10);
         return {
           ...product,
           projects: projects.length,
           openTasks: tasks.filter((t) => t.status !== 'done').length,
           lateTasks: tasks.filter((t) => t.status !== 'done' && t.due < today).length,
-          members: [...db.members.values()].filter(
-            (m) => m.status === 'active' && m.products.includes(product.id),
-          ).length,
+          members: active.filter((m) => m.products.includes(product.id)).length,
         };
       });
     },
@@ -65,12 +67,11 @@ export function registerProjectRoutes(r: Router) {
     'One project with its scope summary',
     authenticate,
     requireArea('Project', 'view'),
-    (ctx) => {
+    async (ctx) => {
       const project = db.projects.get(ctx.params.projectId);
       if (!project) throw new HttpError(404, 'not_found', 'Not found');
       assertProduct(ctx.principal!, project.product);
-      const people = [...db.members.values()]
-        .filter((m) => m.products.includes(project.product) && m.status === 'active')
+      const people = (await repos.members.list({ status: 'active', product: project.product }))
         .map((m) => ({ id: m.id, name: m.name, role: m.role }));
       const docs = [...db.docs.values()].filter((d) => d.projectId === project.id).length;
       return { ...project, people, docs };
