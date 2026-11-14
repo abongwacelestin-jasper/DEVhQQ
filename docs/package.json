@@ -1,7 +1,7 @@
 {
   "name": "@devhq/docs",
   "version": "1.0.0",
-  "description": "DevHQ documentation: Markdown sources plus generators and a link checker. No runtime or install-time dependencies.",
+  "description": "TavetaHQ documentation: Markdown sources plus generators and a link checker. No runtime or install-time dependencies.",
   "private": true,
   "type": "module",
   "engines": {

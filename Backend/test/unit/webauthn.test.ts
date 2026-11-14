@@ -230,7 +230,7 @@ describe('auth/webauthn — assertions with real keys', () => {
   const cases: [string, AssertionOverrides, number, string][] = [
     ['wrong ceremony type', { type: 'webauthn.create' }, 400, 'client_data_invalid'],
     ['challenge mismatch', { challenge: 'not-the-challenge' }, 400, 'client_data_invalid'],
-    ['phishing origin', { origin: 'https://devhq.app.evil.example' }, 400, 'origin_mismatch'],
+    ['phishing origin', { origin: 'https://tavetahq.io.evil.example' }, 400, 'origin_mismatch'],
     ['cross-origin iframe', { crossOrigin: true }, 400, 'origin_mismatch'],
     [
       'wrong RP ID hash',

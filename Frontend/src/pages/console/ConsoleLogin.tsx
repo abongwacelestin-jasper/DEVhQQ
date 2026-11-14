@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useConsole } from '../../contexts/ConsoleContext';
 import { CodeInput, isCompleteCode } from '../../components/auth/CodeInput';
-import { DevHQLogo } from '../../components/ui/DevHQLogo';
+import { BrandLogo, BrandName } from '../../components/ui/BrandLogo';
 import { ThemeToggle } from '../../components/layout/ThemeToggle';
 import { JsonView } from '../../components/console/JsonView';
 import { errorMessage } from '../../utils/consoleClient';
@@ -185,14 +185,14 @@ export function ConsoleLogin() {
       {/* Context panel */}
       <aside className="relative hidden w-[46%] max-w-[640px] flex-col justify-between border-r border-line bg-sunken/50 p-8 lg:flex xl:p-10">
         <div className="flex items-center gap-2.5">
-          <DevHQLogo size={24} />
-          <span className="text-[14px] font-semibold">DevHQ</span>
+          <BrandLogo size={26} />
+          <BrandName className="text-[14.5px]" />
           <span className="text-[13px] text-muted">API console</span>
         </div>
 
         <div className="max-w-[480px]">
           <h1 className="text-[26px] font-semibold leading-[1.2] tracking-tight">
-            Run, test and observe the DevHQ backend from one place.
+            Run, test and observe the TavetaHQ backend from one place.
           </h1>
           <p className="mt-2 text-[13.5px] text-muted">
             Every request you send here is authenticated, rate-limited and written to the audit
@@ -257,7 +257,7 @@ export function ConsoleLogin() {
       <main className="flex flex-1 flex-col">
         <div className="flex items-center justify-between px-5 py-4 sm:px-8">
           <div className="flex items-center gap-2 lg:invisible">
-            <DevHQLogo size={20} />
+            <BrandLogo size={20} />
             <span className="text-[13px] font-semibold">API console</span>
           </div>
           <ThemeToggle />
@@ -335,7 +335,7 @@ export function ConsoleLogin() {
                     Sign in to the console
                   </h2>
                   <p className="mt-1 text-[12.5px] text-muted">
-                    Use your DevHQ work account. A 6-digit code is required next.
+                    Use your TavetaHQ work account. A 6-digit code is required next.
                   </p>
 
                   <form onSubmit={submitPassword} className="mt-5 space-y-3" noValidate>

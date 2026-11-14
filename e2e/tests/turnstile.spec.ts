@@ -37,7 +37,7 @@ test.describe(`Turnstile (mode ${on ? 'on' : 'off'}) @turnstile`, () => {
     const cfg = await (await page.request.get('/api/auth/config')).json();
     expect(cfg.turnstile.mode).toBe(on ? 'on' : 'off');
     await page.goto('/sign-in');
-    await expect(page.getByRole('heading', { name: 'Sign in to DevHQ' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sign in to TavetaHQ' })).toBeVisible();
     await solveCheck(page);
     await expect(page.locator(SCRIPT)).toHaveCount(on ? 1 : 0);
     if (on) expect(await page.locator(SCRIPT).getAttribute('src')).toContain('render=explicit');

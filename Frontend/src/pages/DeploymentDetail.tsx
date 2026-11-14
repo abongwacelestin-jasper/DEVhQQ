@@ -39,7 +39,7 @@ import { ProductionAccessStatus } from '../components/jit/ProductionAccessStatus
 type StepState = 'done' | 'failed' | 'running' | 'pending' | 'skipped';
 
 /**
- * The lifecycle DevHQ actually records: request → approval → rollout.
+ * The lifecycle TavetaHQ actually records: request → approval → rollout.
  * Build/test steps live in CI (shown below from real runs), so they are not
  * re-drawn here with invented timings.
  */
@@ -270,7 +270,7 @@ export function DeploymentDetail() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_272px]">
         <div className="space-y-4">
-          <Panel title="Lifecycle" meta={<span>Recorded by DevHQ</span>}>
+          <Panel title="Lifecycle" meta={<span>Recorded by TavetaHQ</span>}>
             <ol className="grid grid-cols-1 divide-y divide-line sm:grid-cols-3 sm:divide-y-0">
               {steps.map((s) => (
                 <li
@@ -413,7 +413,7 @@ export function DeploymentDetail() {
             />
           </Panel>
           <p className="rounded-lg border border-line bg-sunken/50 px-3 py-2.5 text-[12px] text-muted">
-            DevHQ records and approves deployments. {d.provider} executes them with its own
+            TavetaHQ records and approves deployments. {d.provider} executes them with its own
             credentials — build logs stay with the provider.
           </p>
         </div>

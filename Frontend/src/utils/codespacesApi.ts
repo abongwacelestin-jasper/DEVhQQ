@@ -1,7 +1,7 @@
 /**
  * Codespaces transports.
  *
- * - `backend`  — calls the DevHQ API (`/api/codespaces/*`), which proxies GitHub's REST API
+ * - `backend`  — calls the TavetaHQ API (`/api/codespaces/*`), which proxies GitHub's REST API
  *                with the member's GitHub App user token. The browser never sees the token.
  * - `simulated` — an in-browser stand-in with the same lifecycle (create → provisioning →
  *                Available → idle Shutdown → start). Used in the preview, where no API runs.
@@ -33,9 +33,9 @@ const TIMEOUT_MS = 12_000;
 
 function toCodespacesError(e: unknown): CodespacesError {
   if (e instanceof DOMException && e.name === 'AbortError')
-    return new CodespacesError(0, 'timeout', 'The DevHQ API took too long to answer');
+    return new CodespacesError(0, 'timeout', 'The TavetaHQ API took too long to answer');
   if (!(e instanceof ApiError))
-    return new CodespacesError(0, 'network', 'Could not reach the DevHQ API');
+    return new CodespacesError(0, 'network', 'Could not reach the TavetaHQ API');
   const kind =
     e.status === 0
       ? 'network'
@@ -52,7 +52,7 @@ function toCodespacesError(e: unknown): CodespacesError {
 }
 
 /**
- * Talks to the DevHQ API through the shared client (same transport, error type,
+ * Talks to the TavetaHQ API through the shared client (same transport, error type,
  * session handling and step-up retry as the rest of the app). The session
  * cookie is same-origin only, so a configured base URL on another origin is
  * refused rather than sent credentials.
@@ -68,7 +68,7 @@ export function backendTransport(baseUrl: string): CodespacesTransport {
       throw new CodespacesError(
         0,
         'forbidden',
-        `Refusing to send DevHQ credentials to ${base || 'an empty URL'}: codespaces must be served from this origin.`,
+        `Refusing to send TavetaHQ credentials to ${base || 'an empty URL'}: codespaces must be served from this origin.`,
       );
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);

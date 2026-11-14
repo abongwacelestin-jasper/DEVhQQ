@@ -175,8 +175,8 @@ export function useSessionState() {
       // 401 is the normal signed-out answer and never reaches here; this is a real outage.
       setBootError(
         e instanceof ApiError && e.status
-          ? `DevHQ answered with an error (${e.status}${e.requestId ? ` · ${e.requestId}` : ''}).`
-          : `Couldn't reach DevHQ. Check your connection and try again.`,
+          ? `TavetaHQ answered with an error (${e.status}${e.requestId ? ` · ${e.requestId}` : ''}).`
+          : `Couldn't reach TavetaHQ. Check your connection and try again.`,
       );
     } finally {
       setBooting(false);

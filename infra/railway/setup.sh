@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DevHQ on Railway: create the project, services, plugins, settings and
+# TavetaHQ on Railway: create the project, services, plugins, settings and
 # variables. Runbook: docs/deploy/RAILWAY.md. Safe to re-run: existing
 # services, plugins, volumes and variables are kept, and generated secrets
 # are only generated when the variable does not exist yet.
@@ -28,10 +28,10 @@
 #   R2_JURISDICTION  (unset)              `eu` for an EU-jurisdiction account
 #   ANTHROPIC_API_KEY (optional)          assistant in the models service
 #   RESEND_API_KEY   (optional)           mail via Resend; with it, MAIL_FROM is required
-#   MAIL_FROM        (with Resend)        e.g. "DevHQ <no-reply@mail.example.com>"
+#   MAIL_FROM        (with Resend)        e.g. "TavetaHQ <no-reply@mail.example.com>"
 #   TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY (optional) Cloudflare Turnstile on the
 #                                         public auth forms; both set = TURNSTILE_MODE=on
-#   BRAND_*          (optional, env only; see infra/brand/devhq.brand.env)
+#   BRAND_*          (optional, env only; see infra/brand/tavetahq.brand.env)
 #                                         BRAND_NAME, BRAND_LEGAL_NAME, BRAND_LOGO_URL,
 #                                         BRAND_PRIMARY_COLOR, BRAND_ACCENT_COLOR,
 #                                         BRAND_SUPPORT_EMAIL, BRAND_POSTAL_ADDRESS,
@@ -135,7 +135,7 @@ if [ -n "${TURNSTILE_SITE_KEY:-}" ]; then
   ask TURNSTILE_SECRET_KEY "Cloudflare Turnstile secret key" secret
 fi
 if [ -n "${RESEND_API_KEY:-}" ]; then
-  ask MAIL_FROM "Sender for email (e.g. DevHQ <no-reply@mail.example.com>)"
+  ask MAIL_FROM "Sender for email (e.g. TavetaHQ <no-reply@mail.example.com>)"
 fi
 
 case "$DEVHQ_DOMAIN" in *://* | */*) die "DEVHQ_DOMAIN is a host name, not a URL" ;; esac
@@ -274,7 +274,7 @@ jq -n \
   APP_ORIGIN: $origin,
   PUBLIC_URL: $origin,
   WEBAUTHN_RP_ID: $rp,
-  WEBAUTHN_RP_NAME: "DevHQ",
+  WEBAUTHN_RP_NAME: "TavetaHQ",
   LOG_LEVEL: "info",
   DEMO_DISABLED: "1",
   S3_ENDPOINT: $s3,
@@ -390,7 +390,7 @@ fi
 if [ -n "${RESEND_API_KEY:-}" ]; then
   log "Resend mail + brand (backend and worker)"
   # The frontend serves the brand logo, so it defaults to the app's own domain.
-  BRAND_LOGO_URL="${BRAND_LOGO_URL:-https://${DEVHQ_DOMAIN}/brand/devhq-email-logo.png}"
+  BRAND_LOGO_URL="${BRAND_LOGO_URL:-https://${DEVHQ_DOMAIN}/brand/tavetahq-email-logo.png}"
   MAIL_JSON="$(jq -n --arg k "$RESEND_API_KEY" --arg from "$MAIL_FROM" --arg app "https://${DEVHQ_DOMAIN}" '{
     MAIL_TRANSPORT: "resend", RESEND_API_KEY: $k, MAIL_FROM: $from, APP_URL: $app
   }')"

@@ -149,8 +149,8 @@ export function registerPullRoutes(r: Router) {
           body: {
             event: ghEvent[body.decision],
             body: body.body
-              ? `${body.body}\n\n— via DevHQ on behalf of ${p.memberId}`
-              : `Approved via DevHQ on behalf of ${p.memberId}`,
+              ? `${body.body}\n\n— via TavetaHQ on behalf of ${p.memberId}`
+              : `Approved via TavetaHQ on behalf of ${p.memberId}`,
             commit_id: pr.headSha || undefined,
           },
         });

@@ -170,7 +170,7 @@ export function CodeSecurity() {
             ]}
           />
 
-          <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
             <section
               className="min-w-0 overflow-hidden rounded-lg border border-line bg-white"
               aria-label="Findings"
@@ -180,7 +180,7 @@ export function CodeSecurity() {
                   {scoped.length ? 'No findings match these filters.' : 'No findings reported.'}
                 </p>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="relative overflow-x-auto">
                   <table className="w-full min-w-[640px] text-left text-[12px]">
                     <caption className="sr-only">Code security findings</caption>
                     <thead className="border-b border-line bg-sunken/40 text-[11px] text-muted">
@@ -325,7 +325,7 @@ export function CodeSecurity() {
               <Panel title="Policies">
                 <p className="px-3.5 py-3 text-[12px] leading-relaxed text-muted">
                   Merge blocking, secret push protection and signed-commit rules aren’t served by
-                  the DevHQ API yet. Configure them in GitHub branch protection and repository
+                  the TavetaHQ API yet. Configure them in GitHub branch protection and repository
                   security settings.
                 </p>
               </Panel>

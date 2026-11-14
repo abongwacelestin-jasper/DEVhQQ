@@ -163,7 +163,7 @@ export function Topbar({ onSearch }: { onSearch: () => void }) {
           <span className="hidden truncate text-muted xl:inline">{current.name}</span>
           <span className="hidden text-line-strong xl:inline">/</span>
           <span className="truncate font-semibold text-ink">
-            {t(`nav./${segment}`, titles[segment] ?? 'DevHQ')}
+            {t(`nav./${segment}`, titles[segment] ?? 'TavetaHQ')}
           </span>
           {isDetail && (
             <span className="hidden truncate font-mono text-[11.5px] text-subtle sm:inline">

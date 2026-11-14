@@ -1,4 +1,4 @@
-# DevHQ object storage — compose services for INFRA to merge into
+# TavetaHQ object storage — compose services for INFRA to merge into
 # docker-compose.yml (STORAGE owns this snippet; INFRA owns the compose file).
 #
 # Images: MinIO stopped publishing community images to Docker Hub

@@ -83,7 +83,7 @@ expect(
   'backend console renders the operations UI',
   consolePage.status === 200 &&
     consolePage.type.startsWith('text/html') &&
-    consolePage.text.includes('<title>DevHQ · Backend control room</title>') &&
+    consolePage.text.includes('<title>TavetaHQ · Backend control room</title>') &&
     consolePage.text.includes('API explorer') &&
     consolePage.text.includes('Security & audit') &&
     consolePage.text.includes('Team & access') &&
@@ -125,7 +125,7 @@ const backendAlias = await raw('/backend.html');
 expect(
   'backend.html alias serves the same console',
   backendAlias.status === 200 &&
-    backendAlias.text.includes('<title>DevHQ · Backend control room</title>'),
+    backendAlias.text.includes('<title>TavetaHQ · Backend control room</title>'),
 );
 
 const spec = await call('GET', '/api/openapi.json');
@@ -2441,7 +2441,7 @@ expect(
     await smtpTransport({
       host: '127.0.0.1',
       port: smtpPort,
-      from: 'DevHQ <no-reply@devhq.app>',
+      from: 'TavetaHQ <no-reply@tavetahq.io>',
       timeoutMs: 3_000,
     }).send(msg);
   } catch (e) {
@@ -2452,7 +2452,7 @@ expect(
     port: smtpPort,
     user: 'u',
     password: 'p',
-    from: 'DevHQ <no-reply@devhq.app>',
+    from: 'TavetaHQ <no-reply@tavetahq.io>',
     requireTls: false,
     timeoutMs: 3_000,
   }).send(msg);

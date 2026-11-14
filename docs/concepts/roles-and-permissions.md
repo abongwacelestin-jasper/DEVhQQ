@@ -1,6 +1,6 @@
 # Roles and permissions
 
-Authorisation in DevHQ has three parts, all checked by the API on every
+Authorisation in TavetaHQ has three parts, all checked by the API on every
 request:
 
 1. **Role → level per area**, from the permission matrix.

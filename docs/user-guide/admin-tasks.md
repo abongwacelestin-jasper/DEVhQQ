@@ -19,7 +19,7 @@ $ curl -s -b owner -X POST http://localhost:8080/api/team/invites -H 'content-ty
 {"id":"m13","name":"Ada Lovelace","email":"ada.lovelace@techorg.io","role":"Developer","products":["blog"],"status":"invited","mfa":true,"passkeys":0,"inviteLink":"/accept-invite?token=<redacted>","inviteExpiresAt":"2026-11-14T00:37:02.764Z"}
 ```
 
-DevHQ does not send email yet: pass the link to the person through a trusted
+TavetaHQ does not send email yet: pass the link to the person through a trusted
 channel. Only a SHA-256 of the token is stored, so a lost link cannot be
 recovered, and inviting the same email again fails with `409 member_exists`
 (see Known gaps below). The invitee opens

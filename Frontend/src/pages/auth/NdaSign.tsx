@@ -85,7 +85,7 @@ export function NdaSign() {
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'DevHQ-NDA-v3.3.txt';
+    a.download = 'TavetaHQ-NDA-v3.3.txt';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -209,8 +209,8 @@ export function NdaSign() {
           {tab === 'commitment' && (
             <div className="space-y-4">
               <p className="text-[12.5px] text-muted">
-                DevHQ projects run on volunteered time. Be honest — leads plan work around what you
-                tell us, and you can change it later.
+                TavetaHQ projects run on volunteered time. Be honest — leads plan work around what
+                you tell us, and you can change it later.
               </p>
               <div>
                 <p className="text-[12px] font-semibold text-ink">Hours per week</p>

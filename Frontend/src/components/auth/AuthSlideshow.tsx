@@ -90,12 +90,12 @@ export function AuthSlideshow({ slides }: { slides: AuthSlide[] }) {
               onClick={() => go(i)}
               aria-label={t('slide.goto', undefined, { n: i + 1 })}
               aria-current={i === index}
-              className={`relative h-1.5 overflow-hidden rounded-full transition-[width] duration-200 ease-out ${i === index ? 'w-8 bg-ink/15' : 'w-1.5 bg-ink/20 hover:bg-ink/40'}`}
+              className={`relative h-1.5 overflow-hidden rounded-full transition-[width] duration-200 ease-out ${i === index ? 'w-[18px] bg-accent/25' : 'w-1.5 bg-accent/25 hover:bg-accent/50'}`}
             >
               {i === index && (
                 <motion.span
                   key={`${index}-${paused}`}
-                  className="absolute inset-y-0 left-0 w-full origin-left rounded-full bg-ink"
+                  className="absolute inset-y-0 left-0 w-full origin-left rounded-full bg-accent"
                   initial={{ scaleX: paused ? 1 : 0 }}
                   animate={{ scaleX: 1 }}
                   transition={{ duration: paused ? 0 : DURATION / 1000, ease: 'linear' }}

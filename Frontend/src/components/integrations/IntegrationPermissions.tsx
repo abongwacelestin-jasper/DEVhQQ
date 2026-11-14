@@ -4,7 +4,7 @@ import { Panel } from '../ui/Panel';
 /**
  * Scopes the provider granted, exactly as the API reports them.
  *
- * Read-only: there is no endpoint to change scopes from DevHQ. Changing them
+ * Read-only: there is no endpoint to change scopes from TavetaHQ. Changing them
  * happens on the provider (re-authorize), which the next sync reflects here.
  */
 export function IntegrationPermissions({ scopes, name }: { scopes: string[]; name: string }) {
@@ -23,7 +23,7 @@ export function IntegrationPermissions({ scopes, name }: { scopes: string[]; nam
     >
       <p className="border-b border-line bg-sunken/40 px-3.5 py-2 text-[12px] text-muted">
         Least privilege: grant only what {name} needs. Scopes are changed on the provider by
-        re-authorizing DevHQ; this list reflects what the provider reported.
+        re-authorizing TavetaHQ; this list reflects what the provider reported.
       </p>
       {scopes.length === 0 ? (
         <p className="px-3.5 py-4 text-[12.5px] text-muted">

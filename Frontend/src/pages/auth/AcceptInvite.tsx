@@ -116,7 +116,7 @@ export function AcceptInvite() {
       illustration={<SecurityIllustration className="h-auto w-full" />}
       aside={{
         title: 'One link, your password, then you’re in.',
-        body: 'Invite links work once and expire after seven days. Nobody at DevHQ ever sees the password you choose here.',
+        body: 'Invite links work once and expire after seven days. Nobody at TavetaHQ ever sees the password you choose here.',
       }}
     >
       {done ? (

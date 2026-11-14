@@ -1,6 +1,6 @@
 # Deployment and first run
 
-DevHQ runs as one Docker Compose stack on a single host. The deployment
+TavetaHQ runs as one Docker Compose stack on a single host. The deployment
 documents are owned by the infrastructure lane and are the source of truth;
 this page links them and adds the application-side first-run steps.
 

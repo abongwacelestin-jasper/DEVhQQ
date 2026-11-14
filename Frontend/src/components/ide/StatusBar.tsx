@@ -56,7 +56,7 @@ export function StatusBar({
       <div className="flex h-full min-w-0 items-center">
         <button
           onClick={onHome}
-          title="DevHQ sandbox — back to dashboard"
+          title="TavetaHQ sandbox — back to dashboard"
           className="flex h-full items-center gap-1 bg-[var(--vs-accent)] px-2.5 text-[var(--vs-on-accent)] hover:bg-[var(--vs-accent-hover)]"
         >
           <ArrowLeftRightIcon className="h-3.5 w-3.5" />
@@ -90,7 +90,7 @@ export function StatusBar({
           <Link
             to={`/tasks/${taskKey}`}
             className={`${item} hidden md:flex`}
-            title="Linked DevHQ task"
+            title="Linked TavetaHQ task"
           >
             {taskKey}
           </Link>

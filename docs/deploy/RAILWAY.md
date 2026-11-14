@@ -1,4 +1,4 @@
-# DevHQ on Railway, with Cloudflare R2
+# TavetaHQ on Railway, with Cloudflare R2
 
 Production hosting on [Railway](https://railway.com), object storage on
 Cloudflare R2, DNS and the public edge on Cloudflare. The Compose stack in
@@ -332,7 +332,7 @@ these; `${{shared.X}}` is a shared variable, `${{Service.X}}` a reference.
 | `NODE_ENV` | `production` |
 | `APP_ORIGIN`, `PUBLIC_URL` | `https://app.example.com` |
 | `WEBAUTHN_RP_ID` | `app.example.com` (or the registrable parent domain, decided once: passkeys are bound to it) |
-| `WEBAUTHN_RP_NAME` | `DevHQ` |
+| `WEBAUTHN_RP_NAME` | `TavetaHQ` |
 | `LOG_LEVEL` | `info` |
 | `DEMO_DISABLED` | `1` |
 | `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT` | `https://<account>.r2.cloudflarestorage.com` |
@@ -407,7 +407,7 @@ reference, `S3_ENDPOINT`, `S3_REGION`, `S3_FORCE_PATH_STYLE`,
 
 ### Mail (Resend)
 
-DevHQ sends through Resend's HTTP API (`MAIL_TRANSPORT=resend`), so it works
+TavetaHQ sends through Resend's HTTP API (`MAIL_TRANSPORT=resend`), so it works
 on every Railway plan (no outbound SMTP needed). Give `setup.sh` a
 `RESEND_API_KEY` and it sets, on backend and worker:
 
@@ -415,7 +415,7 @@ on every Railway plan (no outbound SMTP needed). Give `setup.sh` a
 |---|---|
 | `MAIL_TRANSPORT` | `resend` (without a key: `console`, mail is logged, not sent) |
 | `RESEND_API_KEY` | the Resend API key (secret; seal it in the dashboard) |
-| `MAIL_FROM` | e.g. `DevHQ <no-reply@mail.example.com>`; required, production refuses to boot without it |
+| `MAIL_FROM` | e.g. `TavetaHQ <no-reply@mail.example.com>`; required, production refuses to boot without it |
 | `APP_URL` | `https://<your domain>`, used for every link in emails |
 | `MAIL_REPLY_TO` | optional |
 | `BRAND_*` | optional: `BRAND_NAME`, `BRAND_LEGAL_NAME`, `BRAND_LOGO_URL`, `BRAND_PRIMARY_COLOR`, `BRAND_ACCENT_COLOR`, `BRAND_SUPPORT_EMAIL`, `BRAND_POSTAL_ADDRESS`, `BRAND_WEBSITE_URL`; export them before running `setup.sh` |
@@ -437,7 +437,7 @@ and `TURNSTILE_SECRET_KEY` set (or enter them at its prompts) and it sets
 `TURNSTILE_MODE=on` and both keys on the backend. Create the widget first:
 
 1. **Create the widget.** Cloudflare dashboard → Turnstile → *Add widget*.
-   Name it `DevHQ`, choose **Managed** as the widget mode, and leave
+   Name it `TavetaHQ`, choose **Managed** as the widget mode, and leave
    *pre-clearance* off.
 2. **Hostnames.** Add the app's host exactly as in `APP_ORIGIN`, e.g.
    `app.example.com`. The backend refuses a token whose `hostname` is not

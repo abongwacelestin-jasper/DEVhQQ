@@ -1,4 +1,4 @@
-# DevHQ edge (Caddy 2): TLS termination, HSTS, HTTP/3, request limits and
+# TavetaHQ edge (Caddy 2): TLS termination, HSTS, HTTP/3, request limits and
 # same-origin routing:  /api/*, /console -> backend   everything else -> frontend
 #
 # Environment (set by docker-compose.yml):

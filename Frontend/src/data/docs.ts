@@ -119,7 +119,7 @@ export const seedDocs: ProjectDoc[] = [
     kind: 'decision',
     status: 'in-review',
     visibility: 'workspace',
-    body: '# Decision: session timeout 15 minutes\n\n> Status: in review\n\n## Context\nCustomers asked for shorter idle sessions on shared devices.\n\n## Options\n- 30 minutes (current)\n- 15 minutes with a 30-second warning\n\n## Decision\n15 minutes, warning 30 seconds before lock, unlock with MFA.\n\n## Consequences\n- Slightly more unlock prompts\n- Matches the DevHQ workspace policy',
+    body: '# Decision: session timeout 15 minutes\n\n> Status: in review\n\n## Context\nCustomers asked for shorter idle sessions on shared devices.\n\n## Options\n- 30 minutes (current)\n- 15 minutes with a 30-second warning\n\n## Decision\n15 minutes, warning 30 seconds before lock, unlock with MFA.\n\n## Consequences\n- Slightly more unlock prompts\n- Matches the TavetaHQ workspace policy',
     createdBy: 'm2',
     createdAt: ago(48),
     updatedBy: 'm2',

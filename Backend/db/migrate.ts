@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { logger } from '../lib/logger.ts';
 
-/** Arbitrary constant shared by every DevHQ process ("devhq-migrate"). */
+/** Arbitrary constant shared by every TavetaHQ process ("devhq-migrate"). */
 const MIGRATION_LOCK_KEY = 7_220_418_331;
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'migrations');

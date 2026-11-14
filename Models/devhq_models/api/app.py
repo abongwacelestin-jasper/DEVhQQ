@@ -103,7 +103,7 @@ class ServiceState:
         missing = [n for n in MODEL_NAMES if self.load_errors.get(n) == "no promoted model"]
         if not missing:
             return
-        log.warning("bootstrapping %s on SYNTHETIC data (not real DevHQ history)", missing)
+        log.warning("bootstrapping %s on SYNTHETIC data (not real TavetaHQ history)", missing)
         ds = generate()
         for name in missing:
             result = pipeline.run(name, ds, self.registry)
@@ -148,7 +148,7 @@ def create_app(
             task.cancel()
 
     app = FastAPI(
-        title="DevHQ ML service",
+        title="TavetaHQ ML service",
         version="1.0.0",
         lifespan=lifespan,
         docs_url=None,

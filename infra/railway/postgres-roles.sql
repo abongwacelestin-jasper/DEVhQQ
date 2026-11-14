@@ -1,4 +1,4 @@
--- DevHQ least-privilege roles for the Railway PostgreSQL service.
+-- TavetaHQ least-privilege roles for the Railway PostgreSQL service.
 --
 -- Run as the plugin's superuser (`postgres`), once before the first deploy and
 -- again after it (step 2 needs the tables the first migration creates). Safe

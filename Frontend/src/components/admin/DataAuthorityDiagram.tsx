@@ -1,4 +1,4 @@
-/** Vector diagram of DevHQ's three kinds of information: owned, synchronized and derived. */
+/** Vector diagram of TavetaHQ's three kinds of information: owned, synchronized and derived. */
 export function DataAuthorityDiagram() {
   return (
     <svg
@@ -38,7 +38,7 @@ export function DataAuthorityDiagram() {
           Tasks · memberships · decisions
         </text>
         <text x="26" y="78" fontSize="10" fill="#8B909A" fontFamily="Inter, sans-serif">
-          Owned and edited in DevHQ
+          Owned and edited in TavetaHQ
         </text>
       </g>
 
@@ -104,7 +104,7 @@ export function DataAuthorityDiagram() {
           fill="#FFFFFF"
           fontFamily="Inter, sans-serif"
         >
-          DevHQ model
+          TavetaHQ model
         </text>
         <text
           x="409"

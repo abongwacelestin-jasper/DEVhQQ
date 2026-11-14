@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "DevHQ end-to-end and beta test suite (Playwright). Not part of the npm workspaces on purpose.",
+  "description": "TavetaHQ end-to-end and beta test suite (Playwright). Not part of the npm workspaces on purpose.",
   "scripts": {
     "test": "npm run test:onboarding; playwright test --project=chromium",
     "test:onboarding": "playwright test --project=onboarding",

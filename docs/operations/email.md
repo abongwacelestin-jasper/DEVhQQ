@@ -1,6 +1,6 @@
 # Email
 
-DevHQ sends transactional email: invitations, password and sign-in security
+TavetaHQ sends transactional email: invitations, password and sign-in security
 notices, and work notifications (tasks, incidents, deployments, access
 requests, offboarding, the digest). Production email goes through
 [Resend](https://resend.com) over its HTTPS API. Every message uses one
@@ -63,7 +63,7 @@ warning, so development and the test suites never need a provider.
 | Variable | Default | Notes |
 |---|---|---|
 | `MAIL_TRANSPORT` | `console` | `console`, `resend` or `smtp`. |
-| `MAIL_FROM` | `<BRAND_NAME> <no-reply@<registrable domain>>` | Required for `resend` in production, e.g. `DevHQ <no-reply@mail.example.com>`, because its domain must be verified in Resend. The default serves `console` and `smtp`. |
+| `MAIL_FROM` | `<BRAND_NAME> <no-reply@<registrable domain>>` | Required for `resend` in production, e.g. `TavetaHQ <no-reply@mail.example.com>`, because its domain must be verified in Resend. The default serves `console` and `smtp`. |
 | `MAIL_REPLY_TO` | the support address | Single address that replies go to. |
 | `RESEND_API_KEY` | unset | Secret. In containers pass `RESEND_API_KEY_FILE=/run/secrets/resend_api_key` instead; the entrypoint and the app both read `*_FILE`, and setting both is refused. |
 | `RESEND_TIMEOUT_MS` | `10000` | Per attempt. |
@@ -85,10 +85,10 @@ receive mail.
 
 | Variable | Default | Used for |
 |---|---|---|
-| `BRAND_NAME` | `DevHQ` | Subjects, headings, copy and the footer link "Open DevHQ". |
-| `BRAND_LEGAL_NAME` | `BRAND_NAME` (so `DevHQ`) | Footer, e.g. `DevHQ Technologies Ltd`. |
-| `BRAND_LOGO_URL` | `<app origin>/brand/devhq-email-logo.png` | Absolute URL of a PNG (or SVG). Use a PNG: Gmail and Outlook do not display SVG. Export it at twice the display width. |
-| `BRAND_LOGO_WIDTH` | `120` | Display width in pixels; height scales. |
+| `BRAND_NAME` | `TavetaHQ` | Subjects, headings, copy and the footer link "Open TavetaHQ". |
+| `BRAND_LEGAL_NAME` | `BRAND_NAME` (so `TavetaHQ`) | Footer, e.g. `TavetaHQ Technologies Ltd`. |
+| `BRAND_LOGO_URL` | `<app origin>/brand/tavetahq-email-logo.png` | Absolute URL of a PNG (or SVG). Use a PNG: Gmail and Outlook do not display SVG. Export it at twice the display width. |
+| `BRAND_LOGO_WIDTH` | `168` | Display width in pixels; height scales. |
 | `BRAND_ASSET_BASE_URL` | `<app origin>/brand` | Where the email images live: heroes and product marks are `<base>/email/<file>` ([Brand](brand.md#email-imagery)). Set it only when they are served from a CDN. |
 | `BRAND_PRIMARY_COLOR` | `#4f46e5` | Buttons and the eyebrow dot. Button text is white or near-black, whichever contrasts better. |
 | `BRAND_ACCENT_COLOR` | `#3730a3` | Links and highlights (lightened automatically in dark mode). |
@@ -107,7 +107,7 @@ Send from a subdomain such as `mail.example.com`, not the root domain. It
 keeps the sending reputation of product email separate from people's own
 mail on `example.com`, and lets you change providers without touching the
 root domain's records. `MAIL_FROM` then becomes
-`DevHQ <no-reply@mail.example.com>`.
+`TavetaHQ <no-reply@mail.example.com>`.
 
 ### 2. Add and verify the domain
 
@@ -135,7 +135,7 @@ account). They are of this shape:
 
 Click **Verify**. DNS can take minutes to hours; the domain must show
 **Verified** before production sends will succeed (an unverified domain is a
-`403` that DevHQ logs and does not retry).
+`403` that TavetaHQ logs and does not retry).
 
 ### 3. Create an API key
 
@@ -149,11 +149,11 @@ Click **Verify**. DNS can take minutes to hours; the domain must show
 ```bash
 NODE_ENV=production
 MAIL_TRANSPORT=resend
-MAIL_FROM="DevHQ <no-reply@mail.example.com>"
+MAIL_FROM="TavetaHQ <no-reply@mail.example.com>"
 MAIL_REPLY_TO=support@example.com
 RESEND_API_KEY_FILE=/run/secrets/resend_api_key
 APP_URL=https://app.example.com
-BRAND_LEGAL_NAME="DevHQ Technologies Ltd"
+BRAND_LEGAL_NAME="TavetaHQ Technologies Ltd"
 BRAND_LOGO_URL=https://example.com/email/logo.png
 BRAND_POSTAL_ADDRESS="1 Example Street, Example City, EX 00000"
 BRAND_SUPPORT_EMAIL=support@example.com
@@ -166,7 +166,7 @@ confirm delivery, and check the message in Resend's **Emails** view.
 
 ### Warm-up
 
-A new sending domain has no reputation. DevHQ sends only transactional mail,
+A new sending domain has no reputation. TavetaHQ sends only transactional mail,
 which warms up naturally, but avoid a sudden spike:
 
 - Go live with real users first, not a bulk invite of the whole company;
@@ -178,7 +178,7 @@ which warms up naturally, but avoid a sudden spike:
 ### Bounces and complaints
 
 - Resend suppresses an address after a hard bounce or a spam complaint and
-  rejects further sends to it; DevHQ logs those as `mail delivery failed`
+  rejects further sends to it; TavetaHQ logs those as `mail delivery failed`
   without retrying.
 - Targets: bounce rate under 4 %, complaint rate under 0.1 % (Gmail and Yahoo
   start filtering at 0.3 %). Use the `category` tag to see which email type
@@ -187,7 +187,7 @@ which warms up naturally, but avoid a sudden spike:
   invite and send a new one. A suppressed member address can be removed from
   the suppression list in Resend once it is fixed.
 - Optional: point a Resend webhook (`email.bounced`, `email.complained`) at
-  your monitoring or ticketing system. DevHQ does not consume these webhooks
+  your monitoring or ticketing system. TavetaHQ does not consume these webhooks
   yet.
 
 ## Emails and where they are sent
@@ -243,7 +243,7 @@ so the two parts always say the same thing.
   hero illustration for non-security emails, an eyebrow label that tells the
   email types apart ("Task assigned", "Incident · SEV1", "Security alert"),
   the heading, a first-name greeting, the content, then a footer with a
-  navigation row (Open DevHQ · Help · Notification settings, the last for
+  navigation row (Open TavetaHQ · Help · Notification settings, the last for
   non-security emails only; an invitation and the access-ended email, whose
   recipients cannot sign in, keep only Help), the reason for the email, the support contact,
   the legal name and the postal address when set.

@@ -13,7 +13,7 @@ import { loadMailConfig, registrableDomain, type MailEnv } from '../../config/ma
 const KEY = 're_test_0123456789abcdef';
 const MSG: MailMessage = {
   to: 'kofi@example.com',
-  subject: 'New sign-in to your DevHQ account',
+  subject: 'New sign-in to your TavetaHQ account',
   html: '<p>html</p>',
   text: 'text',
   category: 'sign-in-alert',
@@ -48,7 +48,7 @@ function stub(...answers: (Response | Error | 'hang')[]) {
   }) as typeof fetch;
   const transport = resendTransport({
     apiKey: KEY,
-    from: 'DevHQ <no-reply@mail.example.com>',
+    from: 'TavetaHQ <no-reply@mail.example.com>',
     replyTo: 'support@example.com',
     fetch: fetchStub,
     sleep: async (ms) => {
@@ -75,7 +75,7 @@ describe('mail/resend — request', () => {
     assert.equal(headers(c)['Idempotency-Key'], 'sign-in-alert/rec123');
     assert.ok(c.init.signal, 'every attempt has a timeout signal');
     const b = body(c);
-    assert.equal(b.from, 'DevHQ <no-reply@mail.example.com>');
+    assert.equal(b.from, 'TavetaHQ <no-reply@mail.example.com>');
     assert.deepEqual(b.to, ['kofi@example.com']);
     assert.equal(b.subject, MSG.subject);
     assert.equal(b.html, MSG.html);
@@ -206,7 +206,7 @@ describe('config/mail — fail closed', () => {
   const resendProd: MailEnv = {
     MAIL_TRANSPORT: 'resend',
     RESEND_API_KEY: KEY,
-    MAIL_FROM: 'DevHQ <no-reply@mail.example.com>',
+    MAIL_FROM: 'TavetaHQ <no-reply@mail.example.com>',
   };
 
   it('refuses to boot in production with resend and no key', () => {
@@ -227,7 +227,7 @@ describe('config/mail — fail closed', () => {
     const c = loadMailConfig({ ...resendProd, MAIL_REPLY_TO: 'support@example.com' }, prod);
     assert.equal(c.transport, 'resend');
     assert.equal(c.resend.apiKey, KEY);
-    assert.equal(c.from, 'DevHQ <no-reply@mail.example.com>');
+    assert.equal(c.from, 'TavetaHQ <no-reply@mail.example.com>');
     assert.equal(c.replyTo, 'support@example.com');
     assert.equal(c.brand.appUrl, 'https://app.example.com');
   });
@@ -278,7 +278,10 @@ describe('config/mail — fail closed', () => {
   it('validates sender and reply-to addresses', () => {
     assert.throws(
       () =>
-        loadMailConfig({ ...resendProd, MAIL_FROM: 'DevHQ <no-reply@x.com>\r\nBcc: a@b.co' }, prod),
+        loadMailConfig(
+          { ...resendProd, MAIL_FROM: 'TavetaHQ <no-reply@x.com>\r\nBcc: a@b.co' },
+          prod,
+        ),
       /MAIL_FROM/,
     );
     assert.throws(
@@ -315,28 +318,28 @@ describe('config/mail — fail closed', () => {
     assert.throws(() => loadMailConfig({ BRAND_WEBSITE_URL: 'javascript:alert(1)' }, dev), /http/);
   });
 
-  it('has sensible DevHQ defaults for development', () => {
+  it('has sensible TavetaHQ defaults for development', () => {
     const c = loadMailConfig({}, dev);
     assert.equal(c.transport, 'console');
-    assert.equal(c.brand.name, 'DevHQ');
+    assert.equal(c.brand.name, 'TavetaHQ');
     assert.equal(c.brand.appUrl, 'http://localhost:5173');
-    assert.match(c.from, /^DevHQ <no-reply@devhq\.local>$/);
+    assert.match(c.from, /^TavetaHQ <no-reply@devhq\.local>$/);
     assert.equal(c.brand.supportEmail, 'support@devhq.local');
     // The platform's own palette (docs/operations/brand.md).
-    assert.equal(c.brand.primaryColor, '#4f46e5');
+    assert.equal(c.brand.primaryColor, '#4338ca');
     assert.equal(c.brand.accentColor, '#3730a3');
   });
 
   it('derives every brand default from the app address', () => {
     const c = loadMailConfig({ APP_URL: 'https://app.example.com' }, { ...prod });
-    assert.equal(c.brand.name, 'DevHQ');
-    assert.equal(c.brand.legalName, 'DevHQ');
+    assert.equal(c.brand.name, 'TavetaHQ');
+    assert.equal(c.brand.legalName, 'TavetaHQ');
     assert.equal(c.brand.websiteUrl, 'https://app.example.com');
     assert.equal(c.brand.supportEmail, 'support@example.com');
-    assert.equal(c.brand.logoUrl, 'https://app.example.com/brand/devhq-email-logo.png');
+    assert.equal(c.brand.logoUrl, 'https://app.example.com/brand/tavetahq-email-logo.png');
     assert.equal(c.brand.assetBaseUrl, 'https://app.example.com/brand');
     assert.equal(c.replyTo, 'support@example.com');
-    assert.equal(c.from, 'DevHQ <no-reply@example.com>');
+    assert.equal(c.from, 'TavetaHQ <no-reply@example.com>');
     assert.equal(c.brand.postalAddress, '', 'a postal address is never invented');
   });
 
@@ -352,11 +355,11 @@ describe('config/mail — fail closed', () => {
     );
     const uk = loadMailConfig({ APP_URL: 'https://example.co.uk' }, prod);
     assert.equal(uk.brand.supportEmail, 'support@example.co.uk');
-    assert.equal(uk.from, 'DevHQ <no-reply@example.co.uk>');
+    assert.equal(uk.from, 'TavetaHQ <no-reply@example.co.uk>');
     const local = loadMailConfig({}, dev);
     assert.equal(local.brand.supportEmail, 'support@devhq.local');
     assert.equal(local.replyTo, 'support@devhq.local');
-    assert.equal(local.brand.logoUrl, 'http://localhost:5173/brand/devhq-email-logo.png');
+    assert.equal(local.brand.logoUrl, 'http://localhost:5173/brand/tavetahq-email-logo.png');
   });
 
   it('keeps explicit brand values and still requires MAIL_FROM for resend in production', () => {

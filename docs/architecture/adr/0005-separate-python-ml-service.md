@@ -5,7 +5,7 @@
 
 ## Context
 
-DevHQ wants predictions (task ETA and overdue risk, deployment risk, sign-in
+TavetaHQ wants predictions (task ETA and overdue risk, deployment risk, sign-in
 anomaly scores) and an assistant that answers questions about the
 organisation's work. The ML ecosystem is Python. The API is a Node process with a
 single runtime dependency (ADR [0001](0001-no-framework-backend.md)) and the security

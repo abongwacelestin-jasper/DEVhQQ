@@ -1,5 +1,5 @@
 #!/bin/sh
-# DevHQ object storage bootstrap — idempotent. Runs in the `minio/mc` image
+# TavetaHQ object storage bootstrap — idempotent. Runs in the `minio/mc` image
 # (see compose.snippet.yml) or anywhere `mc` is installed.
 #
 # Creates and hardens the four buckets, then creates least-privilege service

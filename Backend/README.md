@@ -1,6 +1,6 @@
-# DevHQ API (`@devhq/backend`)
+# TavetaHQ API (`@devhq/backend`)
 
-The DevHQ API: Node 22, TypeScript run directly with Node's type stripping,
+The TavetaHQ API: Node 22, TypeScript run directly with Node's type stripping,
 no build step, and a single runtime dependency (`pg`, the PostgreSQL driver). It also serves the backend console
 at `/console`.
 

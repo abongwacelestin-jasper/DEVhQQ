@@ -1,6 +1,6 @@
 # Known limits
 
-Read this before putting DevHQ in front of real users. Each item says what the
+Read this before putting TavetaHQ in front of real users. Each item says what the
 limit is, why, and what to do about it.
 
 ## Run exactly one backend replica

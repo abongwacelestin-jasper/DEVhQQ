@@ -17,7 +17,7 @@ interface GitHubAppModalProps {
 const NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 /**
- * Link a repository the GitHub App can already see to a DevHQ product
+ * Link a repository the GitHub App can already see to a TavetaHQ product
  * (`POST /api/repos`). Granting the app access to the repository happens on
  * GitHub; the server rejects names the installation can't read.
  */
@@ -60,7 +60,7 @@ export function GitHubAppModal({ open, onClose, onLink }: GitHubAppModalProps) {
       open={open}
       onClose={onClose}
       title="Link a repository"
-      description="DevHQ reads from GitHub. GitHub stays authoritative for code, reviews and branch rules."
+      description="TavetaHQ reads from GitHub. GitHub stays authoritative for code, reviews and branch rules."
       illustration={<ConnectRepoIllustration />}
       footer={
         <>

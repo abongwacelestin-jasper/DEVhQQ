@@ -20,7 +20,7 @@ export function generateTotpSecret(): string {
 }
 
 /** otpauth:// URI for authenticator-app QR codes. */
-export function totpUri(secret: string, account: string, issuer = 'DevHQ'): string {
+export function totpUri(secret: string, account: string, issuer = 'TavetaHQ'): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   return `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=${DIGITS}&period=${STEP_SECONDS}`;
 }

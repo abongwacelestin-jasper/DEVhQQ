@@ -63,7 +63,7 @@ const catalogue: Record<
   slack: {
     name: 'Slack',
     category: 'Notifications',
-    authority: 'Delivery channel only — discussions stay in DevHQ.',
+    authority: 'Delivery channel only — discussions stay in TavetaHQ.',
     syncs: ['Outbound alerts'],
     defaultEvents: [
       'deployment.approved',
@@ -83,7 +83,7 @@ const catalogue: Record<
   pagerduty: {
     name: 'PagerDuty',
     category: 'Monitoring',
-    authority: 'Pages on-call for incidents and down monitors; DevHQ stays the incident record.',
+    authority: 'Pages on-call for incidents and down monitors; TavetaHQ stays the incident record.',
     syncs: ['Incident triggers', 'Resolves'],
     defaultEvents: ['incident.opened', 'incident.resolved', 'monitor.down', 'monitor.up'],
   },
@@ -178,7 +178,7 @@ function builtIns(p: Principal) {
       status: failing.length ? ('degraded' as const) : ('connected' as const),
       detail: `${ownMonitors.length} checks · ${failing.length} failing`,
       lastSync: 'Live',
-      authority: 'Built into DevHQ. Source of truth for availability history.',
+      authority: 'Built into TavetaHQ. Source of truth for availability history.',
       syncs: ['Availability', 'Latency'],
       builtIn: true,
       connectable: false,

@@ -1,5 +1,5 @@
 /**
- * Ask DevHQ — presentation data and the response contract.
+ * Ask TavetaHQ — presentation data and the response contract.
  *
  * Answers come only from `POST /api/assistant/ask` (ML lane). There is no
  * local answer engine: when the ML service is down the panel says so.

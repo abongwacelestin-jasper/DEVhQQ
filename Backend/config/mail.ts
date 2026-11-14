@@ -2,7 +2,7 @@
  * Mail and brand configuration (read once at boot, like the rest of config/).
  *
  *   MAIL_TRANSPORT    console (default) | smtp | resend
- *   MAIL_FROM         RFC 5322 From, e.g. `DevHQ <no-reply@mail.example.com>`
+ *   MAIL_FROM         RFC 5322 From, e.g. `TavetaHQ <no-reply@mail.example.com>`
  *   MAIL_REPLY_TO     optional Reply-To address
  *   RESEND_API_KEY    Resend API key (or RESEND_API_KEY_FILE, a file holding it)
  *   RESEND_TIMEOUT_MS per-attempt timeout of the Resend API call (10 s)
@@ -36,9 +36,9 @@ import { readFileSync } from 'node:fs';
 export type MailTransportKind = 'console' | 'smtp' | 'resend';
 
 export interface Brand {
-  /** Product name used in subjects and copy, e.g. "DevHQ". */
+  /** Product name used in subjects and copy, e.g. "TavetaHQ". */
   name: string;
-  /** Company name in the footer, e.g. "DevHQ Technologies Ltd". */
+  /** Company name in the footer, e.g. "TavetaHQ Technologies Ltd". */
   legalName: string;
   /** Absolute URL of a PNG (recommended) or SVG logo; unset renders a text wordmark. */
   logoUrl?: string;
@@ -269,13 +269,13 @@ export function loadMailConfig(
   const appOrigin = new URL(appUrl).origin;
   const mailDomain = registrableDomain(new URL(appUrl).hostname);
 
-  const name = env.BRAND_NAME?.trim() || 'DevHQ';
+  const name = env.BRAND_NAME?.trim() || 'TavetaHQ';
   if (name.length > 60 || /[\r\n<>]/.test(name))
     throw new Error('BRAND_NAME must be at most 60 characters with no angle brackets');
   const legalName = env.BRAND_LEGAL_NAME?.trim() || name;
 
   // Default: the lockup PNG the frontend serves (Frontend/public/brand/).
-  let logoUrl: string | undefined = `${appOrigin}/brand/devhq-email-logo.png`;
+  let logoUrl: string | undefined = `${appOrigin}/brand/tavetahq-email-logo.png`;
   if (env.BRAND_LOGO_URL?.trim()) {
     logoUrl = absoluteUrl('BRAND_LOGO_URL', env.BRAND_LOGO_URL, isProd);
     const path = new URL(logoUrl).pathname;
@@ -306,8 +306,8 @@ export function loadMailConfig(
     legalName,
     logoUrl,
     assetBaseUrl,
-    logoWidth: positiveInt('BRAND_LOGO_WIDTH', env.BRAND_LOGO_WIDTH, 120, 560),
-    primaryColor: normalizeColor('BRAND_PRIMARY_COLOR', env.BRAND_PRIMARY_COLOR || '#4f46e5'),
+    logoWidth: positiveInt('BRAND_LOGO_WIDTH', env.BRAND_LOGO_WIDTH, 168, 560),
+    primaryColor: normalizeColor('BRAND_PRIMARY_COLOR', env.BRAND_PRIMARY_COLOR || '#4338ca'),
     accentColor: normalizeColor('BRAND_ACCENT_COLOR', env.BRAND_ACCENT_COLOR || '#3730a3'),
     supportEmail,
     postalAddress,
@@ -321,7 +321,7 @@ export function loadMailConfig(
     throw new Error('MAIL_FROM is required when MAIL_TRANSPORT=resend in production');
   const from = fromRaw || `${name} <no-reply@${mailDomain}>`;
   if (!mailboxAddress(from))
-    throw new Error('MAIL_FROM must look like "DevHQ <no-reply@mail.example.com>"');
+    throw new Error('MAIL_FROM must look like "TavetaHQ <no-reply@mail.example.com>"');
   // Replies reach a person: the support mailbox unless another is configured.
   const replyTo = env.MAIL_REPLY_TO?.trim() || supportEmail;
   if (replyTo && !ADDRESS.test(replyTo))

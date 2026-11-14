@@ -112,7 +112,7 @@ export const illustrations = {
   },
   connectRepo: {
     src: '/65073e12-9dc5-474f-ac4b-941128e5e468.webp',
-    alt: 'A repository plugged into DevHQ',
+    alt: 'A repository plugged into TavetaHQ',
     ratio: '16/9',
   },
   ship: {

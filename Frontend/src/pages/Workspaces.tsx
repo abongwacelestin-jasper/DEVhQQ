@@ -68,7 +68,7 @@ export function Workspaces() {
             {heading('Workspaces')}
           </h1>
           <p className="mt-0.5 max-w-xl text-[12.5px] text-muted">
-            Run several companies from one DevHQ account. Each workspace has its own products,
+            Run several companies from one TavetaHQ account. Each workspace has its own products,
             people, modules and security policies.
           </p>
         </div>
@@ -136,7 +136,7 @@ export function Workspaces() {
                     )}
                   </p>
                   <p className="truncate text-[11.5px] text-muted">
-                    devhq.app/{w.slug} · {tpl?.name ?? w.template}
+                    tavetahq.io/{w.slug} · {tpl?.name ?? w.template}
                   </p>
                 </div>
                 <span className="hidden text-[12px] text-ink lg:block">{w.role}</span>

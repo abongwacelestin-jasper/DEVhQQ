@@ -6,7 +6,7 @@
  * updates rows instead of multiplying them. Free-text fields are passed
  * through the same secret patterns as the frontend pre-commit scanner
  * (Frontend/src/utils/secretScan.ts) and masked, so a scanner that echoes the
- * secret it found can never make DevHQ store or display it.
+ * secret it found can never make TavetaHQ store or display it.
  */
 
 import { createHash } from 'node:crypto';

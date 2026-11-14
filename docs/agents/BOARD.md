@@ -1,4 +1,4 @@
-# DevHQ — Agent Board
+# TavetaHQ — Agent Board
 
 **Goal:** one product, one source of truth. The React app talks to the real API
 (`Backend/`), replacing client-side auth and `Frontend/src/data/*` seeds for the

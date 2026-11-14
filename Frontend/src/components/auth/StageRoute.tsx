@@ -22,7 +22,7 @@ function BootError({ message, onRetry }: { message: string; onRetry: () => Promi
         <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-warn-soft text-warn">
           <CloudOffIcon className="h-5 w-5" />
         </span>
-        <h1 className="mt-3 text-[15px] font-semibold text-ink">Can’t reach DevHQ</h1>
+        <h1 className="mt-3 text-[15px] font-semibold text-ink">Can’t reach TavetaHQ</h1>
         <p className="mt-1 text-[12.5px] text-muted">{message}</p>
         <button
           type="button"

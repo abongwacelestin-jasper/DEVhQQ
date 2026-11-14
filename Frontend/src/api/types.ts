@@ -1,5 +1,5 @@
 /**
- * Response shapes for the DevHQ API.
+ * Response shapes for the TavetaHQ API.
  *
  * These mirror `Backend/types.ts` and the route handlers — the browser and the
  * server must agree on names, so this file is deliberately dumb: types only,

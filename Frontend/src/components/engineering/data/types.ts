@@ -221,7 +221,7 @@ export interface ApiIntegration {
   description?: string;
   source?: DataSource;
   category?: string;
-  /** DevHQ built-ins (GitHub App, uptime checks) can't be connected/disconnected here. */
+  /** TavetaHQ built-ins (GitHub App, uptime checks) can't be connected/disconnected here. */
   builtIn?: boolean;
   /** Catalogue entry that can be connected with POST /connect. */
   connectable?: boolean;

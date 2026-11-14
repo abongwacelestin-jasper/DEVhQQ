@@ -20,8 +20,9 @@ export interface MemberPatch {
  * server has applied it — the page keeps no private copy of who holds what.
  */
 export function useTeamData() {
-  const { session } = useAuth();
+  const { session, allows } = useAuth();
   const { tasks } = useWork();
+  const seesGrants = allows('Administration');
   const memberId = session?.memberId ?? null;
 
   const [directory, setDirectory] = useState<ApiMember[]>([]);
@@ -34,7 +35,7 @@ export function useTeamData() {
     const [team, roles, access] = await Promise.allSettled([
       api<ApiMember[]>('/api/team'),
       api<ApiPermissionMatrix>('/api/team/roles'),
-      api<ApiGrant[]>('/api/access/grants'),
+      seesGrants ? api<ApiGrant[]>('/api/access/grants') : Promise.resolve<ApiGrant[]>([]),
     ]);
     const missing: string[] = [];
     if (team.status === 'fulfilled') setDirectory(team.value);
@@ -44,7 +45,7 @@ export function useTeamData() {
     // Grants need Administration:view — a role without it gets an empty list, not an error.
     if (access.status === 'fulfilled') setGrants(access.value);
     setError(missing.length ? `Couldn't load ${missing.join(', ')}.` : null);
-  }, []);
+  }, [seesGrants]);
 
   useEffect(() => {
     if (!memberId) {

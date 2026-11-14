@@ -148,7 +148,7 @@ export const integrations: readonly Integration[] = [
     status: 'connected',
     detail: 'RenewBerry pipelines',
     lastSync: '1m ago',
-    authority: 'Executes RenewBerry deployments. DevHQ records and approves.',
+    authority: 'Executes RenewBerry deployments. TavetaHQ records and approves.',
     syncs: ['Workflow runs', 'Deploy events', 'Logs link'],
   },
   {
@@ -168,7 +168,7 @@ export const integrations: readonly Integration[] = [
     status: 'degraded',
     detail: '6 checks · 1 failing',
     lastSync: '30s ago',
-    authority: 'Built into DevHQ. Source of truth for availability history.',
+    authority: 'Built into TavetaHQ. Source of truth for availability history.',
     syncs: ['Availability', 'Latency'],
   },
   {
@@ -188,7 +188,7 @@ export const integrations: readonly Integration[] = [
     status: 'connected',
     detail: 'Attachments · 18.4 GB',
     lastSync: 'Live',
-    authority: 'Stores files; DevHQ stores references only.',
+    authority: 'Stores files; TavetaHQ stores references only.',
     syncs: ['Attachments'],
   },
   {
@@ -198,7 +198,7 @@ export const integrations: readonly Integration[] = [
     status: 'connected',
     detail: '#releases, #incidents',
     lastSync: '12m ago',
-    authority: 'Delivery channel only — discussions stay in DevHQ.',
+    authority: 'Delivery channel only — discussions stay in TavetaHQ.',
     syncs: ['Outbound alerts'],
   },
   {

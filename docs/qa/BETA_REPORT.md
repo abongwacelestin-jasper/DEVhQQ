@@ -1,4 +1,4 @@
-# DevHQ beta report
+# TavetaHQ beta report
 
 Lane **QA**, wave 4. Plan: [`BETA_TEST_PLAN.md`](./BETA_TEST_PLAN.md). Manual pass:
 [`UAT_CHECKLIST.md`](./UAT_CHECKLIST.md).

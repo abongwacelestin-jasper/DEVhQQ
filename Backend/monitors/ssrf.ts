@@ -80,7 +80,7 @@ const defaultTransport: Transport = (r) =>
       {
         method: r.method,
         headers: {
-          'user-agent': 'DevHQ-Outbound/1.0',
+          'user-agent': 'TavetaHQ-Outbound/1.0',
           ...r.headers,
           ...(r.body !== undefined ? { 'content-length': String(Buffer.byteLength(r.body)) } : {}),
         },

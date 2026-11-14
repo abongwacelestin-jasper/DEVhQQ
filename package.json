@@ -1,22 +1,22 @@
 {
   "name": "devhq",
   "version": "2.0.0",
-  "description": "DevHQ - A comprehensive developer operations platform with intelligent frontend, high-performance backend, and ML-powered models",
+  "description": "TavetaHQ - A comprehensive developer operations platform with intelligent frontend, high-performance backend, and ML-powered models",
   "author": {
-    "name": "DevHQ Team",
-    "email": "team@devhq.com",
-    "url": "https://devhq.com"
+    "name": "TavetaHQ Team",
+    "email": "team@tavetahq.io",
+    "url": "https://tavetahq.io"
   },
   "contributors": [
     {
-      "name": "DevHQ Engineering",
-      "email": "engineering@devhq.com"
+      "name": "TavetaHQ Engineering",
+      "email": "engineering@tavetahq.io"
     }
   ],
   "license": "MIT",
   "private": true,
   "type": "module",
-  "homepage": "https://devhq.com",
+  "homepage": "https://tavetahq.io",
   "repository": {
     "type": "git",
     "url": "https://github.com/devhq/devhq.git",
@@ -24,7 +24,7 @@
   },
   "bugs": {
     "url": "https://github.com/devhq/devhq/issues",
-    "email": "support@devhq.com"
+    "email": "support@tavetahq.io"
   },
   "keywords": [
     "devops",

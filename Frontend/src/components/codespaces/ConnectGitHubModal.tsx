@@ -36,7 +36,7 @@ export function ConnectGitHubModal({
       const url = await getAuthorizeUrl();
       if (url) {
         const popup = window.open(url, 'devhq-github-auth', 'width=620,height=720');
-        if (!popup) throw new Error('Allow pop-ups for DevHQ, then try again');
+        if (!popup) throw new Error('Allow pop-ups for TavetaHQ, then try again');
         // The OAuth callback page posts { type: 'devhq:github-connected' } back to the opener.
         await new Promise<void>((resolve, reject) => {
           const timer = setInterval(() => {
@@ -70,7 +70,7 @@ export function ConnectGitHubModal({
       onClose={onClose}
       size="sm"
       title="Connect your GitHub account"
-      description="Your codespace needs a GitHub sign-in that DevHQ can pass to the editor."
+      description="Your codespace needs a GitHub sign-in that TavetaHQ can pass to the editor."
       footer={
         <>
           <Button variant="ghost" onClick={onUseSandbox}>
@@ -101,8 +101,8 @@ export function ConnectGitHubModal({
         ))}
       </ul>
       <p className="mt-3 text-[11.5px] text-muted">
-        Tokens stay on the DevHQ server and expire after 8 hours. You can revoke access from GitHub
-        → Settings → Applications.
+        Tokens stay on the TavetaHQ server and expire after 8 hours. You can revoke access from
+        GitHub → Settings → Applications.
       </p>
       {error && (
         <p

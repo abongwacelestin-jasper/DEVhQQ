@@ -59,7 +59,7 @@ export function GitHubAppPanel({ app, repoCount, onLink }: GitHubAppPanelProps) 
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-ink">
-              DevHQ GitHub App
+              TavetaHQ GitHub App
               <span
                 className={`rounded px-1.5 py-px text-[11px] font-semibold ${
                   !inst.installed

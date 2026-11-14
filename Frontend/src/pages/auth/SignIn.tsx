@@ -93,11 +93,11 @@ export function SignIn() {
     <AuthLayout
       illustration={<SignInIllustration className="h-auto w-full" />}
       aside={{
-        title: 'One secure door to every product you run.',
+        title: 'Your team. Your work. One headquarters.',
         body: 'Projects, code, releases and operations — scoped to exactly what your role is allowed to see.',
       }}
     >
-      <h1 className="text-[20px] font-semibold tracking-tight text-ink">Sign in to DevHQ</h1>
+      <h1 className="text-[20px] font-semibold tracking-tight text-ink">Sign in to TavetaHQ</h1>
       <p className="mt-1 text-[12.5px] text-muted">
         Use your work account. You’ll confirm with a one-time code next.
       </p>

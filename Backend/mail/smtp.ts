@@ -27,7 +27,7 @@ export interface SmtpOptions {
   port: number;
   user?: string;
   password?: string;
-  /** RFC 5322 From, e.g. `DevHQ <no-reply@devhq.app>`. */
+  /** RFC 5322 From, e.g. `TavetaHQ <no-reply@tavetahq.io>`. */
   from: string;
   /** Default true. Only disable for a local development catch-all server. */
   requireTls?: boolean;

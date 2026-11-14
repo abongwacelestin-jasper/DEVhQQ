@@ -469,7 +469,7 @@ export function CompleteProfile() {
           <p className="mx-auto mt-1 text-[13px] text-muted">
             You’ll land in <b className="text-ink">{role.homeLabel}</b>. Assignments will reach you{' '}
             {email === 'off'
-              ? 'in DevHQ only'
+              ? 'in TavetaHQ only'
               : email === 'daily'
                 ? 'in a daily email digest'
                 : 'by email as they happen'}
@@ -489,7 +489,7 @@ export function CompleteProfile() {
             disabled={busy}
             className="mx-auto mt-4 flex h-9 items-center gap-1.5 rounded-md bg-ink px-4 text-[13px] font-semibold text-white hover:bg-ink/90 disabled:opacity-60"
           >
-            {busy ? 'Saving…' : 'Enter DevHQ'} <ArrowRightIcon className="h-4 w-4" />
+            {busy ? 'Saving…' : 'Enter TavetaHQ'} <ArrowRightIcon className="h-4 w-4" />
           </button>
         </section>
       )}

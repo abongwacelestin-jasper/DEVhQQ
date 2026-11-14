@@ -1,15 +1,15 @@
 {
   "name": "@devhq/models",
   "version": "1.0.0",
-  "description": "DevHQ ML service (Python 3.12, FastAPI). npm scripts are thin wrappers over uv so `npm test --workspaces` covers it; the Python toolchain is the source of truth.",
+  "description": "TavetaHQ ML service (Python 3.12, FastAPI). npm scripts are thin wrappers over uv so `npm test --workspaces` covers it; the Python toolchain is the source of truth.",
   "author": {
-    "name": "DevHQ Team",
-    "email": "ml@devhq.com"
+    "name": "TavetaHQ Team",
+    "email": "ml@tavetahq.io"
   },
   "contributors": [
     {
       "name": "ML Engineering Team",
-      "email": "ml@devhq.com"
+      "email": "ml@tavetahq.io"
     }
   ],
   "license": "MIT",
@@ -29,7 +29,7 @@
   },
   "bugs": {
     "url": "https://github.com/devhq/devhq/issues",
-    "email": "ml@devhq.com"
+    "email": "ml@tavetahq.io"
   },
   "homepage": "https://github.com/devhq/devhq/tree/main/Models",
   "keywords": [

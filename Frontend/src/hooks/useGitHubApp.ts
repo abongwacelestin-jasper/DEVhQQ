@@ -8,7 +8,7 @@ import type { Repository } from '../types/engineering';
  * the server has linked (`GET /api/repos`).
  *
  * The installation itself is configured on GitHub (permissions, repository
- * selection, suspension); DevHQ only reads it. Nothing is kept in browser
+ * selection, suspension); TavetaHQ only reads it. Nothing is kept in browser
  * storage and nothing is synthesised when the server has no answer.
  */
 

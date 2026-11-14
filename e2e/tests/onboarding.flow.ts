@@ -58,7 +58,7 @@ test('a first-time Tester signs the NDA and completes the profile on screen', as
     if (!(await btn.isVisible().catch(() => false))) break;
     await btn.click();
   }
-  await page.getByRole('button', { name: 'Enter DevHQ' }).click();
+  await page.getByRole('button', { name: 'Enter TavetaHQ' }).click();
   await expect(page).toHaveURL(/\/test-queue$/);
   const ob = await (await page.request.get('/api/onboarding')).json();
   expect(ob.stage).toBe('ready');

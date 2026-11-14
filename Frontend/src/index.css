@@ -68,13 +68,13 @@
   --c-canvas: 255 255 255;
   --c-surface: 255 255 255;
   --c-sunken: 244 244 245;
-  --c-ink: 15 17 21;
+  --c-ink: 21 19 43;
   --c-muted: 61 67 80;
   --c-subtle: 95 101 115;
   --c-line: 231 231 234;
   --c-line-strong: 212 212 217;
-  --c-accent: 79 70 229;
-  --c-accent-soft: 238 238 253;
+  --c-accent: 67 56 202;
+  --c-accent-soft: 238 237 249;
   --c-accent-ink: 55 48 163;
   --c-ok: 19 115 51;
   --c-ok-soft: 230 244 234;

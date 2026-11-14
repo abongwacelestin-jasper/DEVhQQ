@@ -1,4 +1,4 @@
-# DevHQ
+# TavetaHQ
 
 Developer operations platform: a React SPA (`Frontend/`), a Node.js API with no
 build step (`Backend/`), a Python ML service (`Models/`), PostgreSQL and

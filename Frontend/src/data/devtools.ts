@@ -43,7 +43,7 @@ export const ideOptions: IdeOption[] = [
     short: 'JB',
     color: '#B42318',
     scheme: 'jetbrains',
-    install: 'Settings → Plugins → Marketplace → “DevHQ”',
+    install: 'Settings → Plugins → Marketplace → “TavetaHQ”',
     features: ['Task tool window', 'Commit message templates', 'Pre-commit secret scan'],
   },
   {

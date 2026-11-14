@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Currently, only the latest version of DevHQ is supported with security updates.
+Currently, only the latest version of TavetaHQ is supported with security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -17,7 +17,7 @@ issues.**
 
 To report a security vulnerability, please email us at:
 
-**security@devhq.com**
+**security@tavetahq.io**
 
 Please include the following information in your report:
 
@@ -109,7 +109,7 @@ the file and the test that cover it.
 ### Reporting a suspected token leak
 
 PATs start with `dhq_pat_`, so secret scanners can find them. If you find a
-leaked token, report it to security@devhq.com. The owner, or any
+leaked token, report it to security@tavetahq.io. The owner, or any
 Administration admin, can revoke it at once with `DELETE /api/tokens/:id`.
 
 ### Dependency Security
@@ -168,10 +168,10 @@ We conduct regular security audits including:
 
 For general security questions or inquiries:
 
-- Email: security@devhq.com
+- Email: security@tavetahq.io
 - PGP Key: [Add PGP key for encrypted communication]
 
 ## Acknowledgments
 
-We thank all security researchers who have helped make DevHQ more secure through
+We thank all security researchers who have helped make TavetaHQ more secure through
 responsible vulnerability disclosure.

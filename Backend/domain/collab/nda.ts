@@ -32,7 +32,7 @@ export const ndaSections: NdaSection[] = [
       },
       {
         h: 'What counts as confidential',
-        p: 'All non-public information you see in DevHQ or connected systems — repositories, deployment logs, incident records, credentials, roadmaps and personal data — whether marked confidential or not.',
+        p: 'All non-public information you see in TavetaHQ or connected systems — repositories, deployment logs, incident records, credentials, roadmaps and personal data — whether marked confidential or not.',
       },
       {
         h: 'Duration',
@@ -55,7 +55,7 @@ export const ndaSections: NdaSection[] = [
       },
       {
         h: 'Where code may live',
-        p: 'Clone repositories only to devices with full-disk encryption. Do not push to personal remotes, public gists or paste code into third-party AI tools that are not approved in DevHQ.',
+        p: 'Clone repositories only to devices with full-disk encryption. Do not push to personal remotes, public gists or paste code into third-party AI tools that are not approved in TavetaHQ.',
       },
       {
         h: 'Open source',

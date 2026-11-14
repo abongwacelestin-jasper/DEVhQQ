@@ -1,6 +1,6 @@
 # ML and the assistant
 
-DevHQ has a separate Python service for predictions and the assistant
+TavetaHQ has a separate Python service for predictions and the assistant
 ([ADR 0005](../architecture/adr/0005-separate-python-ml-service.md)). Its own
 guide — quick start, configuration, the service API, request signing, the
 training pipeline, **model cards** and the assistant's design — is

@@ -51,7 +51,7 @@ export function PullRequests() {
     <div className="space-y-5">
       <PageHeader
         title="Pull requests"
-        description="Synchronized from GitHub. DevHQ links each change to its task; GitHub stays authoritative for merges."
+        description="Synchronized from GitHub. TavetaHQ links each change to its task; GitHub stays authoritative for merges."
         actions={<SampleDataBadge source={list.source} />}
       />
 
@@ -97,7 +97,7 @@ export function PullRequests() {
               No pull requests in this view.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-xs">
                 <caption className="sr-only">Pull requests, {filter} view</caption>
                 <thead className="border-b border-line bg-sunken/40 text-[11px] font-medium text-muted">

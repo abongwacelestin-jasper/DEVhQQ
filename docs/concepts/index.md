@@ -1,6 +1,6 @@
 # Concepts
 
-How DevHQ decides who can see and do what, and how it keeps a record of it.
+How TavetaHQ decides who can see and do what, and how it keeps a record of it.
 Read them in this order; each builds on the previous.
 
 1. [Products, projects and scope](products-and-scope.md) — what data exists and

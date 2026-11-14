@@ -1,6 +1,6 @@
 # Local development
 
-Two ways to run DevHQ on your machine:
+Two ways to run TavetaHQ on your machine:
 
 - **Docker (the whole platform).** `make secrets && make up-dev` starts the
   edge, the Vite dev server with hot reload, the backend from your checkout

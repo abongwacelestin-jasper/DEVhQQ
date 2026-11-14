@@ -140,7 +140,7 @@ export function IntegrationWebhooks({
           <div className="flex flex-col items-center px-4 py-8 text-center">
             <WebhookIcon className="h-6 w-6 text-subtle" aria-hidden />
             <p className="mt-2 text-[12.5px] text-muted">
-              No outbound webhooks yet. Add an endpoint to receive signed DevHQ events.
+              No outbound webhooks yet. Add an endpoint to receive signed TavetaHQ events.
             </p>
           </div>
         ) : (
@@ -281,7 +281,7 @@ export function IntegrationWebhooks({
         }
       >
         <p className="text-[12.5px] text-muted">
-          DevHQ stops delivering events to this URL. Pending retries are cancelled.
+          TavetaHQ stops delivering events to this URL. Pending retries are cancelled.
         </p>
         <InlineError error={deleteError} />
       </Modal>
@@ -364,7 +364,7 @@ function AddEndpointModal({
       open={open}
       onClose={close}
       title="Add webhook endpoint"
-      description="DevHQ signs every payload with HMAC-SHA256. The signing secret is shown once."
+      description="TavetaHQ signs every payload with HMAC-SHA256. The signing secret is shown once."
       footer={
         <>
           <Button size="sm" onClick={close}>

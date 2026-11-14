@@ -128,11 +128,11 @@ export function ActivityBar({
               <>
                 <p className="px-3 pb-1 pt-1.5 text-[13px] text-[var(--vs-fg)]">{user.name}</p>
                 <p className="px-3 pb-2 text-[12px] text-[var(--vs-fg-muted)]">
-                  {user.email} · signed in to DevHQ
+                  {user.email} · signed in to TavetaHQ
                 </p>
                 <div className="mx-1 my-1 h-px bg-[var(--vs-border)]" />
                 <button className={row} onClick={onHome}>
-                  Open DevHQ dashboard
+                  Open TavetaHQ dashboard
                 </button>
               </>
             ) : (

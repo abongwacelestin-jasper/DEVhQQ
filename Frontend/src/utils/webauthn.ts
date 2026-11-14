@@ -1,5 +1,5 @@
 /**
- * WebAuthn ceremonies against the DevHQ API.
+ * WebAuthn ceremonies against the TavetaHQ API.
  *
  * The server issues every challenge (`/api/auth/webauthn/options`,
  * `/api/auth/passkeys/options`) and verifies every response
@@ -125,7 +125,7 @@ export async function createCredential(
   )
     throw new Error('This browser cannot export passkey details. Update it and try again.');
   const publicKey = res.getPublicKey();
-  if (!publicKey) throw new Error('This authenticator uses an algorithm DevHQ does not accept.');
+  if (!publicKey) throw new Error('This authenticator uses an algorithm TavetaHQ does not accept.');
   return {
     challengeId: opts.challengeId,
     credentialId: toB64Url(cred.rawId),
@@ -159,7 +159,7 @@ export function describeWebAuthnError(e: unknown): string {
     if (e.name === 'NotAllowedError')
       return 'The request was cancelled or timed out. Passkeys can’t be used inside embedded previews — open the app in its own tab.';
     if (e.name === 'InvalidStateError') return 'A passkey for this device is already registered.';
-    if (e.name === 'SecurityError') return 'Passkeys need a secure origin that matches DevHQ.';
+    if (e.name === 'SecurityError') return 'Passkeys need a secure origin that matches TavetaHQ.';
     if (e.name === 'AbortError') return 'The passkey request was cancelled.';
   }
   return e instanceof Error ? e.message : 'Passkey request failed.';

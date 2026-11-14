@@ -272,8 +272,8 @@ function PullView({ repoId, number }: { repoId: string; number: number }) {
           <div className="flex gap-2 rounded-lg border border-line bg-sunken/50 px-3 py-2.5 text-[12px] text-muted">
             <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
             <p>
-              Reviews submitted here are posted to GitHub through the DevHQ GitHub App. Merges and
-              branch rules stay in GitHub.
+              Reviews submitted here are posted to GitHub through the TavetaHQ GitHub App. Merges
+              and branch rules stay in GitHub.
             </p>
           </div>
         </div>

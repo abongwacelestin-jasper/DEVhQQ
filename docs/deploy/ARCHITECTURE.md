@@ -1,4 +1,4 @@
-# DevHQ deployment architecture
+# TavetaHQ deployment architecture
 
 Two supported deployments built from the same images:
 

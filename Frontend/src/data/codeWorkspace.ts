@@ -176,7 +176,7 @@ main();
     },
     {
       path: 'README.md',
-      content: `# renewberry/api\n\nSubscription billing API.\n\n- \`npm test\` — unit tests\n- \`node playground.ts\` — run the scratch file\n- Secrets live in DevHQ → Integrations → credentials\n`,
+      content: `# renewberry/api\n\nSubscription billing API.\n\n- \`npm test\` — unit tests\n- \`node playground.ts\` — run the scratch file\n- Secrets live in TavetaHQ → Integrations → credentials\n`,
     },
   ],
 

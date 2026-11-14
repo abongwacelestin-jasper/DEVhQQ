@@ -25,7 +25,7 @@ const lintMessages: Record<string, string> = {
   'no-console':
     'Unexpected console.log — use console.info for intentional output, or remove before merging. (no-console)',
   'no-explicit-any': 'Avoid `any` — give this value a real type. (no-explicit-any)',
-  'todo-comment': 'TODO left in code — link it to a DevHQ task. (todo-comment)',
+  'todo-comment': 'TODO left in code — link it to a TavetaHQ task. (todo-comment)',
 };
 
 const uriFor = (monaco: Monaco, path: string) => monaco.Uri.parse(`file:///${path}`);

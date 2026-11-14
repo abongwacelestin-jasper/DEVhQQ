@@ -111,7 +111,7 @@ export function BottomPanel({
           )}
           {tab === 'output' && (
             <span className="mr-2 hidden text-[12px] text-[var(--vs-fg-muted)] sm:inline">
-              DevHQ Sandbox
+              TavetaHQ Sandbox
             </span>
           )}
           {tab !== 'problems' && (

@@ -1,7 +1,7 @@
 [project]
 name = "devhq-models"
 version = "1.0.0"
-description = "DevHQ ML service: task ETA / overdue risk, deploy risk, sign-in anomaly scoring and the grounded workspace assistant."
+description = "TavetaHQ ML service: task ETA / overdue risk, deploy risk, sign-in anomaly scoring and the grounded workspace assistant."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.12,<3.13"

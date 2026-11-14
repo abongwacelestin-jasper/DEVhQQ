@@ -5,7 +5,7 @@
 
 ## Context
 
-The API is the enforcement point for every security control in DevHQ:
+The API is the enforcement point for every security control in TavetaHQ:
 headers, origin checks, rate limits, authentication, authorisation,
 validation and audit. Each npm dependency is code that runs with the API's
 privileges, and the repository's `.npmrc` already treats installs as a

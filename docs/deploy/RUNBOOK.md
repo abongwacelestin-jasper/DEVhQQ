@@ -1,4 +1,4 @@
-# DevHQ operations runbook
+# TavetaHQ operations runbook
 
 Single-host Docker Compose deployment. Architecture and trust boundaries:
 [ARCHITECTURE.md](ARCHITECTURE.md). Hosting on Railway with Cloudflare R2
@@ -254,7 +254,7 @@ start.
 
 ## 6. Incident checklist
 
-1. **Declare** — open an incident (DevHQ Incidents page or ops channel),
+1. **Declare** — open an incident (TavetaHQ Incidents page or ops channel),
    name an incident lead and a scribe, note start time (UTC).
 2. **Stabilise** — `docker compose ps`, `make logs SERVICE=backend`,
    `curl -fsS https://$DEVHQ_DOMAIN/api/ready`. Bad deploy? Re-run **Deploy**

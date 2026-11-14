@@ -29,7 +29,7 @@ export interface AppConfig {
   publicUrl: string;
   /** Every origin allowed to make credentialed, state-changing calls. */
   allowedOrigins: string[];
-  /** WebAuthn relying-party ID: the registrable domain, e.g. "devhq.app". */
+  /** WebAuthn relying-party ID: the registrable domain, e.g. "tavetahq.io". */
   rpId: string;
   rpName: string;
   /** HMAC key for signing session tokens. Must be ≥ 32 random bytes (hex). */
@@ -245,7 +245,7 @@ export function loadConfig(): AppConfig {
     publicUrl,
     allowedOrigins: [...new Set([appOrigin, publicUrl, ...devOrigins, ...extra])],
     rpId,
-    rpName: process.env.WEBAUTHN_RP_NAME ?? 'DevHQ',
+    rpName: process.env.WEBAUTHN_RP_NAME ?? 'TavetaHQ',
     sessionSecret,
     sessionSecretPrevious: process.env.SESSION_SECRET_PREVIOUS,
     sessionIdleMs: int('SESSION_IDLE_MS', 15 * 60_000),

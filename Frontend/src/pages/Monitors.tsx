@@ -132,7 +132,7 @@ export function Monitors() {
     <div className="space-y-5">
       <PageHeader
         title="Monitors"
-        description="External HTTP checks run by the DevHQ scheduler. Repeated failures open an incident. A successful deploy doesn’t mean a healthy service."
+        description="External HTTP checks run by the TavetaHQ scheduler. Repeated failures open an incident. A successful deploy doesn’t mean a healthy service."
         actions={
           <GuardedButton
             allowed={canWrite}
@@ -227,7 +227,7 @@ export function Monitors() {
         <div className="flex items-start gap-3 px-4 py-4 text-[12.5px] text-muted" role="status">
           <ServerOffIcon className="mt-0.5 h-4 w-4 shrink-0 text-subtle" aria-hidden />
           <p>
-            Host metrics need an infrastructure agent — not connected. DevHQ shows uptime checks
+            Host metrics need an infrastructure agent — not connected. TavetaHQ shows uptime checks
             only, rather than estimated CPU or memory figures.{' '}
             <Link to="/integrations" className="font-medium text-ink underline">
               Integrations

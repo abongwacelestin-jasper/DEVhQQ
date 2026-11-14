@@ -1,5 +1,5 @@
 /**
- * Shared ESLint configuration for DevHQ.
+ * Shared ESLint configuration for TavetaHQ.
  *
  * This file is the single source of truth for *rules*; each package has a thin
  * `eslint.config.mjs` that composes it with its own dependencies, because

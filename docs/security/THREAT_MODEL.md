@@ -1,4 +1,4 @@
-# DevHQ threat model (Wave 4)
+# TavetaHQ threat model (Wave 4)
 
 Method: STRIDE per component. Each row gives the threat, the control that
 mitigates it, and the residual risk. Control ids (`C-xx`) refer to

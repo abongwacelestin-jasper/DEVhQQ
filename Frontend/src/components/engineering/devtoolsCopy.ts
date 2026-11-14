@@ -1,8 +1,8 @@
-/** Static install instructions for the DevHQ CLI and git hooks. Copy only — no state. */
+/** Static install instructions for the TavetaHQ CLI and git hooks. Copy only — no state. */
 export const cliTools = [
   {
     id: 'cli',
-    name: 'DevHQ CLI',
+    name: 'TavetaHQ CLI',
     cmd: 'npm i -g @devhq/cli && devhq login',
     detail: 'Branch from tasks, log time and see deploy status from your terminal.',
   },

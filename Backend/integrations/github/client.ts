@@ -1,5 +1,5 @@
 /**
- * GitHub REST client for the DevHQ GitHub App.
+ * GitHub REST client for the TavetaHQ GitHub App.
  *
  * - App JWT: RS256 over `{iat, exp, iss}` with node:crypto (no jsonwebtoken),
  *   iat back-dated 60 s for clock skew, 9-minute lifetime, cached for 8.

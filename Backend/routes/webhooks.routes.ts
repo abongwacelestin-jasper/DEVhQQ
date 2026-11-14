@@ -187,7 +187,7 @@ export function registerWebhookRoutes(r: Router) {
         id: `evt-${randomToken(8)}`,
         type: 'ping',
         at: new Date().toISOString(),
-        data: { id: 'ping', title: 'DevHQ test delivery', integration: i.name },
+        data: { id: 'ping', title: 'TavetaHQ test delivery', integration: i.name },
       });
       audit.append({
         actor: ctx.principal!.memberId,

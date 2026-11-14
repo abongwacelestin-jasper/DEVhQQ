@@ -1,4 +1,4 @@
-# DevHQ ML service (`Models/`)
+# TavetaHQ ML service (`Models/`)
 
 Python 3.12 · FastAPI + uvicorn · pydantic v2 · scikit-learn · Anthropic SDK.
 An **internal** service: it sits on the private compose network, is reached only

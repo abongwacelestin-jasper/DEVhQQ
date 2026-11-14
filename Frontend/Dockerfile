@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.10
 #
-# DevHQ web app image: Vite build -> static files served by unprivileged Caddy.
+# TavetaHQ web app image: Vite build -> static files served by unprivileged Caddy.
 #
 # Build context is the REPOSITORY ROOT (the npm workspace lockfile lives there):
 #   docker build -f Frontend/Dockerfile -t devhq-frontend .
@@ -54,10 +54,10 @@ ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED=unknown
 LABEL org.opencontainers.image.title="devhq-frontend" \
-      org.opencontainers.image.description="DevHQ web app (static SPA on unprivileged Caddy)" \
+      org.opencontainers.image.description="TavetaHQ web app (static SPA on unprivileged Caddy)" \
       org.opencontainers.image.source="https://github.com/devhq/devhq" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.vendor="DevHQ" \
+      org.opencontainers.image.vendor="TavetaHQ" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}"

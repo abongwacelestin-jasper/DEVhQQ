@@ -23,7 +23,7 @@ export type ReviewState = 'review-required' | 'changes-requested' | 'approved' |
 export interface CommitSummary {
   sha: string;
   message: string;
-  /** Member id when the author maps to a DevHQ member, otherwise the GitHub login. */
+  /** Member id when the author maps to a TavetaHQ member, otherwise the GitHub login. */
   author: string;
   at: string;
   signed?: boolean;

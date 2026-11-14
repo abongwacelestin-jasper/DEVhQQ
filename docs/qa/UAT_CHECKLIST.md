@@ -1,4 +1,4 @@
-# DevHQ user acceptance checklist
+# TavetaHQ user acceptance checklist
 
 For the owner (or a delegate) to tick through by hand before release. Use a **fresh** browser
 profile, demo mode, desktop at ~1280 px unless stated. Demo password `devhq-demo`, code `246810`.
@@ -84,7 +84,7 @@ Mark each item ✅ pass · ❌ fail (note what you saw) · ➖ not applicable.
 - [ ] H2. Docs: comment on a doc, reload, the comment is still there. The version history lists saved versions
 - [ ] H3. Assigning a task to someone shows up in **their** notifications
 - [ ] H4. Repositories, Pull requests, Monitors show real rows or a visible **Sample data** badge
-- [ ] H5. **Ask DevHQ** without the ML service says "Assistant unavailable" and makes up no answer
+- [ ] H5. **Ask TavetaHQ** without the ML service says "Assistant unavailable" and makes up no answer
 - [ ] H6. Deployment detail shows a risk badge marked *heuristic* when ML is down. Assignments show "% risk" with its source in the tooltip
 - [ ] H7. Forgot password gives the same answer for real and unknown emails
 

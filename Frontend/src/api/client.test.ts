@@ -255,7 +255,7 @@ describe('api() — error mapping', () => {
     const err = (await caught(client.api('/api/tasks'))) as InstanceType<ClientModule['ApiError']>;
     expect(err).toBeInstanceOf(client.ApiError);
     expect(err).toMatchObject({ status: 0, code: 'network' });
-    expect(err.message).toMatch(/reach DevHQ/);
+    expect(err.message).toMatch(/reach TavetaHQ/);
     expect(signedOut).not.toHaveBeenCalled();
   });
 

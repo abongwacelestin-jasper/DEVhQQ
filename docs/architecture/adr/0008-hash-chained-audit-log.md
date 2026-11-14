@@ -8,7 +8,7 @@
 
 ## Context
 
-DevHQ's controls (two-person approval, JIT access, role changes, step-up) are
+TavetaHQ's controls (two-person approval, JIT access, role changes, step-up) are
 only as good as the record of their use. An attacker or insider with server
 access will try to remove the evidence. A plain log table can be edited
 without trace.

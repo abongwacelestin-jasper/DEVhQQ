@@ -118,8 +118,8 @@ for (const name of names) {
       }
       assert.ok(mail.html.includes('src="https://cdn.acme.example/brand/logo@2x.png"'));
       assert.ok(mail.html.includes('#0f766e'), 'primary colour');
-      assert.ok(!mail.html.includes('DevHQ'), 'no hard-coded product name');
-      assert.ok(!mail.text.includes('DevHQ'), 'no hard-coded product name in text');
+      assert.ok(!mail.html.includes('TavetaHQ'), 'no hard-coded product name');
+      assert.ok(!mail.text.includes('TavetaHQ'), 'no hard-coded product name in text');
     });
 
     it('uses only absolute https links', () => {

@@ -20,7 +20,7 @@ import type { Channel } from '../../types/messaging';
 
 /** Explains the presence dot honestly: it is same-browser only until the server exposes presence. */
 export const PRESENCE_NOTE =
-  'Online status reflects DevHQ tabs open in this browser only — server-side presence is not available yet.';
+  'Online status reflects TavetaHQ tabs open in this browser only — server-side presence is not available yet.';
 
 export type RailTab = 'about' | 'pinned' | 'files' | 'thread';
 

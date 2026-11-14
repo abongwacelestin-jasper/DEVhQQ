@@ -93,8 +93,13 @@ function cspMeta(): Plugin {
       order: 'post',
       handler(html, ctx) {
         const isBuild = !ctx.server;
+        // Whitespace-tolerant, and a missing placeholder fails the build: a
+        // reformatted tag once left the placeholder policy in a production build.
+        const tag = /<meta\s+http-equiv="Content-Security-Policy"\s+content="[^"]*"\s*\/>/;
+        if (!tag.test(html))
+          throw new Error('index.html: the Content-Security-Policy <meta> placeholder is missing');
         return html.replace(
-          /<meta http-equiv="Content-Security-Policy" content="[^"]*" \/>/,
+          tag,
           isBuild ? `<meta http-equiv="Content-Security-Policy" content="${csp('build')}" />` : '',
         );
       },

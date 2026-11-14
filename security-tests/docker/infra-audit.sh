@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DevHQ CYBER phase-2 — Docker stack hardening audit (host-side, read-only).
+# TavetaHQ CYBER phase-2 — Docker stack hardening audit (host-side, read-only).
 #
 # Local only. Uses `docker` / `docker compose` on the host plus in-container
 # interpreters that already exist (models = python). No destructive actions.

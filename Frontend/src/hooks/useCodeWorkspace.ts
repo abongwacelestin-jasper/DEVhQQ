@@ -36,7 +36,7 @@ export function useCodeWorkspace() {
   const [stashes, setStashes] = useState<{ key: string; files: CodeFile[]; label: string }[]>([]);
   const [term, setTerm] = useState<TermLine[]>([
     L(
-      'DevHQ sandbox terminal — commands run against this workspace only. No network, no secrets.',
+      'TavetaHQ sandbox terminal — commands run against this workspace only. No network, no secrets.',
       'muted',
     ),
     L("Try 'node playground.ts', 'npm test' or 'help'.", 'muted'),

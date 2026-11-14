@@ -45,7 +45,7 @@ Response `200`:
   "purpose": "step-up",
   "publicKey": {
     "challenge": "base64url",
-    "rpId": "devhq.app",
+    "rpId": "tavetahq.io",
     "timeout": 120000,
     "userVerification": "required",
     "allowCredentials": [{ "type": "public-key", "id": "base64url", "transports": ["internal"] }]
@@ -135,7 +135,7 @@ Response `200`:
   "purpose": "register",
   "publicKey": {
     "challenge": "base64url",
-    "rp": { "id": "devhq.app", "name": "DevHQ" },
+    "rp": { "id": "tavetahq.io", "name": "TavetaHQ" },
     "user": { "id": "base64url(member id)", "name": "email", "displayName": "name" },
     "pubKeyCredParams": [{ "type": "public-key", "alg": -7 }, { "type": "public-key", "alg": -257 }],
     "timeout": 120000,

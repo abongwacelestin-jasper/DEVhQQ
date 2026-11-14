@@ -83,7 +83,7 @@ export function visibleRepo(p: Principal, idOrName: string, include: (r: Repo) =
   return r;
 }
 
-/** Maps a GitHub login to a DevHQ member id when one is known. */
+/** Maps a GitHub login to a TavetaHQ member id when one is known. */
 export function memberForLogin(login: string | undefined): string | undefined {
   if (!login) return undefined;
   return ghIdentities.get(login.toLowerCase())?.memberId;

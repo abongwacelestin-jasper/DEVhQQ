@@ -1,4 +1,4 @@
-# DevHQ — Independent Security Assessment (Lane CYBER)
+# TavetaHQ — Independent Security Assessment (Lane CYBER)
 
 **Assessment type:** authorized, independent offensive assessment of the
 repository owner's own project, tested only against local processes started by
@@ -102,7 +102,7 @@ the local driver).
 
 ## 1. Executive summary
 
-The DevHQ backend is unusually well-built for a zero-dependency Node service:
+The TavetaHQ backend is unusually well-built for a zero-dependency Node service:
 the authentication, session, authorization, CSRF/origin, validation and query
 layers held up against the full phase-1 test battery. 11 attack classes that
 commonly break in apps of this shape were tested and **confirmed robust**
@@ -218,7 +218,7 @@ session token in web storage.
 `new Worker(objectURL)` on the **same origin**. A dedicated Worker has no parent
 DOM and no `localStorage`, so those are not reachable — but same-origin
 `fetch('/api/…')` sends the `__Host-` session cookie, so user-run snippet code
-can call the DevHQ API **as the signed-in user**. **Fix (F-SEC):** run untrusted
+can call the TavetaHQ API **as the signed-in user**. **Fix (F-SEC):** run untrusted
 code cross-origin (sandboxed iframe on a null/throwaway origin, or a Worker
 served from a cookieless sandbox origin) and mediate any capability through
 `postMessage`; a worker CSP of `connect-src 'none'` is a defence-in-depth

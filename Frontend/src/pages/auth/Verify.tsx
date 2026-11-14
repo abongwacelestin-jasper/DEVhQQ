@@ -29,7 +29,7 @@ function EnrollFirstFactor({ onLeave }: { onLeave: () => void }) {
       illustration={<SecurityIllustration className="h-auto w-full max-w-[280px]" />}
       aside={{
         title: 'Two keys, one door.',
-        body: 'Every DevHQ account needs a second factor. Add an authenticator app now; you’ll use it each time you sign in and for sensitive actions.',
+        body: 'Every TavetaHQ account needs a second factor. Add an authenticator app now; you’ll use it each time you sign in and for sensitive actions.',
       }}
     >
       <h1 className="text-[20px] font-semibold tracking-tight text-ink">

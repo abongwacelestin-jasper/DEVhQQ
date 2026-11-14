@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The platform is now TavetaHQ** (formerly DevHQ), at `tavetahq.io`. The
+  weaver-bird logo replaces the old mark on the sign-in pages, the code
+  workspace title bar, the API console, the backend console and in every
+  email; the browser tab gets a real title, description, favicon, home-screen
+  icons and a web manifest. The app's accent and ink colours and the email
+  defaults follow the brand (Taveta Indigo `#4338CA`, Nest Ink `#15132B`).
+  Internal identifiers keep the old name so nothing breaks: the `DEVHQ_*`
+  variables, `X-DevHQ-*` headers, package and image names, cookie and storage
+  keys. See [Brand](docs/operations/brand.md).
+
+### Fixed
+
+- Roles no longer request data they cannot read: a member without
+  Deployment, Infrastructure or Administration access (for example a
+  designer on My work, or a project manager on a product page) got a 403 in
+  the console and, for deployments, a "Couldn't load deployments" error.
+- Pull requests and Code security no longer scroll sideways on phones.
+- The frontend build fails if the Content-Security-Policy placeholder in
+  `index.html` is missing, instead of shipping the placeholder policy.
+
+### Added
+
+- [`DEPLOYMENT.md`](DEPLOYMENT.md): the end-to-end deployment guide (services,
+  how they communicate, Railway settings and variables, setup steps, go-live
+  checklist, troubleshooting).
+- `e2e/explore/buttons.explore.ts`: an exploratory pass that clicks every
+  button on every route and records errors and buttons that do nothing.
+
 ### Added
 
 - **Relational data layer, phase 1** ([ADR 0011](docs/architecture/adr/0011-relational-data-layer.md)).

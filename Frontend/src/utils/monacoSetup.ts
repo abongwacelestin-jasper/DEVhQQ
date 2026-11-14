@@ -30,7 +30,7 @@ declare module 'vitest' {
 }
 `;
 
-/** One-time Monaco configuration: DevHQ themes, TypeScript compiler options and sandbox globals. */
+/** One-time Monaco configuration: TavetaHQ themes, TypeScript compiler options and sandbox globals. */
 export function setupMonaco(monaco: Monaco) {
   if (configured) return;
   configured = true;

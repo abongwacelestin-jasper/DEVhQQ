@@ -54,7 +54,7 @@ export function simulatedEditorDoc(repo: string, ref: string, name: string) {
           .replace(/('[^']*')/g, '<span class="s">$1</span>')}`,
     )
     .join('\n')}</div></div>
-  <div class="status"><span>⎇ ${esc(ref)}</span><span>${esc(name)}</span><span style="margin-left:auto">Connect the DevHQ API to open the real VS Code editor</span></div>
+  <div class="status"><span>⎇ ${esc(ref)}</span><span>${esc(name)}</span><span style="margin-left:auto">Connect the TavetaHQ API to open the real VS Code editor</span></div>
   </body></html>`;
 }
 

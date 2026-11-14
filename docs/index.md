@@ -1,6 +1,6 @@
-# DevHQ documentation
+# TavetaHQ documentation
 
-DevHQ is an internal developer-operations platform for one organisation. It
+TavetaHQ is an internal developer-operations platform for one organisation. It
 holds the organisation's products (RenewBerry, Blog and Mirror Acture), their
 projects and tasks, project docs, deployments and incidents, and the people
 who work on them, and it puts access control and an audit trail around all of
@@ -43,7 +43,7 @@ anything internet-facing, and a KMS key for MinIO encryption.
 
 | Section | Read it when you want to… |
 |---|---|
-| [Getting started](getting-started/local-development.md) | run DevHQ on your machine (Docker or two processes), sign in with a demo account, and use the backend console. [Troubleshooting](getting-started/troubleshooting.md) covers the usual failures. |
+| [Getting started](getting-started/local-development.md) | run TavetaHQ on your machine (Docker or two processes), sign in with a demo account, and use the backend console. [Troubleshooting](getting-started/troubleshooting.md) covers the usual failures. |
 | [Architecture](architecture/overview.md) | understand the components, the request pipeline, the data flow and the trust boundaries. The [ADRs](architecture/adr/index.md) record why it is built this way. |
 | [Concepts](concepts/index.md) | understand products and scope, roles and the [permission matrix](concepts/permission-matrix.md), sessions, step-up, JIT elevation, the audit log and location risk. |
 | [API](api/index.md) | call the API: [authentication](api/authentication.md), [errors](api/errors.md), [pagination](api/pagination.md), [rate limits](api/rate-limits.md), and the generated [reference](api/reference.md). |

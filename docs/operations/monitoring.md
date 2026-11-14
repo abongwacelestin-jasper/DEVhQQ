@@ -44,7 +44,7 @@ The endpoint needs authentication; give a scraper a personal access token
 [Authentication](../api/authentication.md#personal-access-tokens)). Unmatched
 paths are counted under the route `unmatched`.
 
-What to alert on (from the code comments: these numbers are how DevHQ tracks
+What to alert on (from the code comments: these numbers are how TavetaHQ tracks
 time to detect):
 
 - 5xx rate per route (`errors` / `count`).

@@ -1,5 +1,5 @@
 #!/bin/sh
-# DevHQ container entrypoint: load file-based secrets into the environment.
+# TavetaHQ container entrypoint: load file-based secrets into the environment.
 #
 # Docker Compose mounts secrets as files under /run/secrets. The backend reads
 # configuration from environment variables only, so for every name in

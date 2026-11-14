@@ -118,7 +118,7 @@ export function Deployments() {
     <div className="space-y-3">
       <PageHeader
         title="Deployments"
-        description="Every deployment attempt across providers in one history. Execution stays with GitHub Actions and Coolify — DevHQ records, approves and correlates."
+        description="Every deployment attempt across providers in one history. Execution stays with GitHub Actions and Coolify — TavetaHQ records, approves and correlates."
         actions={
           <GuardedButton
             id="record-deploy-trigger"

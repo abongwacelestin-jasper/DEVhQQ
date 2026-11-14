@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# DevHQ ML service — FastAPI on uvicorn, Python 3.12, non-root, internal network only.
+# TavetaHQ ML service — FastAPI on uvicorn, Python 3.12, non-root, internal network only.
 #
 #   docker build -t devhq-models Models/
 #   docker run --rm -e ML_SERVICE_TOKEN=... -p 8000:8000 devhq-models
@@ -22,7 +22,7 @@ RUN pip install --require-hashes --only-binary=:all: -r requirements.lock \
 # ── runtime ───────────────────────────────────────────────────────────────────
 FROM ${PYTHON_IMAGE} AS runtime
 LABEL org.opencontainers.image.title="devhq-models" \
-      org.opencontainers.image.description="DevHQ ML service (internal)" \
+      org.opencontainers.image.description="TavetaHQ ML service (internal)" \
       org.opencontainers.image.licenses="MIT"
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \

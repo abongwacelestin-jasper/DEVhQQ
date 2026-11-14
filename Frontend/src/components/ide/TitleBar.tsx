@@ -1,6 +1,6 @@
 import React from 'react';
 import { PanelBottomIcon, PanelLeftIcon, PanelRightIcon, SearchIcon } from 'lucide-react';
-import { DevHQLogo } from '../ui/DevHQLogo';
+import { BrandLogo } from '../ui/BrandLogo';
 import { MenuBar, type MenuDef } from './MenuBar';
 
 interface TitleBarProps {
@@ -51,12 +51,12 @@ export function TitleBar({
     <header className="flex h-[35px] shrink-0 select-none items-center gap-1 border-b border-[var(--vs-border)] bg-[var(--vs-title)] px-1.5">
       <button
         onClick={onHome}
-        title="Back to DevHQ"
+        title="Back to TavetaHQ"
         className="flex h-[26px] shrink-0 items-center gap-1.5 rounded-[5px] px-1.5 hover:bg-[var(--vs-hover)]"
       >
-        <DevHQLogo size={16} />
+        <BrandLogo size={18} />
         <span className="hidden text-[12px] font-semibold text-[var(--vs-fg)] sm:inline">
-          DevHQ
+          TavetaHQ
         </span>
       </button>
       <MenuBar menus={menus} />

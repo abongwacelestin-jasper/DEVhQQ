@@ -146,7 +146,7 @@ sequenceDiagram
   Note over API,Store: rollout is simulated: status → succeeded after ~4 s
 ```
 
-DevHQ records and approves deployments; it does not execute them
+TavetaHQ records and approves deployments; it does not execute them
 ([ADR 0007](adr/0007-two-person-deploy-rule.md)).
 
 ## Data flow: a file upload

@@ -185,7 +185,7 @@ export function DeclareIncidentModal() {
         {severity === 'SEV1' && (
           <p className="rounded-md bg-bad-soft px-3 py-2 text-[12px] font-medium text-bad">
             SEV1 incidents are flagged as sensitive in the audit log. Page your on-call through your
-            paging tool; DevHQ doesn’t page yet.
+            paging tool; TavetaHQ doesn’t page yet.
           </p>
         )}
         {error && (

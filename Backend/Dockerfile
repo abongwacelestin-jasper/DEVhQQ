@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.10
 #
-# DevHQ backend API image.
+# TavetaHQ backend API image.
 #
 # Build context is the REPOSITORY ROOT (the npm workspace lockfile lives there):
 #   docker build -f Backend/Dockerfile -t devhq-backend .
@@ -41,10 +41,10 @@ ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED=unknown
 LABEL org.opencontainers.image.title="devhq-backend" \
-      org.opencontainers.image.description="DevHQ API server (Node.js, TypeScript via type stripping)" \
+      org.opencontainers.image.description="TavetaHQ API server (Node.js, TypeScript via type stripping)" \
       org.opencontainers.image.source="https://github.com/devhq/devhq" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.vendor="DevHQ" \
+      org.opencontainers.image.vendor="TavetaHQ" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}"

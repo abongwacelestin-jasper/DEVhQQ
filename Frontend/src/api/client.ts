@@ -175,7 +175,11 @@ export function errorFrom(res: Response, body: unknown): ApiError {
 }
 
 export function networkError(): ApiError {
-  return new ApiError(0, 'network', `Couldn't reach DevHQ. Check your connection and try again.`);
+  return new ApiError(
+    0,
+    'network',
+    `Couldn't reach TavetaHQ. Check your connection and try again.`,
+  );
 }
 
 /** True when `url` (absolute or relative) targets this page's own origin. */

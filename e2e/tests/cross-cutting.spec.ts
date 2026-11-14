@@ -46,7 +46,7 @@ test.describe('Session lifetime', () => {
     const team = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Team & roles' });
     await team.click({ timeout: 3000 }).catch(() => undefined);
     await expect(page).toHaveURL(/\/sign-in$/, { timeout: 15_000 });
-    await expect(page.getByRole('heading', { name: 'Sign in to DevHQ' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sign in to TavetaHQ' })).toBeVisible();
   });
 
   test('expired cookie on reload lands on sign-in', async ({ page, context }) => {

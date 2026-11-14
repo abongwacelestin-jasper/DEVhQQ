@@ -115,7 +115,7 @@ export function Integrations() {
       <PageHero
         illustration={<IntegrationsIllustration className="h-[84px] w-auto" />}
         title="Integrations"
-        description="DevHQ sits above your tools, not instead of them. Each connection states what it syncs and which tool stays authoritative."
+        description="TavetaHQ sits above your tools, not instead of them. Each connection states what it syncs and which tool stays authoritative."
         badges={
           <>
             <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ok">
@@ -289,7 +289,7 @@ export function Integrations() {
               Where each piece of data lives
             </span>
             <span className="block text-[12px] text-muted">
-              Which tool is authoritative, and what DevHQ only mirrors.
+              Which tool is authoritative, and what TavetaHQ only mirrors.
             </span>
           </span>
           <ChevronDownIcon

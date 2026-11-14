@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.10
 #
-# DevHQ edge: Caddy 2 running as a non-root user with no Linux capabilities.
+# TavetaHQ edge: Caddy 2 running as a non-root user with no Linux capabilities.
 #
 # Build context: infra/edge
 #   docker build -t devhq-edge infra/edge
@@ -21,10 +21,10 @@ ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED=unknown
 LABEL org.opencontainers.image.title="devhq-edge" \
-      org.opencontainers.image.description="DevHQ edge proxy (Caddy 2, automatic TLS, HTTP/3)" \
+      org.opencontainers.image.description="TavetaHQ edge proxy (Caddy 2, automatic TLS, HTTP/3)" \
       org.opencontainers.image.source="https://github.com/devhq/devhq" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.vendor="DevHQ" \
+      org.opencontainers.image.vendor="TavetaHQ" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}"

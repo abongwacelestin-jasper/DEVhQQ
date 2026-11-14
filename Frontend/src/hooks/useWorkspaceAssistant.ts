@@ -65,7 +65,7 @@ let nextId = 1;
  * this branch (outline, problems, text search) — not a model and not canned
  * answers. Every slash command performs a real action through the IDE's own
  * callbacks: `/fix` edits the buffer (undoable), `/tests` and `/run` go through
- * the code runner. Workspace-wide questions belong to Ask DevHQ (ML service).
+ * the code runner. Workspace-wide questions belong to Ask TavetaHQ (ML service).
  */
 export function useWorkspaceAssistant({
   repo,

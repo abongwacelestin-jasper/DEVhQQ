@@ -70,8 +70,8 @@ export function ChatView({
         </div>
       </div>
       <p className="flex shrink-0 items-center gap-1.5 px-4 py-2 text-[12px] text-[var(--vs-fg-muted)]">
-        <SparklesIcon className="h-3.5 w-3.5" /> DevHQ Assistant · runs locally, code never leaves
-        the browser
+        <SparklesIcon className="h-3.5 w-3.5" /> TavetaHQ Assistant · runs locally, code never
+        leaves the browser
       </p>
 
       <div

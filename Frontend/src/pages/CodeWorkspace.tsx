@@ -19,7 +19,7 @@ const API_KEY = 'devhq.codespaces.api';
 
 /**
  * Code workspace. Prefers a GitHub Codespace (editor + forwarded-port preview); any failure
- * — API error, rate limit, missing permission, crash — drops to the local DevHQ sandbox
+ * — API error, rate limit, missing permission, crash — drops to the local TavetaHQ sandbox
  * with a dismissible banner. Reached at /code and /products/:productId/ide.
  */
 export function CodeWorkspace() {
@@ -40,7 +40,7 @@ export function CodeWorkspace() {
   const [fallback, setFallback] = useState<string | null>(null);
   const [bannerOpen, setBannerOpen] = useState(true);
 
-  // A DevHQ API URL in localStorage switches from the simulated transport to the real proxy.
+  // A TavetaHQ API URL in localStorage switches from the simulated transport to the real proxy.
   const transport = useMemo(() => {
     const api = localStorage.getItem(API_KEY);
     return api ? backendTransport(api) : simulatedTransport();
@@ -104,12 +104,13 @@ export function CodeWorkspace() {
                     {fallback ? (
                       <>
                         <b className="font-semibold">
-                          Cloud Codespace unavailable. Running on local DevHQ sandbox fallback mode.
+                          Cloud Codespace unavailable. Running on local TavetaHQ sandbox fallback
+                          mode.
                         </b>{' '}
                         <span className="text-muted">{fallback}</span>
                       </>
                     ) : (
-                      <span className="text-muted">Local DevHQ sandbox</span>
+                      <span className="text-muted">Local TavetaHQ sandbox</span>
                     )}
                   </p>
                   <button

@@ -21,7 +21,7 @@ import { OmniSearch } from '../../components/console/OmniSearch';
 import { PresenceBar } from '../../components/console/PresenceBar';
 import { usePresence } from '../../hooks/usePresence';
 import { ConsoleProvider, useConsole } from '../../contexts/ConsoleContext';
-import { DevHQLogo } from '../../components/ui/DevHQLogo';
+import { BrandLogo, BrandName } from '../../components/ui/BrandLogo';
 import { ThemeToggle } from '../../components/layout/ThemeToggle';
 import { ConsoleLogin } from './ConsoleLogin';
 import { OverviewView } from '../../components/console/OverviewView';
@@ -95,8 +95,8 @@ function ConsoleShell() {
         aria-label="Console navigation"
       >
         <div className="flex h-12 items-center gap-2 border-b border-line px-4">
-          <DevHQLogo size={20} />
-          <span className="text-[13px] font-semibold">DevHQ</span>
+          <BrandLogo size={22} />
+          <BrandName className="text-[13.5px]" />
           <span className="text-[12px] text-subtle">console</span>
         </div>
         <nav className="flex-1 overflow-y-auto p-2">
@@ -145,7 +145,7 @@ function ConsoleShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-white px-4">
           <span className="md:hidden">
-            <DevHQLogo size={20} />
+            <BrandLogo size={20} />
           </span>
           <h1 className="truncate text-[13.5px] font-semibold">{current.label}</h1>
           <button

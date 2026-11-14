@@ -177,7 +177,7 @@ travel, …). Locally this only happens if you send `X-Forwarded-For` with
 
 ## The web app
 
-### "Couldn't reach the DevHQ API. Is the backend running on :8080?"
+### "Couldn't reach the TavetaHQ API. Is the backend running on :8080?"
 
 The proxy could not connect. Start the API, or point the proxy at it with
 `DEVHQ_API_URL`. Check with `curl -s http://127.0.0.1:5173/api/health`.

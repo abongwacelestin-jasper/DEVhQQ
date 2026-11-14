@@ -1,6 +1,6 @@
 # API
 
-The DevHQ API is JSON over HTTPS, served by the backend under `/api`. Behind
+The TavetaHQ API is JSON over HTTPS, served by the backend under `/api`. Behind
 the Compose edge it shares the web app's origin (`https://<DEVHQ_DOMAIN>/api`);
 in local development it listens on `http://localhost:8080`, and the web app
 reaches it through the Vite proxy at `http://localhost:5173/api`.
@@ -49,7 +49,7 @@ reaches it through the Vite proxy at `http://localhost:5173/api`.
 
 ```console
 $ curl -s http://localhost:8080/api/openapi.json | head -c 200
-{"openapi":"3.1.0","info":{"title":"DevHQ API","version":"1.4.0","description":"Zero-trust API for DevHQ. Generated from the live route table."},"servers":[{"url":"http://localhost:8080"}],…
+{"openapi":"3.1.0","info":{"title":"TavetaHQ API","version":"1.4.0","description":"Zero-trust API for TavetaHQ. Generated from the live route table."},"servers":[{"url":"http://localhost:8080"}],…
 ```
 
 Security controls, mapped to code and tests, are in

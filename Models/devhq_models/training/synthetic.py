@@ -1,4 +1,4 @@
-"""SYNTHETIC cold-start data. Not real DevHQ data, and labelled as such everywhere.
+"""SYNTHETIC cold-start data. Not real TavetaHQ data, and labelled as such everywhere.
 
 A fresh install has no history to learn from. This generator produces
 plausible task, deployment and sign-in rows from a simple hand-written causal

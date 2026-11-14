@@ -1,5 +1,5 @@
 /**
- * DevHQ worker: periodic jobs outside the API process.
+ * TavetaHQ worker: periodic jobs outside the API process.
  *
  *   node --experimental-strip-types worker.ts --once backup,drill
  *       One-shot (the Railway cron service): boot, hydrate from Postgres, run

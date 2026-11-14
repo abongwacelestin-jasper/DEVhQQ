@@ -219,7 +219,7 @@ export function SecurityCenter() {
                   <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
                     {p.label}
                     {p.locked && (
-                      <LockIcon className="h-3 w-3 text-subtle" aria-label="Locked by DevHQ" />
+                      <LockIcon className="h-3 w-3 text-subtle" aria-label="Locked by TavetaHQ" />
                     )}
                   </p>
                   <p className="text-[11.5px] text-muted">{p.description}</p>

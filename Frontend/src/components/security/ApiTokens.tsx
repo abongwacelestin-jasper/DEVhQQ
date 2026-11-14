@@ -238,7 +238,7 @@ export function ApiTokens() {
                 <div className="space-y-3 px-4 py-4">
                   <div className="flex items-start gap-2 rounded-md bg-warn-soft px-3 py-2 text-[12px] text-warn">
                     <TriangleAlertIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    This is the only time the token is shown. DevHQ stores only a hash.
+                    This is the only time the token is shown. TavetaHQ stores only a hash.
                   </div>
                   <div className="flex items-center gap-2">
                     <code

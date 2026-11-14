@@ -221,7 +221,7 @@ export function RepositoryDetail() {
                 </ul>
                 {!protection.every((p) => p.ok) && (
                   <p className="border-t border-line px-3.5 py-2.5 text-[12px] text-muted">
-                    Change these in GitHub. DevHQ doesn’t request administration permissions.
+                    Change these in GitHub. TavetaHQ doesn’t request administration permissions.
                   </p>
                 )}
               </>

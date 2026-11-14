@@ -58,7 +58,7 @@ $ curl -s -c new -b new -X POST http://localhost:8080/api/auth/sign-in -H 'conte
 $ curl -s -c new -b new -X POST http://localhost:8080/api/auth/mfa/totp -H 'content-type: application/json' -d '{"code":"246810"}'
 {"error":{"code":"mfa_invalid","message":"Code is incorrect or expired","requestId":"50fb7238-…"}}
 $ curl -s -c new -b new -X POST http://localhost:8080/api/auth/mfa/enroll
-{"secret":"<redacted>","otpauthUri":"otpauth://totp/DevHQ%3Aada.lovelace%40techorg.io?secret=<redacted>&issuer=DevHQ&algorithm=SHA1&digits=6&period=30","expiresAt":"2026-11-07T05:50:21.374Z","expiresInSec":600}
+{"secret":"<redacted>","otpauthUri":"otpauth://totp/TavetaHQ%3Aada.lovelace%40techorg.io?secret=<redacted>&issuer=TavetaHQ&algorithm=SHA1&digits=6&period=30","expiresAt":"2026-11-07T05:50:21.374Z","expiresInSec":600}
 $ curl -s -c new -b new -X POST http://localhost:8080/api/auth/mfa/enroll/confirm -H 'content-type: application/json' -d '{"code":"<from the app>"}'
 {"ok":true,"member":{"id":"m13","name":"Ada Lovelace",…}}
 ```

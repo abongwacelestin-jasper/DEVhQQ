@@ -1,4 +1,4 @@
-# DevHQ operations. `make help` lists targets.
+# TavetaHQ operations. `make help` lists targets.
 #
 # Prod-like stack:  make secrets && make up
 # Dev stack:        make secrets && make up-dev

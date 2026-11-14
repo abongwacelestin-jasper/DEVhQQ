@@ -19,7 +19,7 @@ import {
   type RoleKey,
 } from '../data/roles';
 import { nowISO } from '../utils/date';
-import { canPerform, canVisit } from '../api/capabilities';
+import { canPerform, canVisit, serverAllows } from '../api/capabilities';
 import {
   revokeSessionByPrefix,
   signOutOthers as signOutOthersOnServer,
@@ -37,7 +37,7 @@ import { useSignIn, type SignInResult } from '../api/auth/useSignIn';
 import { useOnboarding } from '../api/auth/useOnboarding';
 import { useLock } from '../api/auth/useLock';
 import type { NdaCommitment } from '../api/auth/endpoints';
-import type { ApiMember, ApiSessionView } from '../api/types';
+import type { ApiArea, ApiMember, ApiSessionView } from '../api/types';
 import type { Member } from '../types/team';
 import type { ProductId } from '../types/portfolio';
 import type { SessionEndReason, SessionEventKind, SessionRecord } from '../types/session';
@@ -122,6 +122,8 @@ interface AuthValue {
   requestAccess: (target: string) => void;
   can: (area: Area) => boolean;
   canDo: (action: Action) => boolean;
+  /** False only when the server is known to refuse reads of this area; see `serverAllows`. */
+  allows: (area: ApiArea) => boolean;
   canSeeProduct: (p: ProductId) => boolean;
 }
 
@@ -243,6 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (action: Action) => (role ? canPerform(capabilities, action, role.actions) : false),
     [role, capabilities],
   );
+  const allows = useCallback((area: ApiArea) => serverAllows(capabilities, area), [capabilities]);
   const canSeeProduct = useCallback(
     (p: ProductId) => {
       if (!role) return false;
@@ -296,6 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       requestAccess,
       can,
       canDo,
+      allows,
       canSeeProduct,
     }),
     [
@@ -338,6 +342,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       requestAccess,
       can,
       canDo,
+      allows,
       canSeeProduct,
     ],
   );

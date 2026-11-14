@@ -10,7 +10,7 @@
 
 Do NOT report security vulnerabilities through public GitHub issues.
 
-**Email: security@devhq.com**
+**Email: security@tavetahq.io**
 
 Please include:
 

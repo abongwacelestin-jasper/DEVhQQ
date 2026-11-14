@@ -33,8 +33,13 @@ export function domainOf(e: EndpointDef) {
 /** Target environments for the request workbench. */
 export const consoleEnvironments = [
   { id: 'local', label: 'Local', url: 'http://localhost:8080', tone: 'ok' as const },
-  { id: 'staging', label: 'Staging', url: 'https://api.staging.devhq.app', tone: 'warn' as const },
-  { id: 'production', label: 'Production', url: 'https://api.devhq.app', tone: 'bad' as const },
+  {
+    id: 'staging',
+    label: 'Staging',
+    url: 'https://api.staging.tavetahq.io',
+    tone: 'warn' as const,
+  },
+  { id: 'production', label: 'Production', url: 'https://api.tavetahq.io', tone: 'bad' as const },
 ];
 
 export type ConsoleEnvId = (typeof consoleEnvironments)[number]['id'];

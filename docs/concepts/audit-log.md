@@ -1,6 +1,6 @@
 # Audit log
 
-Every state change in DevHQ is recorded in one append-only log whose entries
+Every state change in TavetaHQ is recorded in one append-only log whose entries
 are chained by hash, so editing or removing history is detectable. The design
 and its trade-offs are in [ADR 0008](../architecture/adr/0008-hash-chained-audit-log.md);
 this page is about what is in it and how to read it.

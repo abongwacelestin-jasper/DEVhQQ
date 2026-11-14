@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cloudflare R2 for DevHQ: buckets, CORS, lifecycle and bucket lock rules.
+# Cloudflare R2 for TavetaHQ: buckets, CORS, lifecycle and bucket lock rules.
 # Runbook: docs/deploy/RAILWAY.md ("Object storage on R2"). Re-runnable: each
 # bucket is created only if missing, and every rule set is replaced as a whole
 # (PUT), so running it twice gives the same result.

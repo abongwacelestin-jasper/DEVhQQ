@@ -1,6 +1,6 @@
 # Storage
 
-DevHQ keeps state in two places: PostgreSQL for records, S3-compatible object
+TavetaHQ keeps state in two places: PostgreSQL for records, S3-compatible object
 storage for blobs. The bucket set-up, object lock, service users and the AWS
 S3 / Cloudflare R2 equivalents are documented by the storage lane in
 [infra/minio/README.md](../../infra/minio/README.md); this page explains how the

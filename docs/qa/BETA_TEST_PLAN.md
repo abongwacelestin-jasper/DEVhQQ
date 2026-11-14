@@ -1,4 +1,4 @@
-# DevHQ beta test plan
+# TavetaHQ beta test plan
 
 Lane **QA**, wave 4. Owner of this file: QA. Results are in [`BETA_REPORT.md`](./BETA_REPORT.md);
 the manual pass is in [`UAT_CHECKLIST.md`](./UAT_CHECKLIST.md).

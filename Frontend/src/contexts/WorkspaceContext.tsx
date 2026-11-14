@@ -104,7 +104,7 @@ const SELECTED = 'devhq.workspace.selected';
 
 const placeholder: Workspace = {
   id: '',
-  name: 'DevHQ',
+  name: 'TavetaHQ',
   slug: '',
   color: '#475569',
   members: 0,

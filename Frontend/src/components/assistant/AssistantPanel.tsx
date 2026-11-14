@@ -54,7 +54,7 @@ const ASSISTANT_UNAVAILABLE = 'Assistant unavailable — configure the ML servic
 /** Error codes a stream may send when the ML service isn't reachable or configured. */
 const UNCONFIGURED = new Set(['integration_unconfigured', 'ml_unavailable', 'service_unavailable']);
 
-/** Ask DevHQ — permission-aware answers from the ML service, with cited sources. */
+/** Ask TavetaHQ — permission-aware answers from the ML service, with cited sources. */
 export function AssistantPanel() {
   const { assistantOpen, setAssistantOpen } = useWorkspaceUI();
   const { selected, allowedProducts } = useProductFilter();
@@ -146,7 +146,7 @@ export function AssistantPanel() {
           <motion.aside
             role="dialog"
             aria-modal="true"
-            aria-label="Ask DevHQ"
+            aria-label="Ask TavetaHQ"
             className="fixed inset-0 z-50 flex flex-col bg-white shadow-pop sm:inset-y-0 sm:left-auto sm:w-[400px]"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
@@ -159,11 +159,11 @@ export function AssistantPanel() {
                   <SparklesIcon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-[13px] font-semibold text-ink">Ask DevHQ</h2>
+                  <h2 className="text-[13px] font-semibold text-ink">Ask TavetaHQ</h2>
                   <p className="truncate text-[11px] text-muted">
                     {lastDone?.result
                       ? `Answered by ${lastDone.result.model}`
-                      : 'Answers from the DevHQ ML service'}
+                      : 'Answers from the TavetaHQ ML service'}
                   </p>
                 </div>
                 <button

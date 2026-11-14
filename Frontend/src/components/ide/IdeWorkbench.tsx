@@ -230,7 +230,7 @@ export function IdeWorkbench() {
           `${i.scheme}://devhq.open?repo=${encodeURIComponent(w.repo)}&branch=${encodeURIComponent(w.branch)}&file=${encodeURIComponent(w.file.path)}`,
         );
         toast.success(`Opening in ${i.name}`, {
-          description: 'Deep link copied — requires the DevHQ extension.',
+          description: 'Deep link copied — requires the TavetaHQ extension.',
         });
       },
     });
@@ -357,7 +357,7 @@ export function IdeWorkbench() {
       run: () => ui.setSetting('fontSize', Math.max(10, ui.settings.fontSize - 1)),
     },
     { id: 'term.clear', label: 'Terminal: Clear', run: () => w.run('clear') },
-    { id: 'back', label: 'DevHQ: Back to Dashboard', run: () => navigate(home) },
+    { id: 'back', label: 'TavetaHQ: Back to Dashboard', run: () => navigate(home) },
   ];
 
   const cmd = (id: string) => commands.find((c) => c.id === id) as IdeCommand;

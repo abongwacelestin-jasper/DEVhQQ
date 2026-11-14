@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate DevHQ secrets under infra/secrets/ (gitignored).
+# Generate TavetaHQ secrets under infra/secrets/ (gitignored).
 #
 #   infra/scripts/gen-secrets.sh            # create missing secrets only
 #   infra/scripts/gen-secrets.sh --rotate NAME   # regenerate one generated secret

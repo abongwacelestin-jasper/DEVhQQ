@@ -124,8 +124,8 @@ export function ConnectGitHub({ what }: { what: string }) {
       }
     >
       <p id={hint}>
-        {what} come from the DevHQ GitHub App. It isn’t configured on this server yet, so there is
-        nothing to show — DevHQ doesn’t invent repository data.
+        {what} come from the TavetaHQ GitHub App. It isn’t configured on this server yet, so there
+        is nothing to show — TavetaHQ doesn’t invent repository data.
         {!allowed && ' Ask an Owner (Repository: manage) to install it.'}
       </p>
       {unreachable && (

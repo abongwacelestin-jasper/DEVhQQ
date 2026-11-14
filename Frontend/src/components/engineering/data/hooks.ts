@@ -164,7 +164,8 @@ export function useCiRun(runId: string | undefined) {
 // ── Monitors ─────────────────────────────────────────────────────────────
 export function useMonitors() {
   // Checks run on a server schedule; poll as a fallback in case the stream drops.
-  const list = useApiList('/api/monitors', {
+  const { allows } = useAuth();
+  const list = useApiList(allows('Infrastructure') ? '/api/monitors' : null, {
     events: EVENTS.monitors,
     pollMs: 60_000,
     select: monitorList,

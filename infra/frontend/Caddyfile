@@ -1,4 +1,4 @@
-# DevHQ web app server (Caddy 2): the static SPA build, and optionally the
+# TavetaHQ web app server (Caddy 2): the static SPA build, and optionally the
 # same-origin reverse proxy to the API.
 #
 # Two ways this runs (Frontend/Dockerfile):

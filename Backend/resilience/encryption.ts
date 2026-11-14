@@ -67,7 +67,7 @@ export class DecryptError extends Error {
 
 export function decryptBlob(blob: Buffer, aad: string): Buffer {
   if (blob.length < 6 || !blob.subarray(0, 4).equals(MAGIC) || blob[4] !== 1)
-    throw new DecryptError('not_encrypted', 'Not a DevHQ encrypted blob');
+    throw new DecryptError('not_encrypted', 'Not a TavetaHQ encrypted blob');
   const idLen = blob[5];
   const id = blob.subarray(6, 6 + idLen).toString('utf8');
   const { id: currentId, key } = loadKey();

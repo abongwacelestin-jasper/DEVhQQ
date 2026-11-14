@@ -6,7 +6,7 @@
 ## Context
 
 A single compromised or careless account should not be able to change
-production. Production changes in DevHQ come in two forms: deploying a new
+production. Production changes in TavetaHQ come in two forms: deploying a new
 version, and a person gaining production access (just-in-time elevation).
 Recovery, on the other hand, must never wait for process: when production is
 broken, rolling back has to be fast.
@@ -53,7 +53,7 @@ production deploy needs two different people from that group. Developers keep
   script are bound by it equally.
 - Rollback without approval is a deliberate gap: someone with Deployment ≥
   `manage` can roll back alone. The audit entry is the control.
-- DevHQ records and approves deploys; the actual rollout is simulated (the
+- TavetaHQ records and approves deploys; the actual rollout is simulated (the
   status changes to `succeeded` after about four seconds). Connecting the
   approval to a real CI/CD system is not part of the code yet.
 - `requireElevation()` exists in `Backend/auth/rbac.ts` for routes that should

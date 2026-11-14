@@ -1,4 +1,4 @@
-# DevHQ — production-like stack.
+# TavetaHQ — production-like stack.
 #
 #   make secrets && make up            # build + start (https://$DEVHQ_DOMAIN)
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up   # dev
@@ -55,7 +55,7 @@ x-core-env: &core-env
   CORS_ORIGINS: ${CORS_ORIGINS:-}
   TRUST_PROXY: "1"
   WEBAUTHN_RP_ID: ${DEVHQ_DOMAIN:-localhost}
-  WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-DevHQ}
+  WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-TavetaHQ}
   APP_VERSION: ${DEVHQ_TAG:-local}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   DEMO_DISABLED: ${DEMO_DISABLED:-1}

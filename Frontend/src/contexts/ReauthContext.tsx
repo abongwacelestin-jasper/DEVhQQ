@@ -60,7 +60,7 @@ export function ReauthProvider({ children }: { children: React.ReactNode }) {
               current ?? {
                 title: 'Confirm it’s you',
                 description:
-                  'Your verification expired or this request came from a new context. Confirm with your authenticator or passkey and DevHQ will finish the action.',
+                  'Your verification expired or this request came from a new context. Confirm with your authenticator or passkey and TavetaHQ will finish the action.',
                 actionLabel: 'Verify & continue',
                 successMessage: 'Verified — continuing',
                 implicit: true,

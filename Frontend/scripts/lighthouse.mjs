@@ -1,4 +1,4 @@
-// Lighthouse (desktop preset) against a running DevHQ web app, signed out and
+// Lighthouse (desktop preset) against a running TavetaHQ web app, signed out and
 // signed in as a demo persona. Prints a Markdown table of medians.
 //
 //   node scripts/lighthouse.mjs http://127.0.0.1:4173 [--runs 3] [--role admin]
@@ -33,7 +33,7 @@ if (!process.env.CHROME_PATH && process.platform === 'darwin') {
 // Sessions are bound to the User-Agent (Backend/auth/sessions.ts): sign in and audit
 // with the same one. A fresh session per run, since a mismatch would revoke it.
 const UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 DevHQ-Lighthouse';
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 TavetaHQ-Lighthouse';
 
 /** Demo sign-in through the app origin; returns a Cookie header value. */
 async function sessionCookie() {

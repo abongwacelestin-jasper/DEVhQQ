@@ -49,7 +49,7 @@ export const securityPolicies: SecurityPolicy[] = [
   {
     id: 'stream',
     label: 'Stream audit log to S3',
-    description: 'Append-only copy in a bucket DevHQ cannot delete from.',
+    description: 'Append-only copy in a bucket TavetaHQ cannot delete from.',
     enabled: true,
   },
 ];
@@ -149,7 +149,7 @@ export const sessions: Session[] = [
   {
     id: 's2',
     member: 'm1',
-    device: 'iPhone 15 · DevHQ app',
+    device: 'iPhone 15 · TavetaHQ app',
     location: 'Lagos, NG',
     ip: '102.89.xx.xx',
     lastSeen: '2h ago',
@@ -294,7 +294,7 @@ export const integrationConfigs: IntegrationConfig[] = [
       {
         key: 'issues_write',
         label: 'Issues (write)',
-        description: 'Create GitHub issues from DevHQ tasks',
+        description: 'Create GitHub issues from TavetaHQ tasks',
         granted: false,
         write: true,
       },
@@ -323,7 +323,7 @@ export const integrationConfigs: IntegrationConfig[] = [
       {
         key: 'review-notify',
         label: 'Notify reviewers after 24h',
-        description: 'Nudge requested reviewers in DevHQ and Slack',
+        description: 'Nudge requested reviewers in TavetaHQ and Slack',
         enabled: true,
       },
       {
@@ -342,7 +342,7 @@ export const integrationConfigs: IntegrationConfig[] = [
     ],
 
     webhook: {
-      url: 'https://hooks.devhq.app/github/9f2c',
+      url: 'https://hooks.tavetahq.io/github/9f2c',
       secretHint: 'whsec_••••••••••••a91e',
       lastRotated: '42 days ago',
       events: [
@@ -384,14 +384,14 @@ export const integrationConfigs: IntegrationConfig[] = [
       {
         key: 'trigger',
         label: 'Trigger approved deployments',
-        description: 'Only after an approval recorded in DevHQ',
+        description: 'Only after an approval recorded in TavetaHQ',
         granted: true,
         write: true,
       },
       {
         key: 'env',
         label: 'Read environment variables',
-        description: 'Never needed — DevHQ does not store secrets',
+        description: 'Never needed — TavetaHQ does not store secrets',
         granted: false,
         write: false,
       },
@@ -426,7 +426,7 @@ export const integrationConfigs: IntegrationConfig[] = [
     ],
 
     webhook: {
-      url: 'https://hooks.devhq.app/coolify/41ab',
+      url: 'https://hooks.tavetahq.io/coolify/41ab',
       secretHint: 'whsec_••••••••••••7c02',
       lastRotated: '9 days ago',
       events: [

@@ -14,9 +14,9 @@ function show(text: string, opts: RichTextOptions = {}) {
 
 describe('RichText — safeHref', () => {
   it.each([
-    ['https://devhq.app/x', 'https://devhq.app/x'],
+    ['https://tavetahq.io/x', 'https://tavetahq.io/x'],
     ['  http://example.test ', 'http://example.test/'],
-    ['mailto:ops@devhq.app', 'mailto:ops@devhq.app'],
+    ['mailto:ops@tavetahq.io', 'mailto:ops@tavetahq.io'],
   ])('allows %s', (raw, out) => expect(safeHref(raw)).toBe(out));
 
   it.each([
@@ -56,12 +56,12 @@ describe('RichText — never produces markup from text', () => {
 
   it('safe links open in a new tab with noopener noreferrer', () => {
     const el = show(
-      'see [the runbook](https://devhq.app/docs/runbook) or https://status.devhq.app.',
+      'see [the runbook](https://tavetahq.io/docs/runbook) or https://status.tavetahq.io.',
     );
     const links = [...el.querySelectorAll('a')];
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      'https://devhq.app/docs/runbook',
-      'https://status.devhq.app/',
+      'https://tavetahq.io/docs/runbook',
+      'https://status.tavetahq.io/',
     ]);
     for (const a of links) {
       expect(a.getAttribute('target')).toBe('_blank');
@@ -72,8 +72,8 @@ describe('RichText — never produces markup from text', () => {
   });
 
   it('mailto links do not open a new tab', () => {
-    const a = show('mail mailto:ops@devhq.app now').querySelector('a');
-    expect(a?.getAttribute('href')).toBe('mailto:ops@devhq.app');
+    const a = show('mail mailto:ops@tavetahq.io now').querySelector('a');
+    expect(a?.getAttribute('href')).toBe('mailto:ops@tavetahq.io');
     expect(a?.getAttribute('target')).toBeNull();
   });
 

@@ -38,7 +38,7 @@ export const moduleCatalog: {
   },
   {
     key: 'assistant',
-    label: 'Ask DevHQ',
+    label: 'Ask TavetaHQ',
     description: 'Permission-aware answers with cited sources',
   },
 ];

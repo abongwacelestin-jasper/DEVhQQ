@@ -1,6 +1,6 @@
 import React from 'react';
 import { LockIcon, ShieldCheckIcon } from 'lucide-react';
-import { DevHQLogo } from '../ui/DevHQLogo';
+import { BrandLogo, BrandName } from '../ui/BrandLogo';
 import { AuthSlideshow, type AuthSlide } from './AuthSlideshow';
 import { LanguageMenu } from '../layout/LanguageMenu';
 import { ThemeToggle } from '../layout/ThemeToggle';
@@ -41,10 +41,10 @@ export function AuthLayout({ illustration, aside, step, wide = false, children }
           : 'md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'
       }`}
     >
-      <aside className="relative hidden flex-col justify-between gap-6 overflow-hidden border-r border-line bg-accent-soft/50 p-6 md:flex lg:p-10">
+      <aside className="relative hidden flex-col justify-between gap-6 overflow-hidden border-r border-line bg-accent-soft/70 p-6 md:flex lg:p-10">
         <div className="flex items-center gap-2">
-          <DevHQLogo size={26} />
-          <span className="text-[14px] font-semibold tracking-tight text-ink">DevHQ</span>
+          <BrandLogo size={34} />
+          <BrandName className="text-[16px]" />
         </div>
         <div className={`mx-auto w-full ${wide ? 'max-w-sm' : 'max-w-md'}`}>
           <AuthSlideshow slides={slides} />
@@ -62,8 +62,8 @@ export function AuthLayout({ illustration, aside, step, wide = false, children }
       <main className="flex min-w-0 flex-col px-4 py-5 sm:px-8 lg:px-12">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 md:invisible">
-            <DevHQLogo size={24} />
-            <span className="text-[13.5px] font-semibold text-ink">DevHQ</span>
+            <BrandLogo size={26} />
+            <BrandName className="text-[14.5px]" />
           </div>
           <div className="flex items-center gap-2">
             {step && (

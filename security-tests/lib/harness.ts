@@ -1,5 +1,5 @@
 /**
- * Test harness for the DevHQ CYBER (offensive assessment) suite.
+ * Test harness for the TavetaHQ CYBER (offensive assessment) suite.
  *
  * Dependency-free. Boots the real backend (Backend/server.ts) as a child
  * process on a loopback-only ephemeral port with fresh, isolated state

@@ -12,7 +12,7 @@ import type { ApiIntegrationStatus } from '../engineering/data/types';
 import type { Tone } from '../../types/portfolio';
 
 /**
- * Presentation-only catalogue of integration kinds DevHQ knows how to label.
+ * Presentation-only catalogue of integration kinds TavetaHQ knows how to label.
  *
  * It holds names, categories and copy — never connection state. Whether an
  * integration is connected comes only from `GET /api/integrations`; a kind
@@ -43,21 +43,21 @@ export const integrationKinds: IntegrationKind[] = [
     name: 'GitHub App',
     category: 'Source control',
     description: 'Repositories, pull requests, CI runs and code-scanning findings.',
-    authority: 'GitHub stays authoritative for code, reviews and checks; DevHQ mirrors them.',
+    authority: 'GitHub stays authoritative for code, reviews and checks; TavetaHQ mirrors them.',
   },
   {
     kind: 'uptime',
     name: 'Uptime checks',
     category: 'Monitoring',
     description: 'Built-in HTTP monitors that open incidents after repeated failures.',
-    authority: 'Built into DevHQ. Source of truth for availability history.',
+    authority: 'Built into TavetaHQ. Source of truth for availability history.',
   },
   {
     kind: 'slack',
     name: 'Slack',
     category: 'Notifications',
     description: 'Incident, deployment and monitor notifications to a channel webhook.',
-    authority: 'DevHQ only posts; Slack keeps the conversation.',
+    authority: 'TavetaHQ only posts; Slack keeps the conversation.',
   },
   {
     kind: 'pagerduty',
@@ -122,7 +122,7 @@ export const webhookEventTypes = [
   'monitor.up',
 ] as const;
 
-/** Kinds DevHQ runs itself: shown, never connected or disconnected here. */
+/** Kinds TavetaHQ runs itself: shown, never connected or disconnected here. */
 export const BUILT_IN_KINDS = new Set(['github', 'uptime']);
 
 /** Client-side courtesy check; the server validates and blocks private targets (SSRF). */

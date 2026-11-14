@@ -1,4 +1,4 @@
-# Contributing to DevHQ
+# Contributing to TavetaHQ
 
 How we work on this repository: setup, the rules every change follows, what a
 pull request must contain, and how it is verified. Read the

@@ -127,7 +127,7 @@ export function CodespaceWorkbench({
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-white px-2.5">
         <Link
           to="/"
-          aria-label="Back to DevHQ"
+          aria-label="Back to TavetaHQ"
           className="grid h-7 w-7 place-items-center rounded-md text-muted hover:bg-sunken hover:text-ink"
         >
           <ArrowLeftIcon className="h-4 w-4" />

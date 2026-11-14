@@ -217,9 +217,9 @@ function openApi(r: Router) {
   return {
     openapi: '3.1.0',
     info: {
-      title: 'DevHQ API',
+      title: 'TavetaHQ API',
       version: config.version,
-      description: 'Zero-trust API for DevHQ. Generated from the live route table.',
+      description: 'Zero-trust API for TavetaHQ. Generated from the live route table.',
     },
     servers: [{ url: config.publicUrl }],
     components: {

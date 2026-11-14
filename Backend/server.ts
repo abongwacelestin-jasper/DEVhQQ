@@ -1,5 +1,5 @@
 /**
- * DevHQ API server — entry point.
+ * TavetaHQ API server — entry point.
  *
  * Run (Node 22.6+, no build step, no runtime dependencies):
  *   cd Backend && npm run dev

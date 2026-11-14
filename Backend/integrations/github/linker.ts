@@ -1,5 +1,5 @@
 /**
- * Links pull requests to DevHQ tasks.
+ * Links pull requests to TavetaHQ tasks.
  *
  * A task key (e.g. `RB-212`) is looked for first in the branch name
  * (`feat/rb-212-password-reset`), then in the PR title. A link is only made

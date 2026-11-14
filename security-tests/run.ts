@@ -1,5 +1,5 @@
 /**
- * DevHQ CYBER assessment — automated, re-runnable attack suite.
+ * TavetaHQ CYBER assessment — automated, re-runnable attack suite.
  *
  * Runs every check against a FRESH backend process with isolated state (so
  * results never bleed between checks and "run twice on fresh processes" holds
@@ -123,7 +123,7 @@ async function main() {
     ? CHECKS.filter((c) => filters.some((f) => c.name.toLowerCase().includes(f) || c.area.toLowerCase().includes(f)))
     : CHECKS;
 
-  console.log(`\nDevHQ CYBER assessment — ${selected.length} checks, fresh process each\n`);
+  console.log(`\nTavetaHQ CYBER assessment — ${selected.length} checks, fresh process each\n`);
 
   const rows: Row[] = [];
   for (const c of selected) {

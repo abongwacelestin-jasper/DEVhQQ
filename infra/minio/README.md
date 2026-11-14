@@ -1,4 +1,4 @@
-# DevHQ object storage (MinIO locally, S3 / R2 in production)
+# TavetaHQ object storage (MinIO locally, S3 / R2 in production)
 
 Owned by the STORAGE lane. `bootstrap.sh` makes a MinIO deployment match what
 the backend expects. Re-running it is safe.

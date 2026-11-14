@@ -1,7 +1,7 @@
-# DevHQ web app (`@devhq/frontend`)
+# TavetaHQ web app (`@devhq/frontend`)
 
 A Vite + React 18 + TypeScript single-page app, styled with Tailwind. It talks
-to the DevHQ API through one client and derives every permission decision from
+to the TavetaHQ API through one client and derives every permission decision from
 the server.
 
 - Running it: [docs/getting-started/local-development.md](../docs/getting-started/local-development.md)

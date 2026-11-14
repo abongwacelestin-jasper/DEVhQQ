@@ -90,7 +90,7 @@ const MAX_LINE_CHARS = 8000;
 /**
  * Runs inside the sandbox iframe (`sandbox="allow-scripts"`, `srcdoc`), whose
  * origin is opaque: it cannot read the app's DOM or storage, its requests carry
- * no DevHQ cookies, and the same-origin `/api` is cross-origin to it. It spawns
+ * no TavetaHQ cookies, and the same-origin `/api` is cross-origin to it. It spawns
  * the worker that executes user code, relays only well-formed messages to its
  * parent, and stops forwarding (and kills the worker) once output limits are hit.
  *

@@ -72,6 +72,16 @@ export function levelFor(caps: Capabilities | null, area: ApiArea): ApiLevel {
 }
 
 /**
+ * Whether the server lets this member read an area at all. Data hooks use it to
+ * skip a request that can only answer 403 (a console error and, in places, an
+ * error toast for a role that was never meant to see the data). Unknown
+ * capabilities count as allowed: the server still decides.
+ */
+export function serverAllows(caps: Capabilities | null, area: ApiArea, level: ApiLevel = 'view') {
+  return !caps || RANK[levelFor(caps, area)] >= RANK[level];
+}
+
+/**
  * Visible when the server allows it *and* the role's curated navigation list
  * includes it. The server decides what is permitted; the curated list decides
  * what this demo role is presented with. Denial always wins.

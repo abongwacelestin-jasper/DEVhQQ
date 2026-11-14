@@ -66,8 +66,9 @@ export function toDeployment(d: ApiDeployment): DeploymentRow {
 }
 
 export function useDeployments() {
-  const { session } = useAuth();
-  const memberId = session?.memberId ?? null;
+  const { session, allows } = useAuth();
+  // A role without Deployment:view gets an empty list, not a 403 and an error toast.
+  const memberId = allows('Deployment') ? (session?.memberId ?? null) : null;
   const [deployments, setDeployments] = useState<DeploymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);

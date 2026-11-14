@@ -1,15 +1,15 @@
 {
   "name": "@devhq/backend",
   "version": "2.0.0",
-  "description": "DevHQ Backend API - High-performance Node.js server with TypeScript, no build step required. Features authentication, rate limiting, security middleware, and comprehensive audit logging.",
+  "description": "TavetaHQ Backend API - High-performance Node.js server with TypeScript, no build step required. Features authentication, rate limiting, security middleware, and comprehensive audit logging.",
   "author": {
-    "name": "DevHQ Team",
-    "email": "backend@devhq.com"
+    "name": "TavetaHQ Team",
+    "email": "backend@tavetahq.io"
   },
   "contributors": [
     {
       "name": "Backend Team",
-      "email": "backend@devhq.com"
+      "email": "backend@tavetahq.io"
     }
   ],
   "license": "MIT",
@@ -46,7 +46,7 @@
   },
   "bugs": {
     "url": "https://github.com/devhq/devhq/issues",
-    "email": "backend@devhq.com"
+    "email": "backend@tavetahq.io"
   },
   "homepage": "https://github.com/devhq/devhq/tree/main/Backend",
   "keywords": [

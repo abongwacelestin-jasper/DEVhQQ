@@ -55,7 +55,7 @@ export function CreateWorkspaceModal() {
     if (slug.length < 2)
       return setError('The workspace address needs at least two letters or digits.');
     if (workspaces.some((w) => w.slug === slug))
-      return setError(`devhq.app/${slug} is already taken.`);
+      return setError(`tavetahq.io/${slug} is already taken.`);
     if (!isTemplateId(template)) return setError('Pick a template.');
     setError('');
     setBusy(true);
@@ -117,7 +117,7 @@ export function CreateWorkspaceModal() {
           </Field>
           <Field label="Workspace URL">
             <div className="flex h-8 items-center overflow-hidden rounded-md border border-line bg-sunken/50 text-[12.5px]">
-              <span className="px-2 text-muted">devhq.app/</span>
+              <span className="px-2 text-muted">tavetahq.io/</span>
               <span className="truncate font-medium text-ink">{slug || 'your-company'}</span>
             </div>
           </Field>

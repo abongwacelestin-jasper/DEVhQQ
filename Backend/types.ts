@@ -195,7 +195,7 @@ export interface Deployment {
   version: string;
   sha: string;
   status: 'running' | 'succeeded' | 'failed' | 'awaiting-approval' | 'rolled-back';
-  /** CI/CD system that executes the deploy — DevHQ only records and approves. */
+  /** CI/CD system that executes the deploy — TavetaHQ only records and approves. */
   provider: string;
   requestedBy: string;
   approvedBy?: string;
