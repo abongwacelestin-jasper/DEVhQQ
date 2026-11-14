@@ -27,7 +27,9 @@ COPY package.json package-lock.json .npmrc ./
 COPY Frontend/package.json Frontend/package.json
 COPY Backend/package.json Backend/package.json
 COPY Models/package.json Models/package.json
-RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+# Railway requires an id on cache mounts, scoped to the service; empty off Railway.
+ARG RAILWAY_SERVICE_ID=local
+RUN --mount=type=cache,id=s/${RAILWAY_SERVICE_ID}-npm,target=/root/.npm,sharing=locked \
     npm ci --ignore-scripts --no-audit --no-fund \
       --workspace=Frontend --include-workspace-root=false \
  && mkdir -p Frontend/node_modules
