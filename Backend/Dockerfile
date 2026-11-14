@@ -27,9 +27,9 @@ COPY package.json package-lock.json .npmrc ./
 COPY Backend/package.json Backend/package.json
 COPY Frontend/package.json Frontend/package.json
 COPY Models/package.json Models/package.json
-# Railway requires an id on cache mounts, scoped to the service; empty off Railway.
-ARG RAILWAY_SERVICE_ID=local
-RUN --mount=type=cache,id=s/${RAILWAY_SERVICE_ID}-npm,target=/root/.npm,sharing=locked \
+# No npm cache mount: Railway's builder requires a per-service literal id, and
+# backend and cron share this Dockerfile.
+RUN \
     npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
       --workspace=Backend --include-workspace-root=false \
  && mkdir -p node_modules Backend/node_modules
